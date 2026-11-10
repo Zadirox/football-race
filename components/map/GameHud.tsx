@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { MapScene } from '@/components/map/MapScene';
 import { MapBoard, PlayerBadge, avatarColor, effectSummary } from '@/components/map/MapBoard';
 import { usePanZoom } from '@/components/map/usePanZoom';
+import { usePlayerWalk } from '@/components/map/usePlayerWalk';
 import {
   applyLocker,
   applyPassage,
@@ -23,6 +24,7 @@ import {
 } from '@/lib/game/engine';
 import { DICE_SIDES, rollValue, type DiceTier } from '@/lib/game/dice';
 import { cellPoint } from '@/lib/game/map-layout';
+import { stepSequence, walkDelay } from '@/lib/game/walk';
 import { mechanic } from '@/lib/game/catalog';
 import { formatAccuracy } from '@/lib/game/scoring';
 import { isMuted, play, setMuted, startAmbient } from '@/lib/audio';
@@ -141,7 +143,16 @@ export function GameHud({ snapshot }: { snapshot: SeasonSnapshot }) {
   const [feedOpen, setFeedOpen] = useState(true);
   const [liveMuted, setLiveMuted] = useState(true);
 
+  const handleWalkStep = useCallback(() => {
+    play('step');
+  }, []);
+  const { displayed, walking } = usePlayerWalk(players, { onStep: handleWalkStep });
+
   const me = players.find((p) => p.isMe) ?? null;
+  const isWalking = Boolean(me && walking[me.profileId]);
+  const selectedDisplayed = selectedPlayer
+    ? displayed.find((player) => player.profileId === selectedPlayer.profileId) ?? selectedPlayer
+    : null;
   const myFocus = me ? cellPoint(me.position) : undefined;
 
   const panZoom = usePanZoom({
@@ -151,6 +162,17 @@ export function GameHud({ snapshot }: { snapshot: SeasonSnapshot }) {
   useEffect(() => {
     setLiveMuted(isMuted());
   }, []);
+
+  // В режиме БД свежий снимок приходит после `router.refresh()`:
+  // переносим позиции и кубики, иначе карта останется на старом ходе.
+  useEffect(() => {
+    if (snapshot.demo) return;
+    setPlayers(snapshot.players);
+    const mine = snapshot.players.find((player) => player.isMe);
+    setDice(mine?.dice ?? { wood: 0, bronze: 0, silver: 0, gold: 0 });
+    setPending(seedPending(snapshot.pending));
+    setFeed(snapshot.activity);
+  }, [snapshot]);
 
   useEffect(() => {
     if (!toast) return;
@@ -206,14 +228,24 @@ export function GameHud({ snapshot }: { snapshot: SeasonSnapshot }) {
       if (cell?.mechanicCode) pushFeed(outcome.log, eventKind(cell.mechanicCode));
 
       const polarity = mechanic(cell?.mechanicCode ?? null)?.polarity;
-      play(polarity === 'positive' ? 'positive' : polarity === 'negative' || polarity === 'trap' ? 'negative' : 'land');
+      const landSound: Parameters<typeof play>[0] =
+        polarity === 'positive' ? 'positive' : polarity === 'negative' || polarity === 'trap' ? 'negative' : 'land';
+      const steps = stepSequence(from, final.position);
+      const landingDelay = walkDelay(steps.length);
+
+      if (landingDelay === 0) {
+        play(landSound);
+        if (outcome.awaiting) setPending({ kind: outcome.awaiting, payload: {} });
+      } else {
+        window.setTimeout(() => play(landSound), landingDelay);
+        if (outcome.awaiting) {
+          const awaiting = outcome.awaiting;
+          window.setTimeout(() => setPending({ kind: awaiting, payload: {} }), landingDelay);
+        }
+      }
 
       setLastRoll({ base, value, tier, from, to: final.position });
       setBusy(false);
-
-      if (outcome.awaiting) {
-        setPending({ kind: outcome.awaiting, payload: {} });
-      }
     },
     [me, pushFeed, snapshot.cells, syncMe],
   );
@@ -433,16 +465,18 @@ export function GameHud({ snapshot }: { snapshot: SeasonSnapshot }) {
 
   const total = totalDice(dice);
 
-  const rollDisabled = !me || busy || Boolean(pending) || total === 0 || me.position >= 80;
+  const rollDisabled = !me || busy || isWalking || Boolean(pending) || total === 0 || me.position >= 80;
   const rollHelper = !me
     ? 'Ты зритель: смотри и болей'
-    : pending
-      ? 'Сначала реши событие'
-      : me.position >= 80
-        ? 'Ты на финише'
-        : total === 0
-          ? 'Кубиков нет. Сделай предикты'
-          : `${total} ${pluralDice(total)} в запасе`;
+    : isWalking
+      ? 'Идём по клеткам'
+      : pending
+        ? 'Сначала реши событие'
+        : me.position >= 80
+          ? 'Ты на финише'
+          : total === 0
+            ? 'Кубиков нет. Сделай предикты'
+            : `${total} ${pluralDice(total)} в запасе`;
 
   return (
     <>
@@ -463,7 +497,7 @@ export function GameHud({ snapshot }: { snapshot: SeasonSnapshot }) {
             <MapScene />
             <MapBoard
               cells={snapshot.cells}
-              players={players}
+              players={displayed}
               selectedPlayerId={selectedPlayer?.profileId ?? null}
               inverseScale={1 / Math.max(0.0001, panZoom.scale)}
               onSelectPlayer={(player) => {
@@ -581,8 +615,8 @@ export function GameHud({ snapshot }: { snapshot: SeasonSnapshot }) {
         </div>
       )}
 
-      {selectedPlayer && (
-        <PlayerPopover player={selectedPlayer} onClose={() => setSelectedPlayer(null)} />
+      {selectedDisplayed && (
+        <PlayerPopover player={selectedDisplayed} onClose={() => setSelectedPlayer(null)} />
       )}
 
       {pending && me && (

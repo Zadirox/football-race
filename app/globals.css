@@ -1814,6 +1814,35 @@ a {
   flex-wrap: wrap;
 }
 
+/* онбординг: три шага поверх карты */
+
+.onboarding {
+  width: min(460px, 100%);
+}
+
+.onboarding__dots {
+  display: flex;
+  gap: 6px;
+  margin: 0 0 20px;
+}
+
+.onboarding__dot {
+  width: 26px;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  transition: background 160ms ease, width 160ms ease;
+}
+
+.onboarding__dot[data-active='true'] {
+  width: 40px;
+  background: var(--lime);
+}
+
+.onboarding__actions {
+  justify-content: space-between;
+}
+
 .odds {
   display: flex;
   gap: 8px;

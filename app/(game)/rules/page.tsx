@@ -1,3 +1,4 @@
+import Link from 'next/link';
 import { Panel } from '@/components/ui/Panel';
 
 const SECTIONS: Array<{ title: string; body: React.ReactNode }> = [
@@ -118,6 +119,11 @@ export default function RulesPage() {
       title="Правила"
       subtitle="Короткая версия без юридического тумана. Всё, что не описано здесь, решает админ сезона."
       size="narrow"
+      actions={
+        <Link href="/?intro=1" className="btn btn--ghost btn--sm">
+          Показать обучение
+        </Link>
+      }
     >
       <div className="rules-list">
         {SECTIONS.map((section) => (

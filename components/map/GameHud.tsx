@@ -90,8 +90,15 @@ function newRollKey(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
-
 type LastRoll = { base: number; value: number; tier: DiceTier; from: number; to: number };
+
+/** Грань на кубике во время броска: крутится, потом замирает на результате. */
+type Tumble = { tier: DiceTier; face: number; settled: boolean };
+
+/** Как часто меняется грань при прокрутке. */
+const TUMBLE_TICK_MS = 70;
+/** Сколько держится финальная грань перед возвратом к обычному виду. */
+const TUMBLE_SETTLE_MS = 280;
 
 function pluralDice(n: number): string {
   const mod10 = n % 10;
@@ -135,6 +142,9 @@ export function GameHud({ snapshot }: { snapshot: SeasonSnapshot }) {
   );
   const [pending, setPending] = useState<Pending | null>(() => seedPending(snapshot.pending));
   const [busy, setBusy] = useState(false);
+  const [tumble, setTumble] = useState<Tumble | null>(null);
+  const tumbleTimer = useRef<number | null>(null);
+  const settleTimer = useRef<number | null>(null);
   const rollKeyRef = useRef<string>(newRollKey());
   const [feed, setFeed] = useState<ActivityView[]>(snapshot.activity);
   const [toast, setToast] = useState<{ text: string; kind: 'error' | 'info' } | null>(null);
@@ -147,6 +157,42 @@ export function GameHud({ snapshot }: { snapshot: SeasonSnapshot }) {
     play('step');
   }, []);
   const { displayed, walking } = usePlayerWalk(players, { onStep: handleWalkStep });
+
+  const clearTumbleTimers = useCallback(() => {
+    if (tumbleTimer.current !== null) {
+      window.clearInterval(tumbleTimer.current);
+      tumbleTimer.current = null;
+    }
+    if (settleTimer.current !== null) {
+      window.clearTimeout(settleTimer.current);
+      settleTimer.current = null;
+    }
+  }, []);
+
+  const startTumble = useCallback(
+    (tier: DiceTier) => {
+      clearTumbleTimers();
+      const sides = DICE_SIDES[tier];
+      const nextFace = () => 1 + Math.floor(Math.random() * sides);
+      setTumble({ tier, face: nextFace(), settled: false });
+      tumbleTimer.current = window.setInterval(() => {
+        setTumble({ tier, face: nextFace(), settled: false });
+      }, TUMBLE_TICK_MS);
+    },
+    [clearTumbleTimers],
+  );
+
+  const settleTumble = useCallback((face?: number) => {
+    if (tumbleTimer.current !== null) {
+      window.clearInterval(tumbleTimer.current);
+      tumbleTimer.current = null;
+    }
+    setTumble((current) => (current ? { ...current, face: face ?? current.face, settled: true } : current));
+    if (settleTimer.current !== null) window.clearTimeout(settleTimer.current);
+    settleTimer.current = window.setTimeout(() => setTumble(null), TUMBLE_SETTLE_MS);
+  }, []);
+
+  useEffect(() => () => clearTumbleTimers(), [clearTumbleTimers]);
 
   const me = players.find((p) => p.isMe) ?? null;
   const isWalking = Boolean(me && walking[me.profileId]);
@@ -245,9 +291,10 @@ export function GameHud({ snapshot }: { snapshot: SeasonSnapshot }) {
       }
 
       setLastRoll({ base, value, tier, from, to: final.position });
+      settleTumble(base);
       setBusy(false);
     },
-    [me, pushFeed, snapshot.cells, syncMe],
+    [me, pushFeed, settleTumble, snapshot.cells, syncMe],
   );
 
   const demoRoll = useCallback(
@@ -269,13 +316,14 @@ export function GameHud({ snapshot }: { snapshot: SeasonSnapshot }) {
         );
         setPending({ kind: 'tactics', payload: { value, base, tier, from: me.position } });
         play('neutral');
+        settleTumble(base);
         setBusy(false);
         return;
       }
 
       finishMove(afterMods, value, tier, base);
     },
-    [finishMove, me, pushFeed, syncMe],
+    [finishMove, me, pushFeed, settleTumble, syncMe],
   );
 
   const handleRoll = useCallback(async () => {
@@ -298,6 +346,7 @@ export function GameHud({ snapshot }: { snapshot: SeasonSnapshot }) {
     startAmbient();
     play('roll');
     setBusy(true);
+    startTumble(tier);
 
     if (!snapshot.demo) {
       const result = await submitRollAction({
@@ -306,19 +355,21 @@ export function GameHud({ snapshot }: { snapshot: SeasonSnapshot }) {
         idempotencyKey: rollKeyRef.current,
       });
       if (!result.ok) {
+        settleTumble();
         setBusy(false);
         setToast({ text: result.message, kind: 'error' });
         return;
       }
       rollKeyRef.current = newRollKey();
       setDice((prev) => ({ ...prev, [tier]: Math.max(0, prev[tier] - 1) }));
+      settleTumble();
       router.refresh();
       setBusy(false);
       return;
     }
 
     window.setTimeout(() => demoRoll(tier), 760);
-  }, [busy, demoRoll, dice, me, pending, router, selectedTier, snapshot.demo, snapshot.matchday?.id]);
+  }, [busy, demoRoll, dice, me, pending, router, selectedTier, settleTumble, snapshot.demo, snapshot.matchday?.id, startTumble]);
 
   const runServerChoice = useCallback(
     async (run: () => Promise<ActionResult>, sound: Parameters<typeof play>[0]) => {
@@ -586,7 +637,13 @@ export function GameHud({ snapshot }: { snapshot: SeasonSnapshot }) {
                 }}
                 aria-label={`${TIER_LABEL[tier]} кубик, осталось ${dice[tier]}`}
               >
-                <span className={`die die--${tier}`}>d{DICE_SIDES[tier]}</span>
+                <span
+                  className={`die die--${tier}${
+                    tumble?.tier === tier ? (tumble.settled ? ' die--settle' : ' die--tumbling') : ''
+                  }`}
+                >
+                  {tumble?.tier === tier ? tumble.face : `d${DICE_SIDES[tier]}`}
+                </span>
                 ×{dice[tier]}
               </button>
             ))}
@@ -595,10 +652,17 @@ export function GameHud({ snapshot }: { snapshot: SeasonSnapshot }) {
             type="button"
             className="dice-roll-btn"
             data-busy={busy}
+            data-tumbling={Boolean(tumble && !tumble.settled)}
             disabled={rollDisabled}
             onClick={handleRoll}
           >
-            <span className={`die die--${selectedTier ?? 'gold'}`}>{busy ? '…' : '★'}</span>
+            <span
+              className={`die die--${tumble?.tier ?? selectedTier ?? 'gold'}${
+                tumble ? (tumble.settled ? ' die--settle' : ' die--tumbling') : ''
+              }`}
+            >
+              {tumble ? tumble.face : busy ? '…' : '★'}
+            </span>
             {busy ? 'Бросаем' : 'Бросить кубик'}
           </button>
           <div className="dice-helper">{rollHelper}</div>

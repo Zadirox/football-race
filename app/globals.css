@@ -1076,14 +1076,49 @@ a {
   box-shadow: none;
 }
 
-.dice-roll-btn[data-busy='true'] .die {
-  animation: die-tumble 0.9s linear infinite;
+.die--tumbling {
+  animation: die-shake 0.16s linear infinite;
 }
 
-@keyframes die-tumble {
-  0% { transform: rotate(-8deg) translateY(0); }
-  50% { transform: rotate(172deg) translateY(-10px); }
-  100% { transform: rotate(352deg) translateY(0); }
+@keyframes die-shake {
+  0% {
+    transform: rotate(-8deg) translateY(0);
+  }
+  25% {
+    transform: rotate(-15deg) translateY(-2px);
+  }
+  50% {
+    transform: rotate(-8deg) translateY(0);
+  }
+  75% {
+    transform: rotate(-1deg) translateY(-2px);
+  }
+  100% {
+    transform: rotate(-8deg) translateY(0);
+  }
+}
+
+.die--settle {
+  animation: die-settle 0.28s cubic-bezier(0.2, 1.4, 0.4, 1);
+}
+
+@keyframes die-settle {
+  0% {
+    transform: scale(0.86) rotate(-8deg);
+  }
+  60% {
+    transform: scale(1.12) rotate(-8deg);
+  }
+  100% {
+    transform: scale(1) rotate(-8deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .die--tumbling,
+  .die--settle {
+    animation: none;
+  }
 }
 
 .dice-helper {

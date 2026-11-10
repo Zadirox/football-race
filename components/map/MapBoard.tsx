@@ -1,10 +1,13 @@
 'use client';
 
-import { useMemo, useState } from 'react';
-import { mechanic, POLARITY_LABEL } from '@/lib/game/catalog';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { mechanic } from '@/lib/game/catalog';
+import { flavorMap, type PlainFlavor } from '@/lib/game/cell-flavor';
 import { buildPathD, cellPoint, stackOffset } from '@/lib/game/map-layout';
 import { describeEffects } from '@/lib/game/engine';
+import type { Rect } from '@/lib/ui/card-placement';
 import type { CellView, PlayerView } from '@/lib/types';
+import { CellCard } from './CellCard';
 
 type MapBoardProps = {
   cells: CellView[];
@@ -15,6 +18,12 @@ type MapBoardProps = {
   inverseScale?: number;
 };
 
+type ActiveCard = {
+  idx: number;
+  anchor: Rect;
+  source: 'hover' | 'pin' | 'focus';
+};
+
 const PATH_D = buildPathD();
 
 function polarityOf(code: string | null): string {
@@ -22,8 +31,13 @@ function polarityOf(code: string | null): string {
   return mechanic(code)?.polarity ?? 'neutral';
 }
 
+function anchorOf(element: Element): Rect {
+  const rect = element.getBoundingClientRect();
+  return { left: rect.left, top: rect.top, width: rect.width, height: rect.height };
+}
+
 export function MapBoard({ cells, players, onSelectPlayer, selectedPlayerId, inverseScale = 1 }: MapBoardProps) {
-  const [hovered, setHovered] = useState<number | null>(null);
+  const [active, setActive] = useState<ActiveCard | null>(null);
 
   const byCell = useMemo(() => {
     const groups = new Map<number, PlayerView[]>();
@@ -35,9 +49,73 @@ export function MapBoard({ cells, players, onSelectPlayer, selectedPlayerId, inv
     return groups;
   }, [players]);
 
-  const hoveredCell = hovered === null ? null : cells.find((c) => c.idx === hovered) ?? null;
-  const hoveredPoint = hovered === null ? null : cellPoint(hovered);
-  const hoveredMechanic = mechanic(hoveredCell?.mechanicCode ?? null);
+  const flavors = useMemo(() => {
+    const plainCells = cells.filter((cell) => cell.kind === 'plain').map((cell) => cell.idx);
+    return flavorMap(plainCells);
+  }, [cells]);
+
+  const myPosition = players.find((p) => p.isMe)?.position ?? 1;
+  const activeCell = active ? cells.find((c) => c.idx === active.idx) ?? null : null;
+  const activeFlavor: PlainFlavor | null = activeCell ? flavors.get(activeCell.idx) ?? null : null;
+
+  const open = useCallback((cell: CellView, element: Element, source: ActiveCard['source']) => {
+    setActive({ idx: cell.idx, anchor: anchorOf(element), source });
+  }, []);
+
+  const closeIf = useCallback((idx: number, source: ActiveCard['source']) => {
+    setActive((current) =>
+      current && current.idx === idx && current.source === source ? null : current,
+    );
+  }, []);
+
+  useEffect(() => {
+    if (!active) return;
+
+    let pressed = false;
+    let pressX = 0;
+    let pressY = 0;
+
+    const onDown = (event: PointerEvent) => {
+      const target = event.target as Element | null;
+      pressed = true;
+      pressX = event.clientX;
+      pressY = event.clientY;
+      if (target?.closest('.cell')) return;
+      setActive(null);
+    };
+
+    const onMove = (event: PointerEvent) => {
+      if (!pressed) return;
+      if (Math.hypot(event.clientX - pressX, event.clientY - pressY) > 6) {
+        pressed = false;
+        setActive(null);
+      }
+    };
+
+    const onUp = () => {
+      pressed = false;
+    };
+
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setActive(null);
+    };
+
+    const onWheel = () => setActive(null);
+
+    window.addEventListener('pointerdown', onDown, true);
+    window.addEventListener('pointermove', onMove, true);
+    window.addEventListener('pointerup', onUp, true);
+    window.addEventListener('keydown', onKey);
+    window.addEventListener('wheel', onWheel, { passive: true });
+
+    return () => {
+      window.removeEventListener('pointerdown', onDown, true);
+      window.removeEventListener('pointermove', onMove, true);
+      window.removeEventListener('pointerup', onUp, true);
+      window.removeEventListener('keydown', onKey);
+      window.removeEventListener('wheel', onWheel);
+    };
+  }, [active]);
 
   return (
     <>
@@ -67,6 +145,18 @@ export function MapBoard({ cells, players, onSelectPlayer, selectedPlayerId, inv
           const point = cellPoint(cell.idx);
           const polarity = polarityOf(cell.mechanicCode);
           const isCurrent = players.some((p) => p.position === cell.idx && p.isMe);
+          const flavor = flavors.get(cell.idx);
+          const eventName = mechanic(cell.mechanicCode)?.name;
+          const label =
+            cell.kind === 'event'
+              ? `Клетка ${cell.idx}, ${eventName ?? 'событие'}`
+              : cell.kind === 'start'
+                ? `Клетка ${cell.idx}, старт`
+                : cell.kind === 'finish'
+                  ? `Клетка ${cell.idx}, финиш`
+                  : `Клетка ${cell.idx}, ${flavor?.title ?? 'обычная клетка'}, обычная клетка`;
+          const isOpen = active?.idx === cell.idx;
+
           return (
             <button
               key={cell.idx}
@@ -75,49 +165,31 @@ export function MapBoard({ cells, players, onSelectPlayer, selectedPlayerId, inv
               data-kind={cell.kind}
               data-polarity={polarity}
               data-current={isCurrent}
-              data-passed={cell.idx < (players.find((p) => p.isMe)?.position ?? 1)}
+              data-passed={cell.idx < myPosition}
+              data-open={isOpen}
               style={{ left: `${point.x * 100}%`, top: `${point.y * 100}%` }}
-              aria-label={`Клетка ${cell.idx}${
-                cell.kind === 'event' ? `, ${mechanic(cell.mechanicCode)?.name ?? 'событие'}` : ''
-              }`}
-              onMouseEnter={() => setHovered(cell.idx)}
-              onMouseLeave={() => setHovered((current) => (current === cell.idx ? null : current))}
-              onFocus={() => setHovered(cell.idx)}
-              onBlur={() => setHovered((current) => (current === cell.idx ? null : current))}
-              onClick={() => setHovered(cell.idx)}
+              aria-label={label}
+              aria-describedby={isOpen ? 'cell-card' : undefined}
+              onMouseEnter={(event) => open(cell, event.currentTarget, 'hover')}
+              onMouseLeave={() => closeIf(cell.idx, 'hover')}
+              onFocus={(event) => {
+                if (event.currentTarget.matches(':focus-visible')) open(cell, event.currentTarget, 'focus');
+              }}
+              onBlur={() => closeIf(cell.idx, 'focus')}
+              onClick={(event) => {
+                const pointerType = (event.nativeEvent as PointerEvent).pointerType;
+                const isTouch = Boolean(pointerType && pointerType !== 'mouse');
+                if (isTouch || event.detail === 0) {
+                  if (isOpen) setActive(null);
+                  else open(cell, event.currentTarget, 'pin');
+                }
+              }}
             >
               {cell.kind === 'finish' ? '★' : cell.idx}
             </button>
           );
         })}
       </div>
-
-      {hoveredCell && hoveredPoint && (
-        <div
-          className="cell-tip"
-          style={{ left: `${hoveredPoint.x * 100}%`, top: `${hoveredPoint.y * 100}%` }}
-          role="tooltip"
-        >
-          <div className="cell-tip__num">{hoveredCell.idx}</div>
-          <span className={`chip cell-tip__badge ${badgeClass(hoveredMechanic?.polarity)}`}>
-            {hoveredMechanic ? POLARITY_LABEL[hoveredMechanic.polarity] : 'Обычная клетка'}
-          </span>
-          <p className="cell-tip__name">
-            {hoveredCell.kind === 'start'
-              ? 'Старт'
-              : hoveredCell.kind === 'finish'
-                ? 'Финиш'
-                : hoveredMechanic?.name ?? 'Без событий'}
-          </p>
-          <p className="cell-tip__text">
-            {hoveredCell.kind === 'start'
-              ? 'Отсюда все начинают сезон.'
-              : hoveredCell.kind === 'finish'
-                ? 'Кубок. Первый дошедший забирает сезон по дистанции.'
-                : hoveredMechanic?.tagline ?? 'Просто шаг вперёд.'}
-          </p>
-        </div>
-      )}
 
       <div className="map-layer map-layer--players">
         {Array.from(byCell.entries()).map(([cellIdx, group]) =>
@@ -164,23 +236,12 @@ export function MapBoard({ cells, players, onSelectPlayer, selectedPlayerId, inv
           }),
         )}
       </div>
+
+      {activeCell && active && (
+        <CellCard cell={activeCell} flavor={activeFlavor} anchor={active.anchor} />
+      )}
     </>
   );
-}
-
-function badgeClass(polarity: string | undefined): string {
-  switch (polarity) {
-    case 'positive':
-      return 'chip--positive';
-    case 'negative':
-      return 'chip--negative';
-    case 'trap':
-      return 'chip--trap';
-    case 'neutral':
-      return 'chip--info';
-    default:
-      return 'chip--muted';
-  }
 }
 
 const PALETTES = [

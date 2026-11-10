@@ -604,8 +604,13 @@ export function GameHud({ snapshot }: { snapshot: SeasonSnapshot }) {
         </button>
         {feedOpen && (
           <div className="feed__list">
-            {feed.slice(0, 30).map((item) => (
-              <div key={item.id} className="feed__item" data-kind={item.kind}>
+            {feed.slice(0, 30).map((item, index) => (
+              <div
+                key={item.id}
+                className="feed__item feed__item--enter"
+                data-kind={item.kind}
+                style={{ animationDelay: `${Math.min(index * 30, 200)}ms` }}
+              >
                 <span className="feed__time">{timeLabel(item.createdAt)}</span>
                 <span>{item.message}</span>
               </div>
@@ -670,11 +675,7 @@ export function GameHud({ snapshot }: { snapshot: SeasonSnapshot }) {
       )}
 
       {toast && (
-        <div
-          className="error-box"
-          style={{ position: 'fixed', left: '50%', bottom: 110, transform: 'translateX(-50%)', zIndex: 60, maxWidth: 420 }}
-          role="alert"
-        >
+        <div className="toast" data-kind={toast.kind} role={toast.kind === 'error' ? 'alert' : 'status'}>
           {toast.text}
         </div>
       )}

@@ -16,7 +16,7 @@ type PanelProps = {
 export function Panel({ title, subtitle, actions, children, size = 'default' }: PanelProps) {
   const sizeClass = size === 'wide' ? 'panel--wide' : size === 'narrow' ? 'panel--narrow' : '';
   return (
-    <div className="panel-holder">
+    <div className="panel-holder page-enter">
       <section className={`panel ${sizeClass}`.trim()} aria-label={title}>
         <header className="panel__head">
           <div>

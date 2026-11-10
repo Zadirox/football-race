@@ -11,12 +11,14 @@ type PanelProps = {
   actions?: ReactNode;
   children: ReactNode;
   size?: 'default' | 'wide' | 'narrow';
+  /** Панель по высоте контента, а не на весь экран: для коротких состояний. */
+  hug?: boolean;
 };
 
-export function Panel({ title, subtitle, actions, children, size = 'default' }: PanelProps) {
+export function Panel({ title, subtitle, actions, children, size = 'default', hug = false }: PanelProps) {
   const sizeClass = size === 'wide' ? 'panel--wide' : size === 'narrow' ? 'panel--narrow' : '';
   return (
-    <div className="panel-holder page-enter">
+    <div className={`panel-holder page-enter${hug ? ' panel-holder--hug' : ''}`}>
       <section className={`panel ${sizeClass}`.trim()} aria-label={title}>
         <header className="panel__head">
           <div>

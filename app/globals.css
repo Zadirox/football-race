@@ -263,6 +263,10 @@ a {
   pointer-events: none;
 }
 
+.panel-holder--hug {
+  align-items: flex-start;
+}
+
 .page-enter {
   animation: page-in 150ms ease-out;
 }
@@ -1658,6 +1662,95 @@ a {
   background: linear-gradient(90deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.04));
   background-size: 200% 100%;
   animation: shimmer 1.4s linear infinite;
+}
+
+.skeleton--head {
+  height: 26px;
+  width: 46%;
+}
+
+.skeleton--line {
+  height: 14px;
+  width: 100%;
+}
+
+.skeleton--line-short {
+  height: 14px;
+  width: 62%;
+}
+
+.skeleton--card {
+  min-height: 168px;
+  height: clamp(168px, 34vh, 380px);
+  border-radius: 16px;
+}
+
+.loading {
+  display: grid;
+  gap: 12px;
+  padding: 6px 2px;
+}
+
+.loading__caption {
+  margin: 0;
+  color: var(--text-dim);
+  font-size: 12px;
+}
+
+/* самостоятельные экраны состояний */
+
+.state-page {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+}
+
+.state-card {
+  width: min(520px, 100%);
+  padding: 30px 26px;
+  border-radius: 22px;
+  border: 1px solid var(--panel-line);
+  background: linear-gradient(165deg, #12202b, #0b141c);
+  box-shadow: 0 60px 120px -50px #000;
+}
+
+.state-card__eyebrow {
+  margin: 0 0 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--frost);
+}
+
+.state-card__title {
+  margin: 0 0 10px;
+  font-family: var(--font-display);
+  font-size: clamp(22px, 4vw, 28px);
+  line-height: 1.15;
+}
+
+.state-card__text {
+  margin: 0 0 20px;
+  color: var(--text-dim);
+  font-size: 13.5px;
+  line-height: 1.55;
+}
+
+.actions-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.error-digest {
+  display: block;
+  margin-top: 8px;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  color: var(--text-faint);
 }
 
 @keyframes shimmer {

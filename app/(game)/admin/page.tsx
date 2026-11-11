@@ -97,7 +97,7 @@ export default async function AdminPage() {
       </div>
 
       <SectionTitle>Участники</SectionTitle>
-      <table className="table">
+      <table className="table table--cards">
         <thead>
           <tr>
             <th>Имя</th>
@@ -110,11 +110,13 @@ export default async function AdminPage() {
         <tbody>
           {snapshot.players.map((player) => (
             <tr key={player.profileId} data-me={player.isMe}>
-              <td>{player.nickname}</td>
-              <td className="card__meta">{player.role}</td>
-              <td>{player.position}</td>
-              <td>{player.points}</td>
-              <td>
+              <td data-label="Имя">{player.nickname}</td>
+              <td className="card__meta" data-label="Роль">
+                {player.role}
+              </td>
+              <td data-label="Клетка">{player.position}</td>
+              <td data-label="Очки">{player.points}</td>
+              <td data-label="Ответов">
                 {player.answered} · верно {player.correct}
               </td>
             </tr>

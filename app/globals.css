@@ -193,6 +193,7 @@ a {
 .tab {
   position: relative;
   display: inline-flex;
+  flex: none;
   align-items: center;
   gap: 6px;
   padding: 8px 14px;
@@ -1180,6 +1181,20 @@ a {
   letter-spacing: 0.14em;
   text-transform: uppercase;
   cursor: pointer;
+}
+
+.feed__badge {
+  display: inline-grid;
+  place-items: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--lime);
+  color: #16210f;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0;
 }
 
 .feed__list {
@@ -2197,7 +2212,7 @@ a {
   }
 }
 
-@media (max-width: 860px) {
+@media (max-width: 900px) {
   :root {
     --header-h: 100px;
   }
@@ -2223,11 +2238,24 @@ a {
 
   .topbar__left {
     grid-area: left;
+    min-width: 0;
   }
 
   .topbar__right {
     grid-area: right;
     justify-content: flex-end;
+    min-width: 0;
+    overflow: hidden;
+  }
+
+  /* Вторая строка не переносится: табы листаются пальцем вбок. */
+  .topbar__right .tabs {
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  .topbar__right .tabs::-webkit-scrollbar {
+    display: none;
   }
 
   .topbar__actions {
@@ -2300,6 +2328,15 @@ a {
     flex-direction: row;
   }
 
+  /* Плашка режима занимает левый верх — уводим зум и звук ниже неё. */
+  .map-controls[data-shifted='true'] {
+    top: calc(var(--header-h) + 58px);
+  }
+
+  .map-controls[data-shifted='stacked'] {
+    top: calc(var(--header-h) + 96px);
+  }
+
   .demo-banner {
     left: 10px;
     top: calc(var(--header-h) + 6px);
@@ -2334,14 +2371,148 @@ a {
   }
 }
 
+/* Телефон: кубики — нижний док, таблицы — карточки. */
+@media (max-width: 640px) {
+  .dice-tray {
+    left: 12px;
+    right: 12px;
+    bottom: calc(12px + env(safe-area-inset-bottom));
+    align-items: stretch;
+    gap: 8px;
+    padding: 10px;
+    border-radius: 16px;
+    background: rgba(9, 17, 24, 0.92);
+    border: 1px solid rgba(255, 255, 255, 0.07);
+    backdrop-filter: blur(12px);
+    box-shadow: 0 22px 48px -22px #000;
+  }
+
+  .dice-bank {
+    justify-content: space-between;
+    padding: 6px 8px;
+  }
+
+  .dice-chip {
+    flex: 1;
+    justify-content: center;
+  }
+
+  .dice-roll-btn {
+    width: 100%;
+    justify-content: center;
+    padding: 12px 16px;
+  }
+
+  .dice-helper {
+    width: 100%;
+    max-width: none;
+    text-align: center;
+  }
+
+  /* Свёрнутая лента живёт над доком и не перекрывает бросок. */
+  .feed {
+    left: 12px;
+    right: 12px;
+    bottom: calc(196px + env(safe-area-inset-bottom));
+    width: auto;
+  }
+
+  .feed__list {
+    max-height: 32vh;
+  }
+
+  .tabs-lite {
+    display: flex;
+    flex-wrap: wrap;
+  }
+
+  .table--cards {
+    display: block;
+  }
+
+  .table--cards thead {
+    display: none;
+  }
+
+  .table--cards tbody {
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  .table--cards tr {
+    position: relative;
+    display: block;
+    padding: 12px 46px 12px 14px;
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.03);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+  }
+
+  .table--cards tr[data-me='true'] {
+    background: rgba(200, 242, 90, 0.06);
+    border-color: rgba(200, 242, 90, 0.35);
+  }
+
+  .table--cards td {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 4px 0;
+    border-bottom: 0;
+  }
+
+  .table--cards td::before {
+    content: attr(data-label);
+    flex: none;
+    color: var(--text-faint);
+    font-size: 10px;
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+  }
+
+  /* Склеиваем составные значения («44 / 80», имя + пометка), чтобы они не разъезжались. */
+  .table-value {
+    display: inline-flex;
+    align-items: baseline;
+    justify-content: flex-end;
+    gap: 4px;
+    text-align: right;
+  }
+
+  .table-value--stack {
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 2px;
+  }
+
+  .table--cards td:not([data-label]) {
+    justify-content: flex-end;
+    padding: 0;
+  }
+
+  .table--cards td:not([data-label])::before {
+    display: none;
+  }
+
+  .table--cards .rank {
+    position: absolute;
+    top: 12px;
+    right: 14px;
+    width: auto;
+    font-size: 13px;
+  }
+}
+
 /* Телефон в альбомной ориентации: по высоте всё не влезает — жертвуем лентой. */
-@media (max-width: 860px) and (max-height: 560px) {
+@media (max-width: 900px) and (max-height: 560px) {
   .feed {
     display: none;
   }
 
   .dice-tray {
-    bottom: 10px;
+    bottom: calc(10px + env(safe-area-inset-bottom));
   }
 }
 

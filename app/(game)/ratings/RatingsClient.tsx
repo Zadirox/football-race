@@ -73,7 +73,7 @@ export function RatingsClient({ rows, meId }: { rows: RatingRow[]; meId: string 
       {list.length === 0 ? (
         <EmptyState title="Пока пусто" text="Рейтинг появится, как только участники сделают первые броски и ответят на вопросы." />
       ) : (
-        <table className="table">
+        <table className="table table--cards">
           <thead>
             <tr>
               <th style={{ width: 44 }}>#</th>
@@ -109,16 +109,20 @@ export function RatingsClient({ rows, meId }: { rows: RatingRow[]; meId: string 
                   <td className="rank" data-top={rank ?? undefined}>
                     {mode === 'accuracy' && low ? '—' : `#${index + 1}`}
                   </td>
-                  <td>
-                    <PlayerCell row={row} meId={meId} />
-                    {low && <div className="card__meta">мало ответов для зачёта</div>}
+                  <td data-label="Участник">
+                    <div className="table-value table-value--stack">
+                      <PlayerCell row={row} meId={meId} />
+                      {low && <span className="card__meta">мало ответов для зачёта</span>}
+                    </div>
                   </td>
                   {mode === 'distance' && (
                     <>
-                      <td>
-                        <strong>{row.position}</strong> / 80
+                      <td data-label="Клетка">
+                        <span className="table-value">
+                          <strong>{row.position}</strong> / 80
+                        </span>
                       </td>
-                      <td className="card__meta">
+                      <td className="card__meta" data-label="Финиш">
                         {row.finishedAt
                           ? new Date(row.finishedAt).toLocaleDateString('ru-RU', { timeZone: 'Europe/Moscow' })
                           : 'в пути'}
@@ -127,19 +131,19 @@ export function RatingsClient({ rows, meId }: { rows: RatingRow[]; meId: string 
                   )}
                   {mode === 'points' && (
                     <>
-                      <td>
+                      <td data-label="Очки">
                         <strong>{row.points}</strong>
                       </td>
-                      <td>{row.position}</td>
+                      <td data-label="Клетка">{row.position}</td>
                     </>
                   )}
                   {mode === 'accuracy' && (
                     <>
-                      <td>
+                      <td data-label="Точность">
                         <strong>{formatAccuracy(row.accuracy)}</strong>
                       </td>
-                      <td>{row.correct}</td>
-                      <td>{row.answered}</td>
+                      <td data-label="Верно">{row.correct}</td>
+                      <td data-label="Ответов">{row.answered}</td>
                     </>
                   )}
                 </tr>

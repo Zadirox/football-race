@@ -152,7 +152,25 @@ export function GameHud({ snapshot }: { snapshot: SeasonSnapshot }) {
   const [selectedPlayer, setSelectedPlayer] = useState<PlayerView | null>(null);
   const [lastRoll, setLastRoll] = useState<LastRoll | null>(null);
   const [feedOpen, setFeedOpen] = useState(true);
+  const [unread, setUnread] = useState(0);
+  const feedLengthRef = useRef(snapshot.activity.length);
   const [liveMuted, setLiveMuted] = useState(true);
+
+  // На телефоне лента по умолчанию свёрнута: карта важнее простыни текста.
+  // Ширину читаем только на клиенте, чтобы не ломать SSR-разметку.
+  useEffect(() => {
+    if (window.innerWidth <= 900) setFeedOpen(false);
+  }, []);
+
+  useEffect(() => {
+    const added = feed.length - feedLengthRef.current;
+    feedLengthRef.current = feed.length;
+    if (added > 0 && !feedOpen) setUnread((value) => value + added);
+  }, [feed, feedOpen]);
+
+  useEffect(() => {
+    if (feedOpen) setUnread(0);
+  }, [feedOpen]);
 
   const handleWalkStep = useCallback(() => {
     play('step');
@@ -565,7 +583,7 @@ export function GameHud({ snapshot }: { snapshot: SeasonSnapshot }) {
           </div>
         </div>
 
-        <div className="map-controls">
+        <div className="map-controls" data-shifted={!canPlay ? (snapshot.demo ? 'stacked' : 'true') : 'false'}>
           <button type="button" className="icon-btn" onClick={() => panZoom.zoomBy(1.18)} aria-label="Приблизить карту">
             +
           </button>
@@ -619,8 +637,13 @@ export function GameHud({ snapshot }: { snapshot: SeasonSnapshot }) {
       )}
 
       <div className="feed" aria-live="polite">
-        <button type="button" className="feed__toggle" onClick={() => setFeedOpen((v) => !v)}>
+        <button type="button" className="feed__toggle" onClick={() => setFeedOpen((v) => !v)} aria-expanded={feedOpen}>
           <span>Комментатор</span>
+          {!feedOpen && unread > 0 && (
+            <span className="feed__badge" aria-label={`${unread} новых записей`}>
+              {unread > 9 ? '9+' : unread}
+            </span>
+          )}
           <span style={{ marginLeft: 'auto', color: 'var(--lime)' }}>{feedOpen ? '−' : '+'}</span>
         </button>
         {feedOpen && (

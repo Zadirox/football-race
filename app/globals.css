@@ -2143,6 +2143,47 @@ a {
   backdrop-filter: blur(8px);
 }
 
+/* плашка режима: зритель или гость */
+
+.role-banner {
+  position: fixed;
+  left: 50%;
+  top: calc(var(--header-h) + 6px);
+  transform: translateX(-50%);
+  z-index: 36;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 14px;
+  border-radius: 999px;
+  background: rgba(90, 169, 230, 0.12);
+  border: 1px solid rgba(90, 169, 230, 0.32);
+  color: #c9e5fa;
+  font-size: 11.5px;
+  letter-spacing: 0.02em;
+  white-space: nowrap;
+  backdrop-filter: blur(8px);
+}
+
+.role-banner--stacked {
+  top: calc(var(--header-h) + 44px);
+}
+
+.role-banner__link {
+  color: var(--lime);
+  font-weight: 700;
+  text-decoration: none;
+  border-bottom: 1px solid rgba(200, 242, 90, 0.45);
+}
+
+.role-banner__link:hover {
+  border-bottom-color: var(--lime);
+}
+
+.dice-tray[data-disabled='true'] {
+  opacity: 0.62;
+}
+
 /* ---------- адаптив ---------- */
 
 @media (max-width: 1280px) {
@@ -2270,6 +2311,22 @@ a {
   /* На узком экране оставляем только метку — пояснение не влезает. */
   .demo-banner > span:nth-child(n + 2) {
     display: none;
+  }
+
+  .role-banner {
+    left: 10px;
+    top: calc(var(--header-h) + 6px);
+    transform: none;
+    white-space: normal;
+    max-width: min(320px, calc(100vw - 76px));
+    font-size: 11px;
+    line-height: 1.35;
+    padding: 6px 12px;
+    border-radius: 12px;
+  }
+
+  .role-banner--stacked {
+    top: calc(var(--header-h) + 38px);
   }
 
   .map-hint {

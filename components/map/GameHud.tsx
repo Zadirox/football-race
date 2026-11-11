@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { MapScene } from '@/components/map/MapScene';
 import { MapBoard, PlayerBadge, avatarColor, effectSummary } from '@/components/map/MapBoard';
@@ -195,6 +196,8 @@ export function GameHud({ snapshot }: { snapshot: SeasonSnapshot }) {
   useEffect(() => () => clearTumbleTimers(), [clearTumbleTimers]);
 
   const me = players.find((p) => p.isMe) ?? null;
+  /** Кубики и предикты — только участнику сезона; зритель и гость смотрят. */
+  const canPlay = snapshot.me?.isPlayer === true;
   const isWalking = Boolean(me && walking[me.profileId]);
   const selectedDisplayed = selectedPlayer
     ? displayed.find((player) => player.profileId === selectedPlayer.profileId) ?? selectedPlayer
@@ -327,7 +330,7 @@ export function GameHud({ snapshot }: { snapshot: SeasonSnapshot }) {
   );
 
   const handleRoll = useCallback(async () => {
-    if (!me || busy) return;
+    if (!canPlay || !me || busy) return;
     if (pending) {
       setToast({ text: 'Сначала разберись с событием, потом бросай', kind: 'error' });
       return;
@@ -369,7 +372,7 @@ export function GameHud({ snapshot }: { snapshot: SeasonSnapshot }) {
     }
 
     window.setTimeout(() => demoRoll(tier), 760);
-  }, [busy, demoRoll, dice, me, pending, router, selectedTier, settleTumble, snapshot.demo, snapshot.matchday?.id, startTumble]);
+  }, [busy, canPlay, demoRoll, dice, me, pending, router, selectedTier, settleTumble, snapshot.demo, snapshot.matchday?.id, startTumble]);
 
   const runServerChoice = useCallback(
     async (run: () => Promise<ActionResult>, sound: Parameters<typeof play>[0]) => {
@@ -516,18 +519,21 @@ export function GameHud({ snapshot }: { snapshot: SeasonSnapshot }) {
 
   const total = totalDice(dice);
 
-  const rollDisabled = !me || busy || isWalking || Boolean(pending) || total === 0 || me.position >= 80;
-  const rollHelper = !me
-    ? 'Ты зритель: смотри и болей'
-    : isWalking
-      ? 'Идём по клеткам'
-      : pending
-        ? 'Сначала реши событие'
-        : me.position >= 80
-          ? 'Ты на финише'
-          : total === 0
-            ? 'Кубиков нет. Сделай предикты'
-            : `${total} ${pluralDice(total)} в запасе`;
+  const rollDisabled =
+    !canPlay || !me || busy || isWalking || Boolean(pending) || total === 0 || me.position >= 80;
+  const rollHelper = !canPlay
+    ? 'Играет основной состав'
+    : !me
+      ? 'Ты зритель: смотри и болей'
+      : isWalking
+        ? 'Идём по клеткам'
+        : pending
+          ? 'Сначала реши событие'
+          : me.position >= 80
+            ? 'Ты на финише'
+            : total === 0
+              ? 'Кубиков нет. Сделай предикты'
+              : `${total} ${pluralDice(total)} в запасе`;
 
   return (
     <>
@@ -597,6 +603,21 @@ export function GameHud({ snapshot }: { snapshot: SeasonSnapshot }) {
         </div>
       )}
 
+      {!canPlay && (
+        <div className={`role-banner${snapshot.demo ? ' role-banner--stacked' : ''}`}>
+          {snapshot.me ? (
+            <span>Ты зритель: смотри и болей, кубики и предикты недоступны</span>
+          ) : (
+            <>
+              <span>Ты гость: войди, чтобы играть</span>
+              <Link href="/login" className="role-banner__link">
+                Войти
+              </Link>
+            </>
+          )}
+        </div>
+      )}
+
       <div className="feed" aria-live="polite">
         <button type="button" className="feed__toggle" onClick={() => setFeedOpen((v) => !v)}>
           <span>Комментатор</span>
@@ -619,60 +640,58 @@ export function GameHud({ snapshot }: { snapshot: SeasonSnapshot }) {
         )}
       </div>
 
-      {me && (
-        <div className="dice-tray">
-          {lastRoll && (
-            <div className="dice-helper">
-              <strong style={{ color: 'var(--lime)', fontFamily: 'var(--font-mono)' }}>{lastRoll.value}</strong>{' '}
-              {lastRoll.value === 1 ? 'клетка' : lastRoll.value < 5 ? 'клетки' : 'клеток'} ·{' '}
-              {TIER_LABEL[lastRoll.tier]}
-            </div>
-          )}
-          <div className="dice-bank" role="group" aria-label="Твои кубики">
-            {TIER_ORDER.map((tier) => (
-              <button
-                key={tier}
-                type="button"
-                className="dice-chip"
-                data-selected={selectedTier === tier}
-                disabled={dice[tier] === 0}
-                onClick={() => {
-                  setSelectedTier(tier);
-                  play('click');
-                }}
-                aria-label={`${TIER_LABEL[tier]} кубик, осталось ${dice[tier]}`}
-              >
-                <span
-                  className={`die die--${tier}${
-                    tumble?.tier === tier ? (tumble.settled ? ' die--settle' : ' die--tumbling') : ''
-                  }`}
-                >
-                  {tumble?.tier === tier ? tumble.face : `d${DICE_SIDES[tier]}`}
-                </span>
-                ×{dice[tier]}
-              </button>
-            ))}
+      <div className="dice-tray" data-disabled={!canPlay}>
+        {lastRoll && (
+          <div className="dice-helper">
+            <strong style={{ color: 'var(--lime)', fontFamily: 'var(--font-mono)' }}>{lastRoll.value}</strong>{' '}
+            {lastRoll.value === 1 ? 'клетка' : lastRoll.value < 5 ? 'клетки' : 'клеток'} ·{' '}
+            {TIER_LABEL[lastRoll.tier]}
           </div>
-          <button
-            type="button"
-            className="dice-roll-btn"
-            data-busy={busy}
-            data-tumbling={Boolean(tumble && !tumble.settled)}
-            disabled={rollDisabled}
-            onClick={handleRoll}
-          >
-            <span
-              className={`die die--${tumble?.tier ?? selectedTier ?? 'gold'}${
-                tumble ? (tumble.settled ? ' die--settle' : ' die--tumbling') : ''
-              }`}
+        )}
+        <div className="dice-bank" role="group" aria-label="Твои кубики">
+          {TIER_ORDER.map((tier) => (
+            <button
+              key={tier}
+              type="button"
+              className="dice-chip"
+              data-selected={selectedTier === tier}
+              disabled={!canPlay || dice[tier] === 0}
+              onClick={() => {
+                setSelectedTier(tier);
+                play('click');
+              }}
+              aria-label={`${TIER_LABEL[tier]} кубик, осталось ${dice[tier]}`}
             >
-              {tumble ? tumble.face : busy ? '…' : '★'}
-            </span>
-            {busy ? 'Бросаем' : 'Бросить кубик'}
-          </button>
-          <div className="dice-helper">{rollHelper}</div>
+              <span
+                className={`die die--${tier}${
+                  tumble?.tier === tier ? (tumble.settled ? ' die--settle' : ' die--tumbling') : ''
+                }`}
+              >
+                {tumble?.tier === tier ? tumble.face : `d${DICE_SIDES[tier]}`}
+              </span>
+              ×{dice[tier]}
+            </button>
+          ))}
         </div>
-      )}
+        <button
+          type="button"
+          className="dice-roll-btn"
+          data-busy={busy}
+          data-tumbling={Boolean(tumble && !tumble.settled)}
+          disabled={rollDisabled}
+          onClick={handleRoll}
+        >
+          <span
+            className={`die die--${tumble?.tier ?? selectedTier ?? 'gold'}${
+              tumble ? (tumble.settled ? ' die--settle' : ' die--tumbling') : ''
+            }`}
+          >
+            {tumble ? tumble.face : busy ? '…' : '★'}
+          </span>
+          {busy ? 'Бросаем' : 'Бросить кубик'}
+        </button>
+        <div className="dice-helper">{rollHelper}</div>
+      </div>
 
       {toast && (
         <div className="toast" data-kind={toast.kind} role={toast.kind === 'error' ? 'alert' : 'status'}>

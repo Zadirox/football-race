@@ -39,6 +39,8 @@ noisy background, frame, border, multiple objects, human face
 
 ## Список
 
+Готовые промпты под каждый файл — в `PROMPTS.md` рядом.
+
 | Код | Механика | Предмет (`<SUBJECT>`) |
 |---|---|---|
 | 01 | Контратака | a football with a motion arrow curving forward |

@@ -122,12 +122,13 @@ function PineWoods() {
 
 export function MapScene() {
   return (
-    <svg
-      className="map-layer map-layer--svg"
-      viewBox={`0 0 ${W} ${H}`}
-      role="img"
-      aria-label="Ночная зимняя карта футбольного городка"
-    >
+    <>
+      <svg
+        className="map-layer map-layer--svg"
+        viewBox={`0 0 ${W} ${H}`}
+        role="img"
+        aria-label="Ночная зимняя карта футбольного городка"
+      >
       <defs>
         <linearGradient id="sky" x1="0" y1="0" x2="0" y2="1">
           <stop offset="0%" stopColor="#081420" />
@@ -420,6 +421,14 @@ export function MapScene() {
         strokeWidth="5"
         opacity="0.18"
       />
-    </svg>
+      </svg>
+      {/*
+        Фон города одной картинкой. Слой лежит поверх процедурной сцены:
+        файла нет — слой прозрачный и видна сцена, файл появился — картинка
+        заменяет небо, городок и трибуны без правок кода. Дорожка, клетки
+        и персонажи рисуются отдельными слоями выше.
+      */}
+      <div className="map-layer map-art" aria-hidden="true" />
+    </>
   );
 }

@@ -578,6 +578,17 @@ a {
   pointer-events: none;
 }
 
+/*
+  Фон города одной картинкой: слой лежит под SVG. Файла нет — браузер
+  просто ничего не рисует, остаётся процедурная сцена.
+*/
+.map-art {
+  background-image: url('/art/map/map-night.webp');
+  background-size: 100% 100%;
+  background-repeat: no-repeat;
+  pointer-events: none;
+}
+
 .map-layer--markers,
 .map-layer--players {
   pointer-events: none;

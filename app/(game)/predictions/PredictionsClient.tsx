@@ -58,7 +58,7 @@ export function PredictionsClient({ snapshot }: { snapshot: SeasonSnapshot }) {
     <span className="chip chip--info">до старта матчей</span>
   ) : (
     <span className={participationOk(answered, regular.length) ? 'chip chip--positive' : 'chip'}>
-      {answered} / {regular.length} ответов
+      {answered} из {regular.length} обычных
     </span>
   );
 
@@ -208,7 +208,7 @@ function MatchQuestions({
           </span>
         ) : (
           <span className="card__meta" style={{ marginLeft: 'auto' }}>
-            {answered} из {regular.length}
+            {answered} из {regular.length} обычных
           </span>
         )}
       </div>

@@ -5,14 +5,15 @@ import { MapScene } from '@/components/map/MapScene';
 
 /**
  * Фон внутренних экранов. На главной карта своя, интерактивная,
- * поэтому здесь она не дублируется — иначе сцена рисуется дважды.
+ * поэтому здесь фон прячется, а не размонтируется — сцена остаётся
+ * в дереве и не пересоздаётся при переходах между экранами.
  */
 export function MapBackdrop() {
   const pathname = usePathname();
-  if (pathname === '/') return null;
+  const hidden = pathname === '/';
 
   return (
-    <div className="map-backdrop" aria-hidden="true">
+    <div className="map-backdrop" aria-hidden={hidden ? 'true' : 'true'} hidden={hidden}>
       <div className="map-backdrop__canvas">
         <MapScene />
       </div>

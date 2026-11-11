@@ -21,6 +21,9 @@ export type CardContent = {
   mechanicCode: string | null;
 };
 
+/** Статус клетки относительно игрока: стоит на ней, прошёл или ещё идёт. */
+export type CellCardPhase = 'passed' | 'current' | 'ahead';
+
 const TONE_BY_POLARITY: Record<MechanicPolarity, CardTone> = {
   positive: 'positive',
   negative: 'negative',
@@ -28,16 +31,24 @@ const TONE_BY_POLARITY: Record<MechanicPolarity, CardTone> = {
   neutral: 'neutral',
 };
 
-const EVENT_NOTE = 'Сработает, когда встанешь на клетку';
+function eventNote(phase: CellCardPhase): string {
+  if (phase === 'current') return 'Ты стоишь на этой клетке';
+  if (phase === 'passed') return 'Клетка позади — событие не сработает';
+  return 'Сработает, когда встанешь на клетку';
+}
 
-export function cellCardContent(cell: CellView, flavor: PlainFlavor | null): CardContent {
+export function cellCardContent(
+  cell: CellView,
+  flavor: PlainFlavor | null,
+  phase: CellCardPhase = 'ahead',
+): CardContent {
   if (cell.kind === 'start') {
     return {
       badge: 'Старт',
       tone: 'start',
       title: 'Старт',
       line: 'Отсюда все начинают сезон',
-      note: null,
+      note: phase === 'current' ? 'Ты стоишь на этой клетке' : null,
       mechanicCode: null,
     };
   }
@@ -48,7 +59,7 @@ export function cellCardContent(cell: CellView, flavor: PlainFlavor | null): Car
       tone: 'finish',
       title: 'Финиш',
       line: 'Кубок. Первый дошедший забирает сезон по дистанции',
-      note: null,
+      note: phase === 'current' ? 'Ты дошёл до финиша' : null,
       mechanicCode: null,
     };
   }
@@ -61,7 +72,7 @@ export function cellCardContent(cell: CellView, flavor: PlainFlavor | null): Car
         tone: 'neutral',
         title: 'Событие',
         line: 'Событие без описания',
-        note: EVENT_NOTE,
+        note: eventNote(phase),
         mechanicCode: cell.mechanicCode,
       };
     }
@@ -70,7 +81,7 @@ export function cellCardContent(cell: CellView, flavor: PlainFlavor | null): Car
       tone: TONE_BY_POLARITY[entry.polarity],
       title: entry.name,
       line: entry.tagline,
-      note: EVENT_NOTE,
+      note: eventNote(phase),
       mechanicCode: entry.code,
     };
   }
@@ -81,7 +92,7 @@ export function cellCardContent(cell: CellView, flavor: PlainFlavor | null): Car
       tone: 'plain',
       title: flavor.title,
       line: flavor.line,
-      note: null,
+      note: phase === 'current' ? 'Ты стоишь на этой клетке' : null,
       mechanicCode: null,
     };
   }
@@ -91,7 +102,7 @@ export function cellCardContent(cell: CellView, flavor: PlainFlavor | null): Car
     tone: 'plain',
     title: 'Обычная клетка',
     line: 'Просто шаг вперёд.',
-    note: null,
+    note: phase === 'current' ? 'Ты стоишь на этой клетке' : null,
     mechanicCode: null,
   };
 }

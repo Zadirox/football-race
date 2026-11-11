@@ -31,6 +31,30 @@ describe('cellCardContent', () => {
     expect(content.mechanicCode).toBe('01');
   });
 
+  it('событие на текущей клетке говорит, что игрок уже стоит', () => {
+    const content = cellCardContent({ idx: 9, kind: 'event', mechanicCode: '09' }, null, 'current');
+    expect(content.note).toBe('Ты стоишь на этой клетке');
+  });
+
+  it('событие позади честно предупреждает, что не сработает', () => {
+    const content = cellCardContent({ idx: 9, kind: 'event', mechanicCode: '09' }, null, 'passed');
+    expect(content.note).toBe('Клетка позади — событие не сработает');
+  });
+
+  it('обычная клетка не пугает срабатыванием события', () => {
+    const ahead = cellCardContent({ idx: 27, kind: 'plain', mechanicCode: null }, flavor);
+    const passed = cellCardContent({ idx: 27, kind: 'plain', mechanicCode: null }, flavor, 'passed');
+    expect(ahead.note).toBeNull();
+    expect(passed.note).toBeNull();
+  });
+
+  it('старт и финиш помечают себя, когда игрок на них', () => {
+    const start = cellCardContent({ idx: 1, kind: 'start', mechanicCode: null }, null, 'current');
+    const finish = cellCardContent({ idx: 80, kind: 'finish', mechanicCode: null }, null, 'current');
+    expect(start.note).toBe('Ты стоишь на этой клетке');
+    expect(finish.note).toBe('Ты дошёл до финиша');
+  });
+
   it('ловушка красится отдельно', () => {
     const content = cellCardContent({ idx: 9, kind: 'event', mechanicCode: '09' }, null);
     expect(content.badge).toBe('Ловушка');

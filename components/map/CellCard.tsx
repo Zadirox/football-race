@@ -5,7 +5,7 @@ import { createPortal } from 'react-dom';
 import type { PlainFlavor } from '@/lib/game/cell-flavor';
 import type { CellView } from '@/lib/types';
 import { placeCard, type Placement, type Rect } from '@/lib/ui/card-placement';
-import { cellCardContent } from '@/lib/ui/cell-card-content';
+import { cellCardContent, type CellCardPhase } from '@/lib/ui/cell-card-content';
 import { MechanicArt } from './MechanicArt';
 
 /**
@@ -20,6 +20,8 @@ type CellCardProps = {
   cell: CellView;
   flavor: PlainFlavor | null;
   anchor: Rect;
+  /** Где игрок относительно клетки: на ней, позади или впереди. */
+  phase?: CellCardPhase;
 };
 
 function stampFor(cell: CellView): string {
@@ -28,8 +30,8 @@ function stampFor(cell: CellView): string {
   return '⚽';
 }
 
-export function CellCard({ cell, flavor, anchor }: CellCardProps) {
-  const content = useMemo(() => cellCardContent(cell, flavor), [cell, flavor]);
+export function CellCard({ cell, flavor, anchor, phase = 'ahead' }: CellCardProps) {
+  const content = useMemo(() => cellCardContent(cell, flavor, phase), [cell, flavor, phase]);
   const cardRef = useRef<HTMLDivElement | null>(null);
   const [placement, setPlacement] = useState<Placement | null>(null);
 

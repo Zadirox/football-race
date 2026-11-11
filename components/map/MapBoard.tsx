@@ -238,7 +238,12 @@ export function MapBoard({ cells, players, onSelectPlayer, selectedPlayerId, inv
       </div>
 
       {activeCell && active && (
-        <CellCard cell={activeCell} flavor={activeFlavor} anchor={active.anchor} />
+        <CellCard
+          cell={activeCell}
+          flavor={activeFlavor}
+          anchor={active.anchor}
+          phase={active.idx === myPosition ? 'current' : active.idx < myPosition ? 'passed' : 'ahead'}
+        />
       )}
     </>
   );

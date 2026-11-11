@@ -9,11 +9,12 @@
  * помощниками, что и server actions (`lib/repo/game-tx.ts`).
  */
 
+import type { TransactionSql } from 'postgres';
 import { db } from '@/lib/db';
 import { hasDatabase } from '@/lib/env';
 import { isAppError } from '@/lib/errors';
 import { applyLocker, applyVar, makePlayer } from '@/lib/game/engine';
-import { expiryDecision, expiryLog, isExpirableKind } from '@/lib/game/pending-expiry';
+import { expiryDecision, expiryLog, isExpirableKind, type ExpiryDecision } from '@/lib/game/pending-expiry';
 import { applyTacticsChoice } from '@/lib/game/roll';
 import {
   closePending,
@@ -22,6 +23,8 @@ import {
   logActivity,
   moveAndResolve,
   persistState,
+  type PendingRow,
+  type PlayerContext,
 } from '@/lib/repo/game-tx';
 
 export type ExpireReport = {
@@ -34,6 +37,71 @@ export type ExpireReport = {
 
 /** Сколько ожиданий разбираем за один прогон: cron ходит каждые 15 минут. */
 const BATCH = 50;
+
+/**
+ * Применяет безопасную ветку к одному ожиданию внутри транзакции.
+ *
+ * Общая часть cron-закрытия и ручного «Закрыть безопасно» в админке:
+ * правила веток одни и те же, отличается только повод.
+ */
+export async function applyExpiryDecision(
+  tx: TransactionSql,
+  pending: PendingRow,
+  ctx: PlayerContext,
+  decision: ExpiryDecision,
+): Promise<void> {
+  const state = makePlayer(ctx.position, ctx.effects);
+
+  switch (decision.kind) {
+    case 'var': {
+      const varOutcome = applyVar(state, false);
+      await persistState(tx, ctx, varOutcome.state);
+      await logActivity(tx, pending.season_id, pending.profile_id, 'negative', expiryLog(ctx.nickname, decision));
+      await closePending(tx, pending, { contest: false, auto: true, delta: varOutcome.delta });
+      return;
+    }
+
+    case 'locker': {
+      const lockerOutcome = applyLocker(state, decision.remove);
+      await persistState(tx, ctx, lockerOutcome.state);
+      await logActivity(tx, pending.season_id, pending.profile_id, 'neutral', expiryLog(ctx.nickname, decision));
+      await closePending(tx, pending, { removed: decision.remove, auto: true });
+      return;
+    }
+
+    case 'passage': {
+      await logActivity(tx, pending.season_id, pending.profile_id, 'system', expiryLog(ctx.nickname, decision));
+      await closePending(tx, pending, { given: false, auto: true });
+      return;
+    }
+
+    case 'tactics': {
+      const rollId = typeof pending.payload.rollId === 'string' ? pending.payload.rollId : null;
+      if (!rollId) {
+        await logActivity(tx, pending.season_id, pending.profile_id, 'neutral', expiryLog(ctx.nickname, decision));
+        await closePending(tx, pending, { auto: true, delta: 0 });
+        return;
+      }
+
+      const [roll] = await tx<{ id: string; value: number | string; state: string }[]>`
+        select id, value, state from rolls where id = ${rollId} for update
+      `;
+
+      // Бросок уже уехал (или его нет): двигать нечего, просто закрываем.
+      if (!roll || roll.state !== 'pending_move') {
+        await logActivity(tx, pending.season_id, pending.profile_id, 'neutral', expiryLog(ctx.nickname, decision));
+        await closePending(tx, pending, { auto: true, delta: 0 });
+        return;
+      }
+
+      const choice = applyTacticsChoice(state, Number(roll.value), decision.delta);
+      await moveAndResolve(tx, ctx, choice.state, choice.value, roll.id);
+      await logActivity(tx, pending.season_id, pending.profile_id, 'neutral', expiryLog(ctx.nickname, decision));
+      await closePending(tx, pending, { choice: 0, auto: true });
+      return;
+    }
+  }
+}
 
 /**
  * Закрывает просроченные ожидания. Идемпотентно: уже закрытые строки
@@ -72,59 +140,8 @@ export async function expirePending(now = new Date()): Promise<ExpireReport> {
         const decision = expiryDecision(pending.kind, ctx.effects);
         if (!decision) return 'unknown' as const;
 
-        const state = makePlayer(ctx.position, ctx.effects);
-
-        switch (decision.kind) {
-          case 'var': {
-            const varOutcome = applyVar(state, false);
-            await persistState(tx, ctx, varOutcome.state);
-            await logActivity(tx, pending.season_id, pending.profile_id, 'negative', expiryLog(ctx.nickname, decision));
-            await closePending(tx, pending, { contest: false, auto: true, delta: varOutcome.delta });
-            return 'expired' as const;
-          }
-
-          case 'locker': {
-            const lockerOutcome = applyLocker(state, decision.remove);
-            await persistState(tx, ctx, lockerOutcome.state);
-            await logActivity(tx, pending.season_id, pending.profile_id, 'neutral', expiryLog(ctx.nickname, decision));
-            await closePending(tx, pending, { removed: decision.remove, auto: true });
-            return 'expired' as const;
-          }
-
-          case 'passage': {
-            await logActivity(tx, pending.season_id, pending.profile_id, 'system', expiryLog(ctx.nickname, decision));
-            await closePending(tx, pending, { given: false, auto: true });
-            return 'expired' as const;
-          }
-
-          case 'tactics': {
-            const rollId = typeof pending.payload.rollId === 'string' ? pending.payload.rollId : null;
-            if (!rollId) {
-              await logActivity(tx, pending.season_id, pending.profile_id, 'neutral', expiryLog(ctx.nickname, decision));
-              await closePending(tx, pending, { auto: true, delta: 0 });
-              return 'expired' as const;
-            }
-
-            const [roll] = await tx<{ id: string; value: number | string; state: string }[]>`
-              select id, value, state from rolls where id = ${rollId} for update
-            `;
-
-            // Бросок уже уехал (или его нет): двигать нечего, просто закрываем.
-            if (!roll || roll.state !== 'pending_move') {
-              await logActivity(tx, pending.season_id, pending.profile_id, 'neutral', expiryLog(ctx.nickname, decision));
-              await closePending(tx, pending, { auto: true, delta: 0 });
-              return 'expired' as const;
-            }
-
-            const choice = applyTacticsChoice(state, Number(roll.value), decision.delta);
-            await moveAndResolve(tx, ctx, choice.state, choice.value, roll.id);
-            await logActivity(tx, pending.season_id, pending.profile_id, 'neutral', expiryLog(ctx.nickname, decision));
-            await closePending(tx, pending, { choice: 0, auto: true });
-            return 'expired' as const;
-          }
-        }
-
-        return 'unknown' as const;
+        await applyExpiryDecision(tx, pending, ctx, decision);
+        return 'expired' as const;
       });
 
       if (outcome === 'expired') report.expired += 1;

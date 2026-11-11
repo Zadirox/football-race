@@ -9,9 +9,16 @@
  */
 
 import { revalidatePath } from 'next/cache';
-import { getViewer } from '@/lib/auth/session';
+import {
+  diceGrantSchema,
+  matchUpdateSchema,
+  pendingCloseSchema,
+  roleChangeSchema,
+} from '@/lib/actions/admin-schemas';
+import { getViewer, type Viewer } from '@/lib/auth/session';
 import { hasDatabase } from '@/lib/env';
 import { AppError, isAppError } from '@/lib/errors';
+import { forceClosePending, grantDice, setRole, updateMatch } from '@/lib/repo/admin-tools';
 import { expirePending } from '@/lib/repo/pending';
 import { advanceMatchdays, syncFixtures } from '@/lib/repo/sync';
 
@@ -32,10 +39,19 @@ function toResult(error: unknown): AdminRunResult {
   return { ok: false, message: (error as Error)?.message ?? 'Не получилось' };
 }
 
-async function requireAdmin(): Promise<void> {
+async function requireAdmin(): Promise<Viewer> {
   const viewer = await getViewer();
   if (!viewer) throw new AppError('AUTH_REQUIRED');
   if (viewer.role !== 'admin') throw new AppError('FORBIDDEN', 'Только админ сезона');
+  return viewer;
+}
+
+function invalidInput(error: unknown): AdminRunResult | null {
+  if (typeof error !== 'object' || error === null || !('issues' in error)) return null;
+  const issues = (error as { issues: Array<{ path: Array<string | number>; message: string }> }).issues;
+  const first = issues[0];
+  const field = first?.path.length ? `${first.path.join('.')}: ` : '';
+  return { ok: false, message: `Проверь поля — ${field}${first?.message ?? 'некорректные данные'}` };
 }
 
 function revalidateAdmin(): void {
@@ -99,6 +115,74 @@ export async function runExpireAction(): Promise<AdminRunResult> {
     return report.ok
       ? { ok: true, message }
       : { ok: false, message: `${message}. Ошибки: ${report.errors.join('; ')}` };
+  } catch (error) {
+    return toResult(error);
+  }
+}
+
+/** Правка счёта, статуса и минуты матча. */
+export async function updateMatchAction(input: unknown): Promise<AdminRunResult> {
+  if (!hasDatabase()) return demoOnly();
+
+  try {
+    const viewer = await requireAdmin();
+    const parsed = matchUpdateSchema.safeParse(input);
+    if (!parsed.success) return invalidInput(parsed.error) ?? { ok: false, message: 'Проверь поля' };
+
+    await updateMatch(viewer.profileId, parsed.data);
+    revalidateAdmin();
+    return { ok: true, message: `Матч обновлён: ${parsed.data.status}` };
+  } catch (error) {
+    return toResult(error);
+  }
+}
+
+/** Ручная выдача кубиков: бонус, компенсация, подарок. */
+export async function grantDiceAction(input: unknown): Promise<AdminRunResult> {
+  if (!hasDatabase()) return demoOnly();
+
+  try {
+    const viewer = await requireAdmin();
+    const parsed = diceGrantSchema.safeParse(input);
+    if (!parsed.success) return invalidInput(parsed.error) ?? { ok: false, message: 'Проверь поля' };
+
+    await grantDice(viewer.profileId, parsed.data);
+    revalidateAdmin();
+    return { ok: true, message: `Выдано кубиков: ${parsed.data.count} (${parsed.data.tier})` };
+  } catch (error) {
+    return toResult(error);
+  }
+}
+
+/** Закрыть застрявшее ожидание, не дожидаясь авто-закрытия. */
+export async function forceClosePendingAction(input: unknown): Promise<AdminRunResult> {
+  if (!hasDatabase()) return demoOnly();
+
+  try {
+    const viewer = await requireAdmin();
+    const parsed = pendingCloseSchema.safeParse(input);
+    if (!parsed.success) return invalidInput(parsed.error) ?? { ok: false, message: 'Проверь поля' };
+
+    await forceClosePending(viewer.profileId, parsed.data);
+    revalidateAdmin();
+    return { ok: true, message: 'Ожидание закрыто безопасной веткой' };
+  } catch (error) {
+    return toResult(error);
+  }
+}
+
+/** Смена роли: игрок ↔ зритель ↔ админ. */
+export async function changeRoleAction(input: unknown): Promise<AdminRunResult> {
+  if (!hasDatabase()) return demoOnly();
+
+  try {
+    const viewer = await requireAdmin();
+    const parsed = roleChangeSchema.safeParse(input);
+    if (!parsed.success) return invalidInput(parsed.error) ?? { ok: false, message: 'Проверь поля' };
+
+    await setRole(viewer.profileId, parsed.data);
+    revalidateAdmin();
+    return { ok: true, message: `Роль изменена: ${parsed.data.role}` };
   } catch (error) {
     return toResult(error);
   }

@@ -1672,6 +1672,27 @@ a {
   color: #c9e5fa;
 }
 
+.notice--danger {
+  border-color: rgba(255, 122, 122, 0.32);
+  background: rgba(255, 122, 122, 0.08);
+  color: #ffc9c9;
+}
+
+/* админка: четыре блока правок */
+
+.admin-tools {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 24px;
+}
+
+@media (max-width: 900px) {
+  .admin-tools {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 .skeleton {
   border-radius: 12px;
   background: linear-gradient(90deg, rgba(255, 255, 255, 0.04), rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.04));

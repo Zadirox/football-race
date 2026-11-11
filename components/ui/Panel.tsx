@@ -46,6 +46,13 @@ export function EmptyState({ title, text }: { title: string; text: string }) {
   );
 }
 
-export function Notice({ children, tone = 'warning' }: { children: ReactNode; tone?: 'warning' | 'info' }) {
-  return <div className={`notice ${tone === 'info' ? 'notice--info' : ''}`.trim()}>{children}</div>;
+export function Notice({
+  children,
+  tone = 'warning',
+}: {
+  children: ReactNode;
+  tone?: 'warning' | 'info' | 'danger';
+}) {
+  const toneClass = tone === 'info' ? ' notice--info' : tone === 'danger' ? ' notice--danger' : '';
+  return <div className={`notice${toneClass}`}>{children}</div>;
 }

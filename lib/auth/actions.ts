@@ -10,6 +10,7 @@
 import { cookies } from 'next/headers';
 import { redirect } from 'next/navigation';
 import { createServerClient, type CookieOptions } from '@supabase/ssr';
+import { syntheticEmailForNickname } from '@/lib/auth/invite';
 import { serverEnv } from '@/lib/env';
 
 export type AuthResult = { ok: true } | { ok: false; message: string };
@@ -17,11 +18,11 @@ export type AuthResult = { ok: true } | { ok: false; message: string };
 type CookieToSet = { name: string; value: string; options: CookieOptions };
 
 export async function signInAction(_prev: AuthResult | null, formData: FormData): Promise<AuthResult> {
-  const email = String(formData.get('email') ?? '').trim();
+  const login = String(formData.get('login') ?? formData.get('email') ?? '').trim();
   const password = String(formData.get('password') ?? '');
 
-  if (!email || password.length === 0) {
-    return { ok: false, message: 'Заполни почту и пароль' };
+  if (!login || password.length === 0) {
+    return { ok: false, message: 'Заполни ник (или почту) и пароль' };
   }
 
   const env = serverEnv();
@@ -31,6 +32,9 @@ export async function signInAction(_prev: AuthResult | null, formData: FormData)
       message: 'Демо-режим: вход включится вместе с Supabase Auth. Сейчас играй как Шах — админ сезона.',
     };
   }
+
+  // По нику вход через служебный email (инвайт-регистрация); по email — как раньше (админ).
+  const email = login.includes('@') ? login : syntheticEmailForNickname(login);
 
   const store = await cookies();
   const supabase = createServerClient(env.supabaseUrl, env.supabaseAnonKey, {
@@ -47,7 +51,7 @@ export async function signInAction(_prev: AuthResult | null, formData: FormData)
     // Текст ошибки Supabase в UI не отдаём: он различает «нет пользователя»
     // и «неверный пароль», а это лишняя подсказка для подбора.
     console.error('Вход не удался:', error.message);
-    return { ok: false, message: 'Неверная почта или пароль' };
+    return { ok: false, message: 'Неверный ник/почта или пароль' };
   }
 
   redirect('/');

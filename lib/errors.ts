@@ -19,7 +19,10 @@ export type AppErrorCode =
   | 'SYNC_QUOTA_EXCEEDED'
   | 'SYNC_PROVIDER_DOWN'
   | 'CONFIG_MISSING'
-  | 'CONFLICT_RETRY';
+  | 'CONFLICT_RETRY'
+  | 'INVALID_INPUT'
+  | 'CONFLICT'
+  | 'NOT_FOUND';
 
 const MESSAGES: Record<AppErrorCode, string> = {
   AUTH_REQUIRED: 'Войди в игру, чтобы продолжить',
@@ -38,6 +41,9 @@ const MESSAGES: Record<AppErrorCode, string> = {
   SYNC_PROVIDER_DOWN: 'Провайдер данных не отвечает, показываем сохранённое',
   CONFIG_MISSING: 'Не хватает настроек окружения',
   CONFLICT_RETRY: 'Кто-то успел раньше. Попробуй ещё раз',
+  INVALID_INPUT: 'Проверь введённые данные',
+  CONFLICT: 'Данные конфликтуют с текущим состоянием',
+  NOT_FOUND: 'Не найдено',
 };
 
 export class AppError extends Error {

@@ -1,10 +1,12 @@
 import Link from 'next/link';
 import { Panel, Notice, SectionTitle } from '@/components/ui/Panel';
 import { serverEnv } from '@/lib/env';
+import { listInvites } from '@/lib/repo/invites';
 import { listPendingForAdmin } from '@/lib/repo/admin-tools';
 import { loadSeasonSnapshot } from '@/lib/repo/season';
 import { AdminActions } from './AdminActions';
 import { AdminTools } from './AdminTools';
+import { InvitesAdmin } from './InvitesAdmin';
 
 function timeMsk(iso: string | undefined): string {
   if (!iso) return '—';
@@ -19,7 +21,7 @@ function timeMsk(iso: string | undefined): string {
 
 export default async function AdminPage() {
   const snapshot = await loadSeasonSnapshot();
-  const pending = await listPendingForAdmin();
+  const [pending, invites] = await Promise.all([listPendingForAdmin(), listInvites()]);
   const env = serverEnv();
   const checks: Array<[string, boolean, string]> = [
     ['DATABASE_URL', env.databaseUrl !== null, 'подключение к Postgres'],
@@ -84,6 +86,8 @@ export default async function AdminPage() {
 
       <SectionTitle>Действия</SectionTitle>
       <AdminActions enabled={!snapshot.demo} />
+
+      <InvitesAdmin enabled={!snapshot.demo} invites={invites} />
 
       <AdminTools
         enabled={!snapshot.demo}

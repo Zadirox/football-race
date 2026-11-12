@@ -13,8 +13,7 @@ export const dynamic = 'force-dynamic';
 
 /**
  * Вход в сезон. Пароли хранит Supabase Auth, сайт их не видит.
- * Пока нет пары `SUPABASE_URL` + anon-ключа, форма честно говорит
- * о демо-режиме, а не притворяется рабочей.
+ * Друзья входят по нику (служебный email под капотом), админ может по почте.
  */
 export default async function LoginPage() {
   const env = serverEnv();
@@ -26,7 +25,7 @@ export default async function LoginPage() {
   return (
     <Panel
       title="Вход"
-      subtitle="Приватный сезон: логин и пароль, без magic link. Зрители видят карту, но не бросают кубики."
+      subtitle="Вход по нику и паролю (по приглашению). Админ может войти по почте. Зрители видят карту, но не бросают кубики."
       size="narrow"
     >
       <LoginForm configured={configured} />

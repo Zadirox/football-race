@@ -15,15 +15,15 @@ export function LoginForm({ configured }: { configured: boolean }) {
     <>
       <form action={formAction} noValidate>
         <div className="field">
-          <label htmlFor="email">Почта</label>
+          <label htmlFor="login">Ник или почта</label>
           <input
-            id="email"
-            name="email"
+            id="login"
+            name="login"
             className="input"
-            type="email"
-            autoComplete="email"
+            type="text"
+            autoComplete="username"
             required
-            placeholder="you@example.com"
+            placeholder="Твой ник (или почта для админа)"
           />
         </div>
 

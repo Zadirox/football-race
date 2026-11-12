@@ -1,4 +1,7 @@
-import type { ReactNode } from 'react';
+'use client';
+
+import { useState, useCallback, type ReactNode } from 'react';
+import { useRouter } from 'next/navigation';
 import { PanelCloseButton } from './PanelCloseButton';
 
 /**
@@ -17,9 +20,21 @@ type PanelProps = {
 };
 
 export function Panel({ title, subtitle, actions, children, size = 'default', hug = false }: PanelProps) {
+  const router = useRouter();
+  const [closing, setClosing] = useState(false);
+
+  const handleClose = useCallback(() => {
+    if (closing) return;
+    setClosing(true);
+    window.setTimeout(() => {
+      router.push('/');
+    }, 170);
+  }, [closing, router]);
+
   const sizeClass = size === 'wide' ? 'panel--wide' : size === 'narrow' ? 'panel--narrow' : '';
+  const holderClass = `panel-holder page-enter${hug ? ' panel-holder--hug' : ''}${closing ? ' panel-holder--closing' : ''}`;
   return (
-    <div className={`panel-holder page-enter${hug ? ' panel-holder--hug' : ''}`}>
+    <div className={holderClass}>
       <section className={`panel ${sizeClass}`.trim()} aria-label={title}>
         <header className="panel__head">
           <div>
@@ -28,7 +43,7 @@ export function Panel({ title, subtitle, actions, children, size = 'default', hu
           </div>
           <div className="panel__head-actions">
             {actions}
-            <PanelCloseButton />
+            <PanelCloseButton onClose={handleClose} />
           </div>
         </header>
         <div className="panel__body">{children}</div>

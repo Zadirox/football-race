@@ -59,19 +59,18 @@ export function Header({ me, closesAt, demo }: HeaderProps) {
     return () => window.clearInterval(timer);
   }, [closesAt]);
 
-  useEffect(() => {
-    document.querySelectorAll('.panel-holder--closing').forEach((el) => el.classList.remove('panel-holder--closing'));
-  }, [pathname]);
-
   const tabs = useMemo(
     () => RIGHT_TABS.filter((tab) => !tab.adminOnly || me?.role === 'admin'),
     [me?.role],
   );
 
   const closePanel = () => {
-    const holder = document.querySelector('.panel-holder');
-    if (holder) holder.classList.add('panel-holder--closing');
-    window.setTimeout(() => router.push('/'), 170);
+    const closeBtn = document.querySelector<HTMLButtonElement>('.panel__close');
+    if (closeBtn) {
+      closeBtn.click();
+      return;
+    }
+    router.push('/');
   };
 
   const tab = (item: Tab) => {

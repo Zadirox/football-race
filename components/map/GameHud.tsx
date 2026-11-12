@@ -91,15 +91,25 @@ function newRollKey(): string {
   return `${Date.now()}-${Math.random().toString(36).slice(2, 10)}`;
 }
 
-type LastRoll = { base: number; value: number; tier: DiceTier; from: number; to: number };
+type LastRoll = {
+  base: number;
+  value: number;
+  tier: DiceTier;
+  from: number;
+  to: number;
+  eventText: string | null;
+  awaiting: PendingBody['kind'] | null;
+};
 
 /** Грань на кубике во время броска: крутится, потом замирает на результате. */
 type Tumble = { tier: DiceTier; face: number; settled: boolean };
 
 /** Как часто меняется грань при прокрутке. */
 const TUMBLE_TICK_MS = 70;
+/** Сколько крутится кубик перед показом результата (демо). */
+const TUMBLE_ROLL_MS = 1500;
 /** Сколько держится финальная грань перед возвратом к обычному виду. */
-const TUMBLE_SETTLE_MS = 280;
+const TUMBLE_SETTLE_MS = 1400;
 
 function pluralDice(n: number): string {
   const mod10 = n % 10;
@@ -151,16 +161,11 @@ export function GameHud({ snapshot }: { snapshot: SeasonSnapshot }) {
   const [toast, setToast] = useState<{ text: string; kind: 'error' | 'info' } | null>(null);
   const [selectedPlayer, setSelectedPlayer] = useState<PlayerView | null>(null);
   const [lastRoll, setLastRoll] = useState<LastRoll | null>(null);
-  const [feedOpen, setFeedOpen] = useState(true);
+  const [feedOpen, setFeedOpen] = useState(false);
   const [unread, setUnread] = useState(0);
   const feedLengthRef = useRef(snapshot.activity.length);
-  const [liveMuted, setLiveMuted] = useState(true);
-
-  // На телефоне лента по умолчанию свёрнута: карта важнее простыни текста.
-  // Ширину читаем только на клиенте, чтобы не ломать SSR-разметку.
-  useEffect(() => {
-    if (window.innerWidth <= 900) setFeedOpen(false);
-  }, []);
+  const [liveMuted, setLiveMuted] = useState(false);
+  const [showMapOverlay, setShowMapOverlay] = useState(true);
 
   useEffect(() => {
     const added = feed.length - feedLengthRef.current;
@@ -275,7 +280,7 @@ export function GameHud({ snapshot }: { snapshot: SeasonSnapshot }) {
   }, []);
 
   const finishMove = useCallback(
-    (state: PlayerState, value: number, tier: DiceTier, base: number) => {
+    (state: PlayerState, value: number, tier: DiceTier, base: number, modsNote: string | null = null) => {
       if (!me) return;
       const from = state.position;
       const landed = moveBy(state, value);
@@ -285,14 +290,26 @@ export function GameHud({ snapshot }: { snapshot: SeasonSnapshot }) {
 
       syncMe(final);
 
+      const landedOn = landed.position;
+      const rollText =
+        value !== base
+          ? `на кубике выпало ${base}${modsNote ? `, ${modsNote}` : ''} — идёшь на ${value}`
+          : `на кубике выпало ${value}`;
+      const eventText = cell?.mechanicCode ? outcome.log : 'Обычная клетка — ничего не происходит.';
+      const choiceText = outcome.awaiting ? ' Нужно выбрать, что делать дальше.' : '';
+
       pushFeed(
-        `${me.nickname} бросает ${TIER_LABEL[tier]} кубик: ${base}${value !== base ? ` → ${value}` : ''}`,
+        `${me.nickname}: ${TIER_LABEL[tier]} кубик (d${DICE_SIDES[tier]}) — ${rollText}. Клетка ${from} → ${landedOn}.${choiceText}`,
         'roll',
       );
-      if (landed.position !== from) {
-        pushFeed(`${me.nickname} идёт на ${landed.position - from} ${pluralCells(landed.position - from)} вперёд`, 'system');
+      if (landedOn !== final.position) {
+        pushFeed(
+          `${me.nickname}: эффект клетки сдвинул на ${landedOn} → ${final.position}. ${eventText}`,
+          eventKind(cell?.mechanicCode ?? null),
+        );
+      } else {
+        pushFeed(`${me.nickname}: ${eventText}${choiceText}`, eventKind(cell?.mechanicCode ?? null));
       }
-      if (cell?.mechanicCode) pushFeed(outcome.log, eventKind(cell.mechanicCode));
 
       const polarity = mechanic(cell?.mechanicCode ?? null)?.polarity;
       const landSound: Parameters<typeof play>[0] =
@@ -311,7 +328,15 @@ export function GameHud({ snapshot }: { snapshot: SeasonSnapshot }) {
         }
       }
 
-      setLastRoll({ base, value, tier, from, to: final.position });
+      setLastRoll({
+        base,
+        value,
+        tier,
+        from,
+        to: final.position,
+        eventText: modsNote && value !== base ? `${eventText} (на бросок повлияло: ${modsNote})` : eventText,
+        awaiting: outcome.awaiting ?? null,
+      });
       settleTumble(base);
       setBusy(false);
     },
@@ -325,14 +350,31 @@ export function GameHud({ snapshot }: { snapshot: SeasonSnapshot }) {
       const { state: afterMods, mods } = takeRollModifiers(state);
       const base = rollValue(tier, Math.random);
       const value = Math.max(1, base + (mods.tribuny ? 1 : 0) - (mods.gazon ? 1 : 0));
+      const modsNote =
+        mods.tribuny && mods.gazon
+          ? '«Домашние трибуны» (+1) и «Скользкий газон» (−1)'
+          : mods.tribuny
+            ? '«Домашние трибуны» (+1)'
+            : mods.gazon
+              ? '«Скользкий газон» (−1)'
+              : null;
 
       setDice((prev) => ({ ...prev, [tier]: Math.max(0, prev[tier] - 1) }));
 
       if (hasEffect(afterMods, 'tactics')) {
         syncMe(afterMods);
-        setLastRoll({ base, value, tier, from: me.position, to: me.position });
+        setLastRoll({
+          base,
+          value,
+          tier,
+          from: me.position,
+          to: me.position,
+          eventText: `Тактическая схема: можно изменить ход на ±1.${modsNote ? ` На бросок уже повлияло: ${modsNote}.` : ''}`,
+          awaiting: 'tactics',
+        });
+        const rollText = value !== base ? `на кубике ${base}, ${modsNote} — сейчас ${value}` : `на кубике ${value}`;
         pushFeed(
-          `${me.nickname} бросает ${TIER_LABEL[tier]} кубик: ${base}${value !== base ? ` → ${value}` : ''}`,
+          `${me.nickname}: ${TIER_LABEL[tier]} кубик (d${DICE_SIDES[tier]}) — ${rollText}. «Тактическая схема»: выбирает, оставить как есть или ±1.`,
           'roll',
         );
         setPending({ kind: 'tactics', payload: { value, base, tier, from: me.position } });
@@ -342,7 +384,7 @@ export function GameHud({ snapshot }: { snapshot: SeasonSnapshot }) {
         return;
       }
 
-      finishMove(afterMods, value, tier, base);
+      finishMove(afterMods, value, tier, base, modsNote);
     },
     [finishMove, me, pushFeed, settleTumble, syncMe],
   );
@@ -389,7 +431,7 @@ export function GameHud({ snapshot }: { snapshot: SeasonSnapshot }) {
       return;
     }
 
-    window.setTimeout(() => demoRoll(tier), 760);
+    window.setTimeout(() => demoRoll(tier), TUMBLE_ROLL_MS);
   }, [busy, canPlay, demoRoll, dice, me, pending, router, selectedTier, settleTumble, snapshot.demo, snapshot.matchday?.id, startTumble]);
 
   const runServerChoice = useCallback(
@@ -426,14 +468,13 @@ export function GameHud({ snapshot }: { snapshot: SeasonSnapshot }) {
       const adjusted = applyTactics(value, delta);
       pushFeed(
         delta === 0
-          ? 'Тактическая схема: оставляем как есть.'
-          : `Тактическая схема: ${delta > 0 ? 'плюс' : 'минус'} один к броску.`,
+          ? '«Тактическая схема»: оставили число как есть.'
+          : `«Тактическая схема»: ${delta > 0 ? 'добавили' : 'убрали'} 1 к ходу.`,
         'neutral',
       );
       setPending(null);
       setBusy(false);
-      finishMove(state, adjusted, tier, base);
-      setLastRoll({ base, value: adjusted, tier, from, to: from });
+      finishMove(state, adjusted, tier, base, delta === 0 ? '«Тактическая схема» (без изменений)' : `«Тактическая схема» (${delta > 0 ? '+1' : '−1'})`);
       play('click');
     },
     [finishMove, me, pending, pushFeed, runServerChoice, snapshot.demo],
@@ -454,7 +495,9 @@ export function GameHud({ snapshot }: { snapshot: SeasonSnapshot }) {
       const outcome = applyVar(state, contest);
       syncMe(outcome.state);
       pushFeed(outcome.log, contest ? 'neutral' : 'negative');
-      setLastRoll((prev) => (prev ? { ...prev, to: outcome.state.position } : prev));
+      setLastRoll((prev) =>
+        prev ? { ...prev, to: outcome.state.position, eventText: outcome.log, awaiting: null } : prev,
+      );
       setPending(null);
       play('var');
     },
@@ -521,7 +564,9 @@ export function GameHud({ snapshot }: { snapshot: SeasonSnapshot }) {
       const outcome = applyLocker(state, remove);
       syncMe(outcome.state);
       pushFeed(outcome.log, remove === 'advance' ? 'neutral' : 'positive');
-      setLastRoll((prev) => (prev ? { ...prev, to: outcome.state.position } : prev));
+      setLastRoll((prev) =>
+        prev ? { ...prev, to: outcome.state.position, eventText: outcome.log, awaiting: null } : prev,
+      );
       setPending(null);
       play('reward');
     },
@@ -540,17 +585,17 @@ export function GameHud({ snapshot }: { snapshot: SeasonSnapshot }) {
   const rollDisabled =
     !canPlay || !me || busy || isWalking || Boolean(pending) || total === 0 || me.position >= 80;
   const rollHelper = !canPlay
-    ? 'Играет основной состав'
+    ? 'Сейчас бросают кубики только участники'
     : !me
-      ? 'Ты зритель: смотри и болей'
+      ? 'Ты смотришь как зритель'
       : isWalking
-        ? 'Идём по клеткам'
+        ? 'Фишка идёт по клеткам'
         : pending
-          ? 'Сначала реши событие'
+          ? 'Сначала выбери, что делать'
           : me.position >= 80
-            ? 'Ты на финише'
+            ? 'Ты уже на финише'
             : total === 0
-              ? 'Кубиков нет. Сделай предикты'
+              ? 'Кубиков нет — ответь на вопросы, чтобы получить'
               : `${total} ${pluralDice(total)} в запасе`;
 
   return (
@@ -568,13 +613,14 @@ export function GameHud({ snapshot }: { snapshot: SeasonSnapshot }) {
             }
           }}
         >
-          <div ref={panZoom.canvasRef} className="map-canvas">
+          <div ref={panZoom.canvasRef} className="map-canvas" style={{ visibility: 'hidden' }}>
             <MapScene />
             <MapBoard
               cells={snapshot.cells}
               players={displayed}
               selectedPlayerId={selectedPlayer?.profileId ?? null}
               inverseScale={1 / Math.max(0.0001, panZoom.scale)}
+              showOverlay={showMapOverlay}
               onSelectPlayer={(player) => {
                 setSelectedPlayer(player);
                 play('click');
@@ -593,14 +639,32 @@ export function GameHud({ snapshot }: { snapshot: SeasonSnapshot }) {
           <button type="button" className="icon-btn" onClick={() => panZoom.reset()} aria-label="Вернуться к своей клетке">
             ⌂
           </button>
+        </div>
+
+        <div className="map-view-controls" aria-label="Управление видом и звуком">
           <button
             type="button"
             className="icon-btn"
             data-on={!liveMuted}
             onClick={toggleMute}
             aria-label={liveMuted ? 'Включить звук' : 'Выключить звук'}
+            title={liveMuted ? 'Включить звук' : 'Выключить звук'}
           >
             {liveMuted ? '🔇' : '🔊'}
+          </button>
+          <button
+            type="button"
+            className="icon-btn"
+            data-on={showMapOverlay}
+            onClick={() => {
+              setShowMapOverlay((v) => !v);
+              play('click');
+            }}
+            aria-pressed={showMapOverlay}
+            aria-label={showMapOverlay ? 'Скрыть клетки, линии и участников' : 'Показать клетки, линии и участников'}
+            title={showMapOverlay ? 'Скрыть клетки, линии и участников' : 'Показать клетки, линии и участников'}
+          >
+            📍
           </button>
         </div>
 
@@ -664,13 +728,6 @@ export function GameHud({ snapshot }: { snapshot: SeasonSnapshot }) {
       </div>
 
       <div className="dice-tray" data-disabled={!canPlay}>
-        {lastRoll && (
-          <div className="dice-helper">
-            <strong style={{ color: 'var(--lime)', fontFamily: 'var(--font-mono)' }}>{lastRoll.value}</strong>{' '}
-            {lastRoll.value === 1 ? 'клетка' : lastRoll.value < 5 ? 'клетки' : 'клеток'} ·{' '}
-            {TIER_LABEL[lastRoll.tier]}
-          </div>
-        )}
         <div className="dice-bank" role="group" aria-label="Твои кубики">
           {TIER_ORDER.map((tier) => (
             <button
@@ -714,6 +771,32 @@ export function GameHud({ snapshot }: { snapshot: SeasonSnapshot }) {
           {busy ? 'Бросаем' : 'Бросить кубик'}
         </button>
         <div className="dice-helper">{rollHelper}</div>
+        {lastRoll && (
+          <div className="dice-summary" aria-live="polite">
+            <div className="dice-summary__line">
+              <strong>Кубик:</strong> {TIER_LABEL[lastRoll.tier]} (d{DICE_SIDES[lastRoll.tier]})
+            </div>
+            <div className="dice-summary__line">
+              <strong>На кубике:</strong> {lastRoll.base}
+              {lastRoll.value !== lastRoll.base
+                ? `, но по итогу идёшь на ${lastRoll.value} ${pluralCells(lastRoll.value)}`
+                : ` — идёшь на ${lastRoll.value} ${pluralCells(lastRoll.value)}`}
+            </div>
+            <div className="dice-summary__line">
+              <strong>Ход:</strong> с клетки {lastRoll.from} на клетку {lastRoll.to}
+            </div>
+            {lastRoll.eventText && (
+              <div className="dice-summary__line">
+                <strong>Что произошло:</strong> {lastRoll.eventText}
+              </div>
+            )}
+            {lastRoll.awaiting && (
+              <div className="dice-summary__line dice-summary__line--active">
+                <strong>Сейчас:</strong> {me?.nickname ?? 'Игрок'} выбирает, что делать
+              </div>
+            )}
+          </div>
+        )}
       </div>
 
       {toast && (
@@ -724,6 +807,32 @@ export function GameHud({ snapshot }: { snapshot: SeasonSnapshot }) {
 
       {selectedDisplayed && (
         <PlayerPopover player={selectedDisplayed} onClose={() => setSelectedPlayer(null)} />
+      )}
+
+      {tumble && (
+        <div className="dice-roll-overlay" role="dialog" aria-modal="true" aria-label="Бросок кубика">
+          <div className="dice-roll-overlay__backdrop" />
+          <div className="dice-roll-overlay__content">
+            <div className={`dice-roll-cube die--${tumble.tier} ${tumble.settled ? 'dice-roll-cube--settle' : 'dice-roll-cube--tumbling'}`}>
+              <div className="dice-roll-cube__scene">
+                <div className="dice-roll-cube__cube">
+                  <div className="dice-roll-cube__face dice-roll-cube__face--front">{tumble.face}</div>
+                  <div className="dice-roll-cube__face dice-roll-cube__face--back">{Math.max(1, tumble.face - 1)}</div>
+                  <div className="dice-roll-cube__face dice-roll-cube__face--right">{Math.min(DICE_SIDES[tumble.tier], tumble.face + 1)}</div>
+                  <div className="dice-roll-cube__face dice-roll-cube__face--left">{Math.max(1, tumble.face % DICE_SIDES[tumble.tier] + 1)}</div>
+                  <div className="dice-roll-cube__face dice-roll-cube__face--top">{DICE_SIDES[tumble.tier]}</div>
+                  <div className="dice-roll-cube__face dice-roll-cube__face--bottom">1</div>
+                </div>
+              </div>
+            </div>
+            <div className="dice-roll-overlay__label">
+              {tumble.settled ? `Выпало: ${tumble.face}` : 'Кубик крутится...'}
+            </div>
+            <div className="dice-roll-overlay__tier">
+              {TIER_LABEL[tumble.tier]} кубик (d{DICE_SIDES[tumble.tier]})
+            </div>
+          </div>
+        </div>
       )}
 
       {pending && me && (

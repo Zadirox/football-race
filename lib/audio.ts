@@ -42,15 +42,15 @@ function ensure(): AudioContext | null {
 }
 
 /**
- * Звук по умолчанию выключен: пока игрок сам не включит его, сайт
- * молчит. Это осознанное требование, а не забытый флаг.
+ * Звук по умолчанию включён: пользователь может выключить его в любой момент,
+ * выбор сохраняется в localStorage.
  */
 export function isMuted(): boolean {
-  if (typeof window === 'undefined') return true;
+  if (typeof window === 'undefined') return false;
   const stored = window.localStorage.getItem(STORAGE_KEY);
   if (stored === '0') return false;
   if (stored === '1') return true;
-  return true;
+  return false;
 }
 
 export function setMuted(value: boolean) {

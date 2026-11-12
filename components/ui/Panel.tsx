@@ -1,4 +1,5 @@
 import type { ReactNode } from 'react';
+import { PanelCloseButton } from './PanelCloseButton';
 
 /**
  * Панель поверх карты (docs/05 §1): карта остаётся фоном,
@@ -25,7 +26,10 @@ export function Panel({ title, subtitle, actions, children, size = 'default', hu
             <h1 className="panel__title">{title}</h1>
             {subtitle && <p className="panel__subtitle">{subtitle}</p>}
           </div>
-          {actions && <div className="panel__head-actions">{actions}</div>}
+          <div className="panel__head-actions">
+            {actions}
+            <PanelCloseButton />
+          </div>
         </header>
         <div className="panel__body">{children}</div>
       </section>

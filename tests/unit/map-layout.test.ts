@@ -70,17 +70,26 @@ describe('cellPoint', () => {
 
 describe('buildPathD', () => {
   const d = buildPathD();
+  const fmt = (n: number) => n.toFixed(1);
 
-  it('начинается с M и содержит по команде на клетку', () => {
+  it('начинается с M и сглажен кубическими кривыми по всем клеткам', () => {
     expect(d.startsWith('M ')).toBe(true);
-    expect(d.match(/[ML]/g)).toHaveLength(CELLS_TOTAL);
+    expect(d.match(/[MC]/g)).toHaveLength(CELLS_TOTAL);
+    expect(d).toContain(' C ');
   });
 
   it('координаты в пикселях фона и с одним знаком после точки', () => {
-    const coords = d.replace(/[ML]/g, ' ').trim().split(/\s+/);
-    expect(coords).toHaveLength(CELLS_TOTAL * 2);
+    const coords = d.replace(/[MLC,]/g, ' ').trim().split(/\s+/);
+    expect(coords.length).toBeGreaterThan(CELLS_TOTAL * 2);
     for (const value of coords) {
       expect(value).toMatch(/^-?\d+\.\d$/);
+    }
+  });
+
+  it('проходит через каждую клеточную точку', () => {
+    for (let idx = 1; idx <= CELLS_TOTAL; idx++) {
+      const p = pointPx(idx);
+      expect(d).toContain(`${fmt(p.x)} ${fmt(p.y)}`);
     }
   });
 

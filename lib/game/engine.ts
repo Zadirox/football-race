@@ -132,7 +132,7 @@ export function resolveCell(
   who: string,
   random: () => number = Math.random,
 ): CellOutcome {
-  if (!code) return base(null, state, `${who} на обычной клетке.`);
+  if (!code) return base(null, state, `${who} попал на обычную клетку.`);
 
   switch (code) {
     case '01': {
@@ -143,48 +143,48 @@ export function resolveCell(
     case '02': {
       if (hasEffect(state, 'shieldki')) {
         return {
-          ...base(code, spendCharge(state, 'shieldki'), `Щитки спасают ${who} от офсайда.`),
+          ...base(code, spendCharge(state, 'shieldki'), `«Щитки» спасли ${who} от офсайда.`),
           preventedBy: 'shieldki',
         };
       }
       const next = moveBy(state, -2);
-      return moved(code, state, state.position, next, `Офсайд. Флажок поднят — ${who} откатывается на две клетки.`);
+      return moved(code, state, state.position, next, `Офсайд: ${who} возвращается на 2 клетки назад.`);
     }
 
     case '03':
       return {
-        ...base(code, state, `${who} может отдать голевую передачу.`),
+        ...base(code, state, `${who} может отдать пас другому игроку (+1 клетка).`),
         awaiting: 'passage',
       };
 
     case '04': {
       if (hasEffect(state, 'shieldki')) {
         return {
-          ...base(code, spendCharge(state, 'shieldki'), `Щитки спасают ${who} от скользкого газона.`),
+          ...base(code, spendCharge(state, 'shieldki'), `«Щитки» спасли ${who} от скользкого газона.`),
           preventedBy: 'shieldki',
         };
       }
-      return base(code, addEffect(state, 'gazon', 1), `${who} ловит скользкий газон: следующий бросок минус один.`);
+      return base(code, addEffect(state, 'gazon', 1), `${who} на скользком газоне: следующий бросок будет на 1 меньше.`);
     }
 
     case '05': {
       if (hasEffect(state, 'yellow_card')) {
         return {
-          ...base(code, removeEffect(state, 'yellow_card'), `Жёлтая карточка гасит домашние трибуны ${who}.`),
+          ...base(code, removeEffect(state, 'yellow_card'), `У ${who} была жёлтая карточка — «Домашние трибуны» не сработали.`),
           absorbed: 'yellow_card',
         };
       }
-      return base(code, addEffect(state, 'tribuny', 2), `Трибуны встают: ${who} получает плюс один к двум броскам.`);
+      return base(code, addEffect(state, 'tribuny', 2), `«Домашние трибуны» помогают: у ${who} +1 к двум следующим броскам.`);
     }
 
     case '06': {
       if (hasEffect(state, 'yellow_card')) {
         return {
-          ...base(code, removeEffect(state, 'yellow_card'), `Жёлтая карточка гасит щитки ${who}.`),
+          ...base(code, removeEffect(state, 'yellow_card'), `У ${who} была жёлтая карточка — «Щитки» не сработали.`),
           absorbed: 'yellow_card',
         };
       }
-      return base(code, addEffect(state, 'shieldki', 1), `${who} надевает щитки: один негатив будет отменён.`);
+      return base(code, addEffect(state, 'shieldki', 1), `${who} получил «Щитки»: один плохой эффект будет отменён.`);
     }
 
     case '07': {
@@ -193,39 +193,39 @@ export function resolveCell(
       );
       if (negatives.length > 0) {
         return {
-          ...base(code, state, `${who} заходит в раздевалку: можно снять один негатив.`),
+          ...base(code, state, `${who} в раздевалке: можно снять один плохой эффект.`),
           awaiting: 'locker',
         };
       }
       const next = moveBy(state, 1);
-      return moved(code, state, state.position, next, `В раздевалке пусто: ${who} шагает вперёд.`);
+      return moved(code, state, state.position, next, `В раздевалке делать нечего: ${who} делает шаг вперёд.`);
     }
 
     case '08': {
       if (hasEffect(state, 'shieldki')) {
         return {
-          ...base(code, spendCharge(state, 'shieldki'), `Щитки спасают ${who} от жёлтой карточки.`),
+          ...base(code, spendCharge(state, 'shieldki'), `«Щитки» спасли ${who} от жёлтой карточки.`),
           preventedBy: 'shieldki',
         };
       }
-      return base(code, addEffect(state, 'yellow_card', 1), `${who} получает жёлтую: следующее усиление сгорит.`);
+      return base(code, addEffect(state, 'yellow_card', 1), `${who} получил жёлтую карточку: следующее усиление не сработает.`);
     }
 
     case '09':
       return {
-        ...base(code, state, `VAR. ${who} решает, спорить ли с судьёй.`),
+        ...base(code, state, `VAR: ${who} решает — согласиться с судьёй или оспорить.`),
         awaiting: 'var',
       };
 
     case '10': {
       if (hasEffect(state, 'yellow_card')) {
         return {
-          ...base(code, removeEffect(state, 'yellow_card'), `Жёлтая карточка гасит тактическую схему ${who}.`),
+          ...base(code, removeEffect(state, 'yellow_card'), `Жёлтая карточка забрала усиление «Тактическая схема» у ${who}.`),
           absorbed: 'yellow_card',
         };
       }
       return {
-        ...base(code, addEffect(state, 'tactics', 1), `Тактическая схема: ${who} увидит бросок и поправит его на единицу.`),
+        ...base(code, addEffect(state, 'tactics', 1), `«Тактическая схема»: ${who} сможет изменить следующий бросок на +1 или −1.`),
       };
     }
 
@@ -242,7 +242,7 @@ export function applyVar(
 ): CellOutcome {
   if (!contest) {
     const next = moveBy(state, -1);
-    return moved('09', state, state.position, next, 'Решение принято: минус одна клетка.');
+    return moved('09', state, state.position, next, 'Судью не стали оспаривать: минус 1 клетка.');
   }
   const lucky = random() < 0.5;
   const delta = lucky ? 3 : -3;
@@ -252,7 +252,7 @@ export function applyVar(
     state,
     state.position,
     next,
-    lucky ? 'VAR на стороне игрока: плюс три!' : 'VAR против: минус три.',
+    lucky ? 'VAR в твою пользу: плюс 3 клетки!' : 'VAR не помог: минус 3 клетки.',
   );
 }
 
@@ -271,9 +271,9 @@ export function applyPassage(
 export function applyLocker(state: PlayerState, remove: EffectCode | 'advance'): CellOutcome {
   if (remove === 'advance' || !NEGATIVE_EFFECTS.includes(remove)) {
     const next = moveBy(state, 1);
-    return moved('07', state, state.position, next, 'Раздевалка пуста: шаг вперёд.');
+    return moved('07', state, state.position, next, 'В раздевалке делать нечего: шаг вперёд.');
   }
-  return base('07', removeEffect(state, remove), 'Раздевалка: негативный эффект снят.');
+  return base('07', removeEffect(state, remove), 'Раздевалка: плохой эффект снят.');
 }
 
 /** Тактика: сдвиг уже сохранённого значения броска. */

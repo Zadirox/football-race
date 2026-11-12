@@ -9,9 +9,9 @@ import { Panel } from '@/components/ui/Panel';
  */
 export function PanelLoading() {
   return (
-    <Panel title="Загружаем поле" subtitle="Считаем сезон, кубики и события">
+    <Panel title="Загружаем" subtitle="Подтягиваем сезон, кубики и события">
       <div className="loading" aria-busy="true" aria-live="polite">
-        <p className="loading__caption">Идёт загрузка сезона</p>
+        <p className="loading__caption">Загружаем данные…</p>
         <div className="skeleton skeleton--head" />
         <div className="skeleton skeleton--line" />
         <div className="skeleton skeleton--line-short" />

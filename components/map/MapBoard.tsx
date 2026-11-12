@@ -16,6 +16,8 @@ type MapBoardProps = {
   selectedPlayerId: string | null;
   /** 1 / текущий масштаб: размеры маркеров не зависят от зума. */
   inverseScale?: number;
+  /** Показывать маршрут и клетки (переключатель вида карты). */
+  showOverlay?: boolean;
 };
 
 type ActiveCard = {
@@ -36,7 +38,14 @@ function anchorOf(element: Element): Rect {
   return { left: rect.left, top: rect.top, width: rect.width, height: rect.height };
 }
 
-export function MapBoard({ cells, players, onSelectPlayer, selectedPlayerId, inverseScale = 1 }: MapBoardProps) {
+export function MapBoard({
+  cells,
+  players,
+  onSelectPlayer,
+  selectedPlayerId,
+  inverseScale = 1,
+  showOverlay = true,
+}: MapBoardProps) {
   const [active, setActive] = useState<ActiveCard | null>(null);
 
   const byCell = useMemo(() => {
@@ -119,78 +128,145 @@ export function MapBoard({ cells, players, onSelectPlayer, selectedPlayerId, inv
 
   return (
     <>
-      <svg className="map-layer map-layer--svg" viewBox="0 0 4096 2048" aria-hidden="true">
-        <defs>
-          <linearGradient id="routeLine" x1="0" y1="0" x2="1" y2="0">
-            <stop offset="0%" stopColor="#c9a15c" />
-            <stop offset="22%" stopColor="#c8f25a" />
-            <stop offset="100%" stopColor="#8fd0f0" />
-          </linearGradient>
-        </defs>
-        <path d={PATH_D} fill="none" stroke="#0a1720" strokeWidth="30" strokeLinecap="round" strokeLinejoin="round" opacity="0.55" />
-        <path
-          d={PATH_D}
-          fill="none"
-          stroke="url(#routeLine)"
-          strokeWidth="5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          strokeDasharray="1 22"
-          opacity="0.85"
-        />
-      </svg>
+      {showOverlay && (
+        <>
+          <svg className="map-layer map-layer--svg" viewBox="0 0 4096 2048" aria-hidden="true">
+            <defs>
+              <linearGradient id="routeLine" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0%" stopColor="#ffd166" />
+                <stop offset="28%" stopColor="#d8ff74" />
+                <stop offset="62%" stopColor="#8ff0b8" />
+                <stop offset="100%" stopColor="#7fd3ff" />
+              </linearGradient>
+              <linearGradient id="routeGlow" x1="0" y1="0" x2="1" y2="0">
+                <stop offset="0%" stopColor="#ffd166" stopOpacity="0.9" />
+                <stop offset="40%" stopColor="#d8ff74" stopOpacity="0.85" />
+                <stop offset="100%" stopColor="#7fd3ff" stopOpacity="0.9" />
+              </linearGradient>
+              <filter id="routeSoftGlow" x="-8%" y="-20%" width="116%" height="140%">
+                <feGaussianBlur stdDeviation="6" result="blur" />
+                <feColorMatrix
+                  in="blur"
+                  type="matrix"
+                  values="1 0 0 0 0  0 1 0 0 0  0 0 1 0 0  0 0 0 0.55 0"
+                  result="glow"
+                />
+                <feMerge>
+                  <feMergeNode in="glow" />
+                  <feMergeNode in="SourceGraphic" />
+                </feMerge>
+              </filter>
+            </defs>
+            <path
+              d={PATH_D}
+              fill="none"
+              stroke="#071018"
+              strokeWidth="44"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              opacity="0.28"
+            />
+            <path
+              d={PATH_D}
+              fill="none"
+              stroke="rgba(20, 38, 54, 0.55)"
+              strokeWidth="28"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+            <path
+              d={PATH_D}
+              fill="none"
+              stroke="url(#routeGlow)"
+              strokeWidth="18"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              opacity="0.22"
+              filter="url(#routeSoftGlow)"
+            />
+            <path
+              d={PATH_D}
+              fill="none"
+              stroke="rgba(255, 255, 255, 0.88)"
+              strokeWidth="15"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            />
+            <path
+              d={PATH_D}
+              fill="none"
+              stroke="url(#routeLine)"
+              strokeWidth="9"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              opacity="0.98"
+            />
+            <path
+              d={PATH_D}
+              fill="none"
+              stroke="rgba(255, 255, 255, 0.55)"
+              strokeWidth="3.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              strokeDasharray="1 22"
+              opacity="0.9"
+            />
+          </svg>
 
-      <div className="map-layer map-layer--markers">
-        {cells.map((cell) => {
-          const point = cellPoint(cell.idx);
-          const polarity = polarityOf(cell.mechanicCode);
-          const isCurrent = players.some((p) => p.position === cell.idx && p.isMe);
-          const flavor = flavors.get(cell.idx);
-          const eventName = mechanic(cell.mechanicCode)?.name;
-          const label =
-            cell.kind === 'event'
-              ? `Клетка ${cell.idx}, ${eventName ?? 'событие'}`
-              : cell.kind === 'start'
-                ? `Клетка ${cell.idx}, старт`
-                : cell.kind === 'finish'
-                  ? `Клетка ${cell.idx}, финиш`
-                  : `Клетка ${cell.idx}, ${flavor?.title ?? 'обычная клетка'}, обычная клетка`;
-          const isOpen = active?.idx === cell.idx;
+          <div className="map-layer map-layer--markers">
+            {cells.map((cell) => {
+              const point = cellPoint(cell.idx);
+              const polarity = polarityOf(cell.mechanicCode);
+              const isCurrent = players.some((p) => p.position === cell.idx && p.isMe);
+              const flavor = flavors.get(cell.idx);
+              const eventName = mechanic(cell.mechanicCode)?.name;
+              const label =
+                cell.kind === 'event'
+                  ? `Клетка ${cell.idx}, ${eventName ?? 'событие'}`
+                  : cell.kind === 'start'
+                    ? `Клетка ${cell.idx}, старт`
+                    : cell.kind === 'finish'
+                      ? `Клетка ${cell.idx}, финиш`
+                      : `Клетка ${cell.idx}, ${flavor?.title ?? 'обычная клетка'}, обычная клетка`;
+              const isOpen = active?.idx === cell.idx;
 
-          return (
-            <button
-              key={cell.idx}
-              type="button"
-              className="cell"
-              data-kind={cell.kind}
-              data-polarity={polarity}
-              data-current={isCurrent}
-              data-passed={cell.idx < myPosition}
-              data-open={isOpen}
-              style={{ left: `${point.x * 100}%`, top: `${point.y * 100}%` }}
-              aria-label={label}
-              aria-describedby={isOpen ? 'cell-card' : undefined}
-              onMouseEnter={(event) => open(cell, event.currentTarget, 'hover')}
-              onMouseLeave={() => closeIf(cell.idx, 'hover')}
-              onFocus={(event) => {
-                if (event.currentTarget.matches(':focus-visible')) open(cell, event.currentTarget, 'focus');
-              }}
-              onBlur={() => closeIf(cell.idx, 'focus')}
-              onClick={(event) => {
-                const pointerType = (event.nativeEvent as PointerEvent).pointerType;
-                const isTouch = Boolean(pointerType && pointerType !== 'mouse');
-                if (isTouch || event.detail === 0) {
-                  if (isOpen) setActive(null);
-                  else open(cell, event.currentTarget, 'pin');
-                }
-              }}
-            >
-              {cell.kind === 'finish' ? '★' : cell.idx}
-            </button>
-          );
-        })}
-      </div>
+              return (
+                <button
+                  key={cell.idx}
+                  type="button"
+                  className="cell"
+                  data-kind={cell.kind}
+                  data-polarity={polarity}
+                  data-current={isCurrent}
+                  data-passed={cell.idx < myPosition}
+                  data-open={isOpen}
+                  style={{ left: `${point.x * 100}%`, top: `${point.y * 100}%` }}
+                  aria-label={label}
+                  aria-describedby={isOpen ? 'cell-card' : undefined}
+                  onMouseEnter={(event) => open(cell, event.currentTarget, 'hover')}
+                  onMouseLeave={() => closeIf(cell.idx, 'hover')}
+                  onFocus={(event) => {
+                    if (event.currentTarget.matches(':focus-visible')) open(cell, event.currentTarget, 'focus');
+                  }}
+                  onBlur={() => closeIf(cell.idx, 'focus')}
+                  onClick={(event) => {
+                    const pointerType = (event.nativeEvent as PointerEvent).pointerType;
+                    const isTouch = Boolean(pointerType && pointerType !== 'mouse');
+                    if (isTouch || event.detail === 0) {
+                      if (isOpen) setActive(null);
+                      else open(cell, event.currentTarget, 'pin');
+                    }
+                  }}
+                >
+                  {cell.kind === 'finish' ? '★' : cell.idx}
+                </button>
+              );
+            })}
+          </div>
+        </>
+      )}
 
+      {showOverlay && (
       <div className="map-layer map-layer--players">
         {Array.from(byCell.entries()).map(([cellIdx, group]) =>
           group.map((player, slot) => {
@@ -236,8 +312,9 @@ export function MapBoard({ cells, players, onSelectPlayer, selectedPlayerId, inv
           }),
         )}
       </div>
+      )}
 
-      {activeCell && active && (
+      {showOverlay && activeCell && active && (
         <CellCard
           cell={activeCell}
           flavor={activeFlavor}

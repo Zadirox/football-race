@@ -1,11 +1,9 @@
 'use client';
 
-'use client';
-
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
+import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
-import { isMuted, play, setMuted, startAmbient } from '@/lib/audio';
+import { play } from '@/lib/audio';
 import { signOutAction } from '@/lib/auth/actions';
 import type { MeView } from '@/lib/types';
 
@@ -36,45 +34,44 @@ function pad(value: number): string {
 }
 
 function remainingLabel(closesAt: string | null): string {
-  if (!closesAt) return 'день не собран';
+  if (!closesAt) return 'игровой день ещё не открыт';
   const diff = Date.parse(closesAt) - Date.now();
   if (Number.isNaN(diff)) return '—';
-  if (diff <= 0) return 'приём закрыт';
+  if (diff <= 0) return 'приём ответов закрыт';
   const total = Math.floor(diff / 1000);
   const days = Math.floor(total / 86400);
   const hours = Math.floor((total % 86400) / 3600);
   const minutes = Math.floor((total % 3600) / 60);
   const seconds = total % 60;
-  if (days > 0) return `закрытие через ${days} д ${pad(hours)}:${pad(minutes)}`;
-  return `до закрытия ${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
+  if (days > 0) return `до конца приёма: ${days} д ${pad(hours)}:${pad(minutes)}`;
+  return `до конца приёма: ${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
 }
 
 export function Header({ me, closesAt, demo }: HeaderProps) {
   const pathname = usePathname();
+  const router = useRouter();
   const [now, setNow] = useState<string | null>(null);
-  const [muted, setMutedState] = useState(true);
 
   useEffect(() => {
-    setMutedState(isMuted());
     const tick = () => setNow(remainingLabel(closesAt));
     tick();
     const timer = window.setInterval(tick, 1000);
     return () => window.clearInterval(timer);
   }, [closesAt]);
 
+  useEffect(() => {
+    document.querySelectorAll('.panel-holder--closing').forEach((el) => el.classList.remove('panel-holder--closing'));
+  }, [pathname]);
+
   const tabs = useMemo(
     () => RIGHT_TABS.filter((tab) => !tab.adminOnly || me?.role === 'admin'),
     [me?.role],
   );
 
-  const toggleMute = () => {
-    const next = !muted;
-    setMutedState(next);
-    setMuted(next);
-    if (!next) {
-      startAmbient();
-      play('click');
-    }
+  const closePanel = () => {
+    const holder = document.querySelector('.panel-holder');
+    if (holder) holder.classList.add('panel-holder--closing');
+    window.setTimeout(() => router.push('/'), 170);
   };
 
   const tab = (item: Tab) => {
@@ -82,14 +79,22 @@ export function Header({ me, closesAt, demo }: HeaderProps) {
     return (
       <Link
         key={item.href}
-        href={item.href}
+        href={active ? '/' : item.href}
         className="tab"
         data-active={active}
         aria-current={active ? 'page' : undefined}
-        aria-label={item.label}
+        aria-label={active ? `${item.label}: закрыть` : item.label}
+        title={active ? 'Закрыть' : item.label}
+        onClick={(event) => {
+          play('click');
+          if (active) {
+            event.preventDefault();
+            closePanel();
+          }
+        }}
       >
-        <span aria-hidden="true">{item.icon}</span>
-        <span>{item.label}</span>
+        <span className="tab__icon" aria-hidden="true">{item.icon}</span>
+        <span className="tab__label">{item.label}</span>
       </Link>
     );
   };
@@ -102,13 +107,16 @@ export function Header({ me, closesAt, demo }: HeaderProps) {
 
       <div className="topbar__center">
         <Link href="/" className="brand" aria-label="На карту сезона">
-          <span className="brand__logo">
-            <span className="brand__dot" aria-hidden="true" />
-            Футбольная гонка
-          </span>
-          <span className="brand__timer" suppressHydrationWarning>
-            {now ?? remainingLabel(closesAt)}
-            {demo ? ' · демо' : ''}
+          <span className="brand__emblem" aria-hidden="true">⚽</span>
+          <span className="brand__text">
+            <span className="brand__logo">
+              <span className="brand__line">ФУТБОЛЬНАЯ</span>
+              <span className="brand__line brand__line--accent">ГОНКА</span>
+            </span>
+            <span className="brand__timer" suppressHydrationWarning>
+              {now ?? remainingLabel(closesAt)}
+              {demo ? ' · демо' : ''}
+            </span>
           </span>
         </Link>
       </div>
@@ -118,22 +126,12 @@ export function Header({ me, closesAt, demo }: HeaderProps) {
       </nav>
 
       <div className="topbar__actions">
-        <button
-          type="button"
-          className="icon-btn"
-          data-on={!muted}
-          onClick={toggleMute}
-          aria-label={muted ? 'Включить звук' : 'Выключить звук'}
-          title={muted ? 'Включить звук' : 'Выключить звук'}
-        >
-          {muted ? '🔇' : '🔊'}
-        </button>
         {me ? (
-          <Link href="/participants" className="icon-btn" title={`${me.nickname} · ${me.role}`} aria-label={`Профиль: ${me.nickname}`}>
+          <Link href="/participants" className="icon-btn icon-btn--profile" title={`${me.nickname} · ${me.role}`} aria-label={`Профиль: ${me.nickname}`}>
             {me.nickname.slice(0, 1).toUpperCase()}
           </Link>
         ) : (
-          <Link href="/login" className="btn btn--sm">
+          <Link href="/login" className="btn btn--sm btn--primary">
             Войти
           </Link>
         )}
@@ -141,19 +139,8 @@ export function Header({ me, closesAt, demo }: HeaderProps) {
           <form action={signOutAction}>
             <button type="submit" className="icon-btn" aria-label="Выйти" title="Выйти">
               <svg width="15" height="15" viewBox="0 0 16 16" fill="none" aria-hidden="true">
-                <path
-                  d="M6.5 2.5h-3a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h3"
-                  stroke="currentColor"
-                  strokeWidth="1.4"
-                  strokeLinecap="round"
-                />
-                <path
-                  d="m10 5 3 3-3 3M13 8H6.5"
-                  stroke="currentColor"
-                  strokeWidth="1.4"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
+                <path d="M6.5 2.5h-3a1 1 0 0 0-1 1v9a1 1 0 0 0 1 1h3" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
+                <path d="m10 5 3 3-3 3M13 8H6.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
               </svg>
             </button>
           </form>

@@ -11,7 +11,9 @@
     "test:run": "vitest run",
     "test:coverage": "vitest run --coverage",
     "typecheck": "tsc --noEmit",
-    "seed": "tsx scripts/seed.ts"
+    "seed": "tsx scripts/seed.ts",
+    "bootstrap:admin": "tsx scripts/bootstrap-admin.ts",
+    "bootstrap:season": "tsx scripts/bootstrap-season.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.5.2",

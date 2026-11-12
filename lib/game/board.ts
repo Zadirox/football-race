@@ -122,6 +122,73 @@ export type GenerateBoardResult = {
   cells: BoardCell[];
 };
 
+function hasAdjacentSameMechanic(cells: readonly BoardCell[]): boolean {
+  for (let i = 1; i < cells.length; i++) {
+    const prev = cells[i - 1];
+    const cur = cells[i];
+    if (prev?.kind === 'event' && cur?.kind === 'event' && prev.mechanicCode && prev.mechanicCode === cur.mechanicCode) {
+      return true;
+    }
+  }
+  return false;
+}
+
+function assignMechanicsToPositions(
+  eventPositions: readonly number[],
+  pool: readonly string[],
+  random: () => number,
+): Map<number, string> | null {
+  const remaining = [...pool];
+  const byPos = new Map<number, string>();
+  const positions = [...eventPositions].sort((a, b) => a - b);
+
+  for (const pos of positions) {
+    const prevIsAdjacentEvent = byPos.has(pos - 1);
+    const prevCode = prevIsAdjacentEvent ? byPos.get(pos - 1) : null;
+    const candidates = remaining
+      .map((code, i) => ({ code, i }))
+      .filter(({ code }) => code !== prevCode);
+
+    const pickFrom = candidates.length > 0 ? candidates : remaining.map((code, i) => ({ code, i }));
+    const pick = pickFrom[Math.floor(random() * pickFrom.length)];
+    if (!pick) return null;
+    byPos.set(pos, pick.code);
+    remaining.splice(pick.i, 1);
+  }
+
+  return byPos;
+}
+
+function hasGoodEarlyRhythm(cells: readonly BoardCell[], safeStart: number): boolean {
+  const earlyWindowEnd = Math.min(13, cells.length - 1);
+  let eventsEarly = 0;
+  for (let idx = safeStart + 1; idx <= earlyWindowEnd; idx++) {
+    if (cells[idx - 1]?.kind === 'event') eventsEarly += 1;
+  }
+  // После безопасного старта путь не должен быть «пустыней» из одних plain.
+  if (eventsEarly < 3) return false;
+
+  let eventsFirst20 = 0;
+  let plainRun = 0;
+  let maxPlainRunFirst20 = 0;
+  for (let i = 0; i < Math.min(20, cells.length); i++) {
+    const cell = cells[i];
+    if (cell?.kind === 'event') {
+      eventsFirst20 += 1;
+      plainRun = 0;
+    } else {
+      // старт/обычная — считаем серию «не-событий» после safeStart
+      if (i >= safeStart) {
+        plainRun += 1;
+        if (plainRun > maxPlainRunFirst20) maxPlainRunFirst20 = plainRun;
+      }
+    }
+  }
+  if (eventsFirst20 < 5) return false;
+  if (maxPlainRunFirst20 > 4) return false;
+  return true;
+}
+
 export function generateBoard(
   seed: number,
   overrides: Partial<BoardConfig> = {},
@@ -146,19 +213,21 @@ export function generateBoard(
     const random = mulberry32(attemptSeed);
 
     const shuffledSlots = shuffle(slots, random);
-    const eventPositions = new Set(shuffledSlots.slice(0, eventCells));
+    const eventPositions = shuffle(shuffledSlots.slice(0, eventCells), random).sort((a, b) => a - b);
+    const eventPositionSet = new Set(eventPositions);
 
-    const pool = shuffle(expandWeights(config.weights, eventCells), random);
+    const pool = expandWeights(config.weights, eventCells);
+    const assignment = assignMechanicsToPositions(eventPositions, pool, random);
+    if (!assignment) continue;
 
     const cells: BoardCell[] = [];
-    let poolIndex = 0;
     for (let idx = 1; idx <= totalCells; idx++) {
       if (idx === 1) {
         cells.push({ idx, kind: 'start', mechanicCode: null });
       } else if (idx === totalCells) {
         cells.push({ idx, kind: 'finish', mechanicCode: null });
-      } else if (eventPositions.has(idx)) {
-        cells.push({ idx, kind: 'event', mechanicCode: pool[poolIndex++] ?? null });
+      } else if (eventPositionSet.has(idx)) {
+        cells.push({ idx, kind: 'event', mechanicCode: assignment.get(idx) ?? null });
       } else {
         cells.push({ idx, kind: 'plain', mechanicCode: null });
       }
@@ -171,9 +240,11 @@ export function generateBoard(
         .map((c) => c.mechanicCode),
     );
 
-    if (firstHalfCodes.size >= minDistinctFirstHalf) {
-      return { seed: attemptSeed, cells };
-    }
+    if (firstHalfCodes.size < minDistinctFirstHalf) continue;
+    if (hasAdjacentSameMechanic(cells)) continue;
+    if (!hasGoodEarlyRhythm(cells, safeStart)) continue;
+
+    return { seed: attemptSeed, cells };
   }
 
   throw new BoardLayoutError(

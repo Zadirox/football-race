@@ -27,9 +27,12 @@ export function usePanZoom({ worldWidth = 4096, worldHeight = 2048, focus }: Pan
   const limits = useCallback(() => {
     const viewport = viewportRef.current;
     if (!viewport) return { min: 0.3, max: 2 };
-    const fit = viewport.clientWidth / worldWidth;
-    return { min: Math.max(0.18, fit * 0.85), max: Math.max(1.2, fit * 3.6) };
-  }, [worldWidth]);
+    const fitW = viewport.clientWidth / worldWidth;
+    const fitH = viewport.clientHeight / worldHeight;
+    const contain = Math.min(fitW, fitH);
+    const cover = Math.max(fitW, fitH);
+    return { min: Math.max(0.18, contain), max: Math.max(1.2, cover * 3.6) };
+  }, [worldHeight, worldWidth]);
 
   const apply = useCallback(() => {
     const canvas = canvasRef.current;
@@ -37,6 +40,7 @@ export function usePanZoom({ worldWidth = 4096, worldHeight = 2048, focus }: Pan
     const { x, y, scale: s } = transform.current;
     canvas.style.transform = `translate3d(${x}px, ${y}px, 0) scale(${s})`;
     canvas.style.setProperty('--inv-scale', String(1 / s));
+    canvas.style.visibility = 'visible';
   }, []);
 
   const clamp = useCallback(() => {

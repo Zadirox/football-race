@@ -18,7 +18,7 @@ describe('cellCardContent', () => {
     const content = cellCardContent({ idx: 27, kind: 'plain', mechanicCode: null }, null);
     expect(content.badge).toBe('Обычная клетка');
     expect(content.title).toBe('Обычная клетка');
-    expect(content.line).toBe('Просто шаг вперёд.');
+    expect(content.line).toBe('Здесь ничего не происходит — просто шаг по пути.');
   });
 
   it('событийная клетка показывает механику и полярность', () => {
@@ -65,7 +65,7 @@ describe('cellCardContent', () => {
     const content = cellCardContent({ idx: 9, kind: 'event', mechanicCode: '99' }, null);
     expect(content.badge).toBe('Событие');
     expect(content.tone).toBe('neutral');
-    expect(content.line).toBe('Событие без описания');
+    expect(content.line).toBe('Описание пока не добавлено');
   });
 
   it('старт и финиш имеют свои тексты', () => {

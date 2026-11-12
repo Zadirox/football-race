@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from 'react';
 import { Panel, EmptyState } from '@/components/ui/Panel';
+import { MechanicArt } from '@/components/map/MechanicArt';
 import { MECHANICS, POLARITY_LABEL, type MechanicPolarity } from '@/lib/game/catalog';
 
 const POLARITY_CHIP: Record<MechanicPolarity, string> = {
@@ -86,19 +87,22 @@ export function EffectsClient() {
       ) : (
         <div className="grid grid--cards">
           {visible.map((item) => (
-            <article key={item.code} className="card">
-              <div className="card__head">
-                <span className="chip chip--muted">{item.code}</span>
-                <h3 className="card__title">{item.name}</h3>
-                <span className={`chip ${POLARITY_CHIP[item.polarity]}`} style={{ marginLeft: 'auto' }}>
-                  {POLARITY_LABEL[item.polarity]}
-                </span>
+            <article key={item.code} className="card effect-card">
+              <div className="effect-card__top">
+                <MechanicArt code={item.code} size={56} className="effect-card__art" />
+                <div className="effect-card__main">
+                  <div className="effect-card__meta-row">
+                    <span className="chip chip--muted">{item.code}</span>
+                    <span className={`chip ${POLARITY_CHIP[item.polarity]} effect-card__polarity`}>
+                      {POLARITY_LABEL[item.polarity]}
+                    </span>
+                  </div>
+                  <h3 className="card__title effect-card__name">{item.name}</h3>
+                  <p className="card__meta effect-card__tagline">{item.tagline}</p>
+                </div>
               </div>
-              <p className="card__meta" style={{ marginBottom: 6 }}>
-                {item.tagline}
-              </p>
               <p className="card__text">{item.description}</p>
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 12 }}>
+              <div className="effect-card__tags">
                 <span className="chip chip--muted">{APPLICATION_LABEL[item.application]}</span>
                 {item.core ? (
                   <span className="chip chip--positive">в релизе 12 ноября</span>
@@ -107,9 +111,7 @@ export function EffectsClient() {
                 )}
               </div>
               {item.note && (
-                <p className="card__meta" style={{ marginTop: 10 }}>
-                  {item.note}
-                </p>
+                <p className="card__meta effect-card__note">{item.note}</p>
               )}
             </article>
           ))}

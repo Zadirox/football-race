@@ -71,7 +71,7 @@ export function cellCardContent(
         badge: 'Событие',
         tone: 'neutral',
         title: 'Событие',
-        line: 'Событие без описания',
+        line: 'Описание пока не добавлено',
         note: eventNote(phase),
         mechanicCode: cell.mechanicCode,
       };
@@ -101,7 +101,7 @@ export function cellCardContent(
     badge: 'Обычная клетка',
     tone: 'plain',
     title: 'Обычная клетка',
-    line: 'Просто шаг вперёд.',
+    line: 'Здесь ничего не происходит — просто шаг по пути.',
     note: phase === 'current' ? 'Ты стоишь на этой клетке' : null,
     mechanicCode: null,
   };

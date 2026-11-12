@@ -74,19 +74,22 @@ export function CellCard({ cell, flavor, anchor, phase = 'ahead' }: CellCardProp
       <span className="cell-card__stripe" aria-hidden="true" />
       <div className="cell-card__head">
         <span className="cell-card__num">{cell.kind === 'finish' ? '★' : cell.idx}</span>
-        {content.mechanicCode ? (
-          <MechanicArt code={content.mechanicCode} size={42} className="cell-card__art" />
-        ) : (
-          <span className="cell-card__stamp" aria-hidden="true">
-            {stampFor(cell)}
-          </span>
-        )}
         <span className="cell-card__badge">{content.badge}</span>
       </div>
-      <div className="cell-card__perf" aria-hidden="true" />
-      <h3 className="cell-card__title">{content.title}</h3>
-      <p className="cell-card__line">{content.line}</p>
-      {content.note && <p className="cell-card__note">{content.note}</p>}
+      <div className="cell-card__body">
+        <div className="cell-card__content">
+          <h3 className="cell-card__title">{content.title}</h3>
+          <p className="cell-card__line">{content.line}</p>
+          {content.note && <p className="cell-card__note">{content.note}</p>}
+        </div>
+        <div className="cell-card__hero" aria-hidden="true">
+          {content.mechanicCode ? (
+            <MechanicArt code={content.mechanicCode} size={96} className="cell-card__hero-art" />
+          ) : (
+            <span className="cell-card__hero-stamp">{stampFor(cell)}</span>
+          )}
+        </div>
+      </div>
     </div>,
     document.body,
   );

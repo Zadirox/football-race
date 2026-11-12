@@ -77,6 +77,35 @@ describe('generateBoard', () => {
     expect(codes.size).toBeGreaterThanOrEqual(8);
   });
 
+  it('без подряд идущих одинаковых механик на соседних event-клетках', () => {
+    for (let i = 1; i < board.cells.length; i++) {
+      const prev = board.cells[i - 1];
+      const cur = board.cells[i];
+      if (prev?.kind === 'event' && cur?.kind === 'event') {
+        expect(prev.mechanicCode).not.toBe(cur.mechanicCode);
+      }
+    }
+  });
+
+  it('после безопасного старта есть ранний ритм событий (не пустыня из plain)', () => {
+    const eventsEarly = board.cells.slice(5, 13).filter((c) => c.kind === 'event').length;
+    const eventsFirst20 = board.cells.slice(0, 20).filter((c) => c.kind === 'event').length;
+    expect(eventsEarly).toBeGreaterThanOrEqual(3);
+    expect(eventsFirst20).toBeGreaterThanOrEqual(5);
+
+    let plainRun = 0;
+    let maxPlainRunFirst20 = 0;
+    for (let i = 0; i < 20; i++) {
+      const cell = board.cells[i];
+      if (cell?.kind === 'event') plainRun = 0;
+      else if (i >= 5) {
+        plainRun += 1;
+        maxPlainRunFirst20 = Math.max(maxPlainRunFirst20, plainRun);
+      }
+    }
+    expect(maxPlainRunFirst20).toBeLessThanOrEqual(4);
+  });
+
   it('у событийной клетки есть код механики, у обычной — нет', () => {
     for (const cell of board.cells) {
       if (cell.kind === 'event') expect(cell.mechanicCode).toMatch(/^\d{2}$/);

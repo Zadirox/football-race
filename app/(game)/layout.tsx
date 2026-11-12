@@ -2,7 +2,6 @@ import { Suspense } from 'react';
 import { Header } from '@/components/shell/Header';
 import { Snowfall } from '@/components/map/Snowfall';
 import { Onboarding } from '@/components/game/Onboarding';
-import { PanelLoading } from '@/components/shell/PanelLoading';
 import { GameHud } from '@/components/map/GameHud';
 import { loadSeasonSnapshot } from '@/lib/repo/season';
 
@@ -23,7 +22,7 @@ export default async function GameLayout({ children }: { children: React.ReactNo
       </Suspense>
       <Snowfall />
       <Header me={snapshot.me} closesAt={snapshot.matchday?.closesAt ?? null} demo={snapshot.demo} />
-      <Suspense fallback={<PanelLoading />}>{children}</Suspense>
+      {children}
       <Suspense fallback={null}>
         <Onboarding />
       </Suspense>

@@ -19,6 +19,16 @@ import type {
   SeasonSnapshot,
 } from '@/lib/types';
 
+function mulberry32(seed: number): () => number {
+  let t = seed >>> 0;
+  return () => {
+    t += 0x6d2b79f5;
+    let x = Math.imul(t ^ (t >>> 15), 1 | t);
+    x ^= x + Math.imul(x ^ (x >>> 7), 61 | x);
+    return ((x ^ (x >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
 const SEASON_ID = 'demo-season-2026';
 const MATCHDAY_ID = 'demo-matchday-2026-11-12';
 const GAME_DATE = '2026-11-12';
@@ -219,6 +229,7 @@ function buildQuestions(): QuestionView[] {
       { homeName: match.homeName, awayName: match.awayName },
       100 + matchIndex,
       4,
+      { random: mulberry32(100 + matchIndex) },
     );
     generated.forEach((q, qIndex) => {
       const id = `q-${match.id}-${qIndex}`;
@@ -242,8 +253,7 @@ function buildQuestions(): QuestionView[] {
   return all;
 }
 
-function buildMatches(): MatchView[] {
-  const questions = buildQuestions();
+function buildMatches(questions: QuestionView[]): MatchView[] {
   return MATCHES.map((m) => {
     const own = questions.filter((q) => q.matchId === m.id);
     const regular = own.filter((q) => !q.isBonus);
@@ -314,7 +324,7 @@ export function buildDemoSnapshot(now = new Date()): SeasonSnapshot {
   const { opensAt, closesAt } = gameDayWindow(GAME_DATE);
   const players = buildPlayers();
   const questions = buildQuestions();
-  const matches = buildMatches();
+  const matches = buildMatches(questions);
   const board = generateReworkedBoard();
 
   const regular = questions.filter((q) => !q.isBonus);

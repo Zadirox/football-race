@@ -1,13 +1,15 @@
 ﻿import { describe, expect, it } from 'vitest';
 import { buildDemoSnapshot } from '@/lib/demo/snapshot';
 import { generateReworkedBoard } from '@/lib/game/board';
-import { gameDateOf, gameDayWindow } from '@/lib/time';
+import { gameDateOf, gameDayWindow, shiftGameDate } from '@/lib/time';
+import { canAnswer, dayState } from '@/lib/game/day-state';
 
 const NOW = new Date('2026-11-10T19:00:00.000Z');
 const snapshot = buildDemoSnapshot(NOW);
 
 if (!snapshot.matchday) throw new Error('демо-снимок должен содержать игровой день');
 const matchday = snapshot.matchday;
+const expectedGameDate = shiftGameDate(gameDateOf(NOW), 1);
 
 describe('демо-снимок', () => {
   it('помечен как демо и не содержит ожидающих действий', () => {
@@ -20,28 +22,30 @@ describe('демо-снимок', () => {
     expect(buildDemoSnapshot(NOW)).toEqual(snapshot);
   });
 
-  it('собирает сезон на 5 матчей Лиги наций', () => {
+  it('собирает сезон на 5 матчей Лиги наций следующего игрового дня', () => {
     expect(snapshot.season.status).toBe('active');
     expect(snapshot.matches).toHaveLength(5);
     expect(snapshot.matches.every((m) => m.leagueCode === 'UNL')).toBe(true);
     expect(snapshot.matches.every((m) => m.questionCount === 4)).toBe(true);
+    expect(matchday.gameDate).toBe(expectedGameDate);
   });
 
-  it('все матчи, включая ночной, относятся к игровому дню 12 ноября', () => {
-    expect(matchday.gameDate).toBe('2026-11-12');
+  it('все матчи, включая ночной, относятся к игровому дню снимка и ещё не начались', () => {
     for (const match of snapshot.matches) {
-      expect(gameDateOf(new Date(match.kickoffUtc))).toBe('2026-11-12');
+      expect(gameDateOf(new Date(match.kickoffUtc))).toBe(expectedGameDate);
+      expect(match.status).toBe('NS');
+      expect(Date.parse(match.kickoffUtc)).toBeGreaterThan(NOW.getTime());
     }
     expect(snapshot.matches.some((m) => new Date(m.kickoffUtc).getUTCHours() === 23)).toBe(true);
   });
 
   it('окно дня совпадает с gameDayWindow', () => {
-    const { opensAt, closesAt } = gameDayWindow('2026-11-12');
+    const { opensAt, closesAt } = gameDayWindow(expectedGameDate);
     expect(matchday.opensAt).toBe(opensAt.toISOString());
     expect(matchday.closesAt).toBe(closesAt.toISOString());
   });
 
-  it('20 обычных вопросов и 5 бонусных на точный счёт', () => {
+  it('20 обычных вопросов и 5 бонусных на точный счёт, ответы открыты', () => {
     const regular = snapshot.questions.filter((q) => !q.isBonus);
     const bonus = snapshot.questions.filter((q) => q.isBonus);
     expect(regular).toHaveLength(20);
@@ -49,6 +53,15 @@ describe('демо-снимок', () => {
     expect(matchday.qTotal).toBe(20);
     expect(bonus.every((q) => q.options.length === 26)).toBe(true);
     expect(bonus.every((q) => q.options.some((o) => o.key === 'other'))).toBe(true);
+    expect(dayState(matchday, NOW.getTime())).not.toBe('closed');
+    expect(snapshot.questions.every((q) => q.status === 'open')).toBe(true);
+    expect(snapshot.questions.every((q) => canAnswer(q, matchday, NOW.getTime()))).toBe(true);
+  });
+
+  it('среди вопросов есть новые типы по статистике', () => {
+    const prompts = snapshot.questions.map((q) => q.prompt);
+    expect(prompts.some((p) => /углов/i.test(p))).toBe(true);
+    expect(prompts.some((p) => /удален|жёлт|владен|удар/i.test(p))).toBe(true);
   });
 
   it('все варианты «моего» ответа существуют в вопросе', () => {

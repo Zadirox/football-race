@@ -2,14 +2,14 @@
  * Демо-снимок: полноценный игровой день без Supabase.
  *
  * Нужен для двух вещей:
- *  1) сайт открывается и играется до подключения БД (дедлайн 12 ноября);
+ *  1) сайт открывается и играется до подключения БД;
  *  2) визуальная проверка карты, предиктов и рейтингов на реальных объёмах.
  *
- * Данные детерминированы — одинаковый снимок на сервере и клиенте.
+ * Данные детерминированы для одного и того же `now`.
  */
 
 import { generateReworkedBoard } from '@/lib/game/board';
-import { gameDayWindow } from '@/lib/time';
+import { gameDateOf, gameDayWindow, shiftGameDate } from '@/lib/time';
 import { generateMatchQuestions, type GeneratedQuestion } from '@/lib/data/questions';
 import type {
   ActivityView,
@@ -30,8 +30,6 @@ function mulberry32(seed: number): () => number {
 }
 
 const SEASON_ID = 'demo-season-2026';
-const MATCHDAY_ID = 'demo-matchday-2026-11-12';
-const GAME_DATE = '2026-11-12';
 
 type DemoMatch = {
   id: string;
@@ -46,68 +44,28 @@ type DemoMatch = {
   minute: number | null;
 };
 
-const MATCHES: DemoMatch[] = [
-  {
-    id: 'm-1',
-    leagueCode: 'UNL',
-    leagueTitle: 'Лига наций',
-    homeName: 'Сербия',
-    awayName: 'Швейцария',
-    kickoff: '2026-11-12T17:00:00.000Z',
-    status: 'NS',
-    homeScore: null,
-    awayScore: null,
-    minute: null,
-  },
-  {
-    id: 'm-2',
-    leagueCode: 'UNL',
-    leagueTitle: 'Лига наций',
-    homeName: 'Франция',
-    awayName: 'Италия',
-    kickoff: '2026-11-12T19:45:00.000Z',
-    status: 'NS',
-    homeScore: null,
-    awayScore: null,
-    minute: null,
-  },
-  {
-    id: 'm-3',
-    leagueCode: 'UNL',
-    leagueTitle: 'Лига наций',
-    homeName: 'Испания',
-    awayName: 'Нидерланды',
-    kickoff: '2026-11-12T19:45:00.000Z',
-    status: 'NS',
-    homeScore: null,
-    awayScore: null,
-    minute: null,
-  },
-  {
-    id: 'm-4',
-    leagueCode: 'UNL',
-    leagueTitle: 'Лига наций',
-    homeName: 'Португалия',
-    awayName: 'Хорватия',
-    kickoff: '2026-11-12T21:00:00.000Z',
-    status: 'NS',
-    homeScore: null,
-    awayScore: null,
-    minute: null,
-  },
-  {
-    id: 'm-5',
-    leagueCode: 'UNL',
-    leagueTitle: 'Лига наций',
-    homeName: 'Германия',
-    awayName: 'Англия',
-    kickoff: '2026-11-12T23:00:00.000Z',
-    status: 'NS',
-    homeScore: null,
-    awayScore: null,
-    minute: null,
-  },
+const MATCH_TEMPLATES: Array<Omit<DemoMatch, 'kickoff' | 'status' | 'homeScore' | 'awayScore' | 'minute'> & { time: string }> = [
+  { id: 'm-1', leagueCode: 'UNL', leagueTitle: 'Лига наций', homeName: 'Сербия', awayName: 'Швейцария', time: '17:00:00.000Z' },
+  { id: 'm-2', leagueCode: 'UNL', leagueTitle: 'Лига наций', homeName: 'Франция', awayName: 'Италия', time: '19:45:00.000Z' },
+  { id: 'm-3', leagueCode: 'UNL', leagueTitle: 'Лига наций', homeName: 'Испания', awayName: 'Нидерланды', time: '19:45:00.000Z' },
+  { id: 'm-4', leagueCode: 'UNL', leagueTitle: 'Лига наций', homeName: 'Португалия', awayName: 'Хорватия', time: '21:00:00.000Z' },
+  { id: 'm-5', leagueCode: 'UNL', leagueTitle: 'Лига наций', homeName: 'Германия', awayName: 'Англия', time: '23:00:00.000Z' },
 ];
+
+function demoMatches(gameDate: string): DemoMatch[] {
+  return MATCH_TEMPLATES.map((m) => ({
+    id: m.id,
+    leagueCode: m.leagueCode,
+    leagueTitle: m.leagueTitle,
+    homeName: m.homeName,
+    awayName: m.awayName,
+    kickoff: `${gameDate}T${m.time}`,
+    status: 'NS',
+    homeScore: null,
+    awayScore: null,
+    minute: null,
+  }));
+}
 
 type DemoPlayer = {
   id: string;
@@ -220,11 +178,11 @@ function demoChoice(question: GeneratedQuestion, index: number): string | null {
   return null;
 }
 
-function buildQuestions(): QuestionView[] {
+function buildQuestions(matches: DemoMatch[]): QuestionView[] {
   const all: QuestionView[] = [];
   let index = 0;
 
-  MATCHES.forEach((match, matchIndex) => {
+  matches.forEach((match, matchIndex) => {
     const generated = generateMatchQuestions(
       { homeName: match.homeName, awayName: match.awayName },
       100 + matchIndex,
@@ -253,8 +211,8 @@ function buildQuestions(): QuestionView[] {
   return all;
 }
 
-function buildMatches(questions: QuestionView[]): MatchView[] {
-  return MATCHES.map((m) => {
+function buildMatches(matches: DemoMatch[], questions: QuestionView[]): MatchView[] {
+  return matches.map((m) => {
     const own = questions.filter((q) => q.matchId === m.id);
     const regular = own.filter((q) => !q.isBonus);
     return {
@@ -299,8 +257,8 @@ function buildPlayers(): PlayerView[] {
   }));
 }
 
-function buildActivity(): ActivityView[] {
-  const now = Date.parse('2026-11-10T19:42:00.000Z');
+function buildActivity(now: Date): ActivityView[] {
+  const base = now.getTime();
   const items: Array<[string, ActivityView['kind'], number]> = [
     ['Лиза отвечает 12-й день подряд и держит золото', 'reward', 2],
     ['Марк бросает серебряный кубик: 4', 'roll', 6],
@@ -308,7 +266,7 @@ function buildActivity(): ActivityView[] {
     ['Аня: Контратака, плюс три клетки', 'positive', 14],
     ['Дима получает жёлтую карточку', 'negative', 21],
     ['Щитки спасают Лизу от скользкого газона', 'positive', 34],
-    ['Игровой день 12 ноября собран: 5 матчей, 20 вопросов', 'system', 58],
+    ['Игровой день собран: 5 матчей, 20 вопросов', 'system', 58],
     ['Кирилл: «Пока мимо». Бывает', 'neutral', 76],
   ];
 
@@ -316,15 +274,18 @@ function buildActivity(): ActivityView[] {
     id: `a-${i}`,
     kind,
     message,
-    createdAt: new Date(now - minutesAgo * 60_000).toISOString(),
+    createdAt: new Date(base - minutesAgo * 60_000).toISOString(),
   }));
 }
 
 export function buildDemoSnapshot(now = new Date()): SeasonSnapshot {
-  const { opensAt, closesAt } = gameDayWindow(GAME_DATE);
+  const gameDate = shiftGameDate(gameDateOf(now), 1);
+  const matchdayId = `demo-matchday-${gameDate}`;
+  const demoMatchList = demoMatches(gameDate);
+  const { opensAt, closesAt } = gameDayWindow(gameDate);
   const players = buildPlayers();
-  const questions = buildQuestions();
-  const matches = buildMatches(questions);
+  const questions = buildQuestions(demoMatchList);
+  const matches = buildMatches(demoMatchList, questions);
   const board = generateReworkedBoard();
 
   const regular = questions.filter((q) => !q.isBonus);
@@ -343,14 +304,14 @@ export function buildDemoSnapshot(now = new Date()): SeasonSnapshot {
       slug: 'winter-2026',
       title: 'Зимний сезон 2026',
       status: 'active',
-      startsOn: '2026-11-12',
+      startsOn: gameDate,
       endsOn: '2027-03-01',
     },
     players,
     cells,
     matchday: {
-      id: MATCHDAY_ID,
-      gameDate: GAME_DATE,
+      id: matchdayId,
+      gameDate,
       opensAt: opensAt.toISOString(),
       closesAt: closesAt.toISOString(),
       status: 'scheduled',
@@ -358,7 +319,7 @@ export function buildDemoSnapshot(now = new Date()): SeasonSnapshot {
     },
     matches,
     questions,
-    activity: buildActivity(),
+    activity: buildActivity(now),
     ratingsSeed: players.map((p) => ({
       profileId: p.profileId,
       nickname: p.nickname,

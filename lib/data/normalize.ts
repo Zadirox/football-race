@@ -20,7 +20,7 @@ export type ProviderMatch = {
 };
 
 export type NormalizedMatch = {
-  provider: 'football-data';
+  provider: 'football-data' | 'sstats';
   externalId: string;
   leagueCode: string;
   leagueTitle: string;
@@ -35,7 +35,7 @@ export type NormalizedMatch = {
   awayScore: number | null;
   htHomeScore: number | null;
   htAwayScore: number | null;
-  raw: ProviderMatch;
+  raw: unknown;
 };
 
 const STATUS_MAP: Record<string, NormalizedMatch['status']> = {

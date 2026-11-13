@@ -12,6 +12,7 @@ export type ServerEnv = {
   rapidApiKey: string | null;
   rapidApiHost: string | null;
   cronSecret: string | null;
+  sstatsApiKey: string | null;
 };
 
 function read(name: string): string | null {
@@ -29,6 +30,7 @@ export function serverEnv(): ServerEnv {
     rapidApiKey: read('RAPIDAPI_KEY'),
     rapidApiHost: read('RAPIDAPI_HOST') ?? read('RAPIDAPI_FOOTBALL_HOST') ?? 'football-leagues1.p.rapidapi.com',
     cronSecret: read('CRON_SECRET'),
+    sstatsApiKey: read('SSTATS_API_KEY'),
   };
 }
 

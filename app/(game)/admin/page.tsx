@@ -28,7 +28,8 @@ export default async function AdminPage() {
     ['SUPABASE_URL', env.supabaseUrl !== null, 'адрес проекта'],
     ['SUPABASE_ANON_KEY', env.supabaseAnonKey !== null, 'клиентский ключ'],
     ['SUPABASE_SERVICE_ROLE_KEY', env.supabaseServiceKey !== null, 'серверный ключ для cron'],
-    ['FOOTBALL_DATA_TOKEN', env.footballDataToken !== null, 'синк матчей'],
+    ['FOOTBALL_DATA_TOKEN', env.footballDataToken !== null, 'синк матчей (основной источник)'],
+    ['SSTATS_API_KEY', env.sstatsApiKey !== null, 'доп. источник матчей (необязательно)'],
     ['RAPIDAPI_KEY', env.rapidApiKey !== null, 'логотипы и обложки'],
     ['CRON_SECRET', env.cronSecret !== null, 'cron: синк, закрытие дня, ожидания'],
   ];

@@ -52,3 +52,22 @@ export const roleChangeSchema = z.object({
 });
 
 export type RoleChangeInput = z.infer<typeof roleChangeSchema>;
+
+const gameDateString = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Формат даты: ГГГГ-ММ-ДД');
+
+export const syncFixturesSchema = z
+  .object({
+    from: gameDateString.optional(),
+    to: gameDateString.optional(),
+  })
+  .optional()
+  .refine((value) => {
+    if (!value) return true;
+    const hasFrom = Boolean(value.from);
+    const hasTo = Boolean(value.to);
+    if (hasFrom !== hasTo) return false;
+    if (value.from && value.to) return value.from <= value.to;
+    return true;
+  }, { message: 'Укажи обе даты периода, и начало не позже конца' });
+
+export type SyncFixturesInput = z.infer<typeof syncFixturesSchema>;

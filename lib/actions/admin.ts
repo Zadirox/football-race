@@ -14,6 +14,7 @@ import {
   matchUpdateSchema,
   pendingCloseSchema,
   roleChangeSchema,
+  syncFixturesSchema,
 } from '@/lib/actions/admin-schemas';
 import { getViewer, type Viewer } from '@/lib/auth/session';
 import { hasDatabase } from '@/lib/env';
@@ -59,13 +60,18 @@ function revalidateAdmin(): void {
   revalidatePath('/admin');
 }
 
-/** Синк фикстур: один запрос к провайдеру на прогон. */
-export async function runSyncAction(): Promise<AdminRunResult> {
+/** Синк фикстур: обычное окно или разовый период, если указаны даты. */
+export async function runSyncAction(input?: unknown): Promise<AdminRunResult> {
   if (!hasDatabase()) return demoOnly();
 
   try {
     await requireAdmin();
-    const report = await syncFixtures();
+    const parsed = syncFixturesSchema.safeParse(input);
+    if (!parsed.success) return invalidInput(parsed.error) ?? { ok: false, message: 'Проверь даты периода' };
+
+    const window =
+      parsed.data?.from && parsed.data?.to ? { from: parsed.data.from, to: parsed.data.to } : undefined;
+    const report = await syncFixtures(window ? { window } : undefined);
     revalidateAdmin();
 
     if (report.reason) {
@@ -75,9 +81,10 @@ export async function runSyncAction(): Promise<AdminRunResult> {
       };
     }
 
+    const period = window ? ` за ${window.from}–${window.to}` : '';
     return {
       ok: true,
-      message: `Синк: получено ${report.fetched}, в игре ${report.kept}, сохранено матчей ${report.matches}, дней ${report.matchdays} за ${report.durationMs} мс`,
+      message: `Синк${period}: получено ${report.fetched}, в игре ${report.kept}, сохранено матчей ${report.matches}, дней ${report.matchdays}, вопросов ${report.questions} за ${report.durationMs} мс`,
     };
   } catch (error) {
     return toResult(error);

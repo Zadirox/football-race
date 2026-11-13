@@ -231,6 +231,29 @@ export const MECHANICS: readonly Mechanic[] = [
     application: 'other',
     core: false,
   },
+  {
+    code: '19',
+    name: 'Пак на выбор',
+    kind: 'instant',
+    polarity: 'positive',
+    tagline: 'клубный или сборный пак',
+    description:
+      'Награда за продвижение: при попадании на эту клетку положен пак на выбор — клубный или сборный. Выдача паков появится чуть позже, а сама клетка уже отмечена на карте.',
+    application: 'auto',
+    core: false,
+    note: 'Награда будет выдана, когда откроются паки',
+  },
+  {
+    code: '20',
+    name: 'Скоро: новая механика',
+    kind: 'instant',
+    polarity: 'neutral',
+    tagline: 'новый эффект появится позже',
+    description:
+      'Здесь появится новая механика. Пока это место зарезервировано — попадание на клетку ничего не меняет.',
+    application: 'auto',
+    core: false,
+  },
 ] as const;
 
 const BY_CODE = new Map(MECHANICS.map((m) => [m.code, m]));

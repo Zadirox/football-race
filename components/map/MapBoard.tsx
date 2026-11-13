@@ -30,6 +30,7 @@ const PATH_D = buildPathD();
 
 function polarityOf(code: string | null): string {
   if (!code) return 'plain';
+  if (code === 'secret') return 'neutral';
   return mechanic(code)?.polarity ?? 'neutral';
 }
 
@@ -219,7 +220,8 @@ export function MapBoard({
               const polarity = polarityOf(cell.mechanicCode);
               const isCurrent = players.some((p) => p.position === cell.idx && p.isMe);
               const flavor = flavors.get(cell.idx);
-              const eventName = mechanic(cell.mechanicCode)?.name;
+              const eventName =
+                cell.mechanicCode === 'secret' ? 'секрет' : mechanic(cell.mechanicCode)?.name;
               const label =
                 cell.kind === 'event'
                   ? `Клетка ${cell.idx}, ${eventName ?? 'событие'}`

@@ -18,7 +18,7 @@
 import { createHash } from 'node:crypto';
 import { existsSync, readFileSync } from 'node:fs';
 import postgres from 'postgres';
-import { generateBoard } from '../lib/game/board';
+import { generateReworkedBoard } from '../lib/game/board';
 
 function loadEnvFiles(): void {
   for (const file of ['.env.local', '.env']) {
@@ -83,7 +83,7 @@ async function main(): Promise<void> {
     throw new Error('BOOTSTRAP_BOARD_SEED должен быть целым числом.');
   }
 
-  const board = generateBoard(boardSeed);
+  const board = generateReworkedBoard();
   const sql = postgres(databaseUrl, { max: 1, prepare: false, onnotice: () => {} });
 
   try {

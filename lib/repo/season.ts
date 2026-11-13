@@ -37,7 +37,17 @@ import {
   type SeasonRow,
 } from '@/lib/repo/mappers';
 import { gameDateOf } from '@/lib/time';
-import type { SeasonSnapshot } from '@/lib/types';
+import type { CellView, SeasonSnapshot } from '@/lib/types';
+
+function maskSecretCells(cells: CellView[], players: { position: number }[]): CellView[] {
+  const revealed = players.some((p) => p.position >= 30);
+  if (revealed) return cells;
+  return cells.map((cell) =>
+    cell.idx >= 41 && cell.idx <= 80
+      ? { ...cell, kind: 'event', mechanicCode: 'secret' }
+      : cell,
+  );
+}
 
 export type SeasonViewer = Awaited<ReturnType<typeof getViewer>>;
 
@@ -286,11 +296,12 @@ async function loadFromDatabase(viewer: SeasonViewer): Promise<SeasonSnapshot> {
     : [[], [], [], []];
 
   const players = toPlayerViews(playerRows, effectRows, viewerId);
+  const cells = maskSecretCells(toCellViews(cellRows), players);
 
   return {
     season: toSeasonView(season),
     players,
-    cells: toCellViews(cellRows),
+    cells,
     matchday: toMatchdayView(matchday),
     matches: matchRows.map(toMatchView),
     questions: questionRows.map(toQuestionView),

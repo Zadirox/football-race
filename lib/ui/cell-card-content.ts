@@ -65,6 +65,16 @@ export function cellCardContent(
   }
 
   if (cell.kind === 'event') {
+    if (cell.mechanicCode === 'secret') {
+      return {
+        badge: 'Секрет',
+        tone: 'neutral',
+        title: 'Секрет',
+        line: 'Эта клетка откроется позже. Пока её эффект скрыт.',
+        note: 'Откроется для всех, когда кто-нибудь дойдёт до 30-й клетки',
+        mechanicCode: null,
+      };
+    }
     const entry = mechanic(cell.mechanicCode);
     if (!entry) {
       return {

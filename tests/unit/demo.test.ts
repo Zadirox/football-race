@@ -1,6 +1,6 @@
 ﻿import { describe, expect, it } from 'vitest';
 import { buildDemoSnapshot } from '@/lib/demo/snapshot';
-import { generateBoard } from '@/lib/game/board';
+import { generateReworkedBoard } from '@/lib/game/board';
 import { gameDateOf, gameDayWindow } from '@/lib/time';
 
 const NOW = new Date('2026-11-10T19:00:00.000Z');
@@ -68,8 +68,8 @@ describe('демо-снимок', () => {
     }
   });
 
-  it('возвращает 80 клеток того же сида, что и движок', () => {
-    const board = generateBoard(20261112);
+  it('возвращает 80 клеток переработанной раскладки', () => {
+    const board = generateReworkedBoard();
     expect(snapshot.cells).toEqual(
       board.cells.map((c) => ({ idx: c.idx, kind: c.kind, mechanicCode: c.mechanicCode })),
     );

@@ -8,7 +8,7 @@
  * Данные детерминированы — одинаковый снимок на сервере и клиенте.
  */
 
-import { generateBoard } from '@/lib/game/board';
+import { generateReworkedBoard } from '@/lib/game/board';
 import { gameDayWindow } from '@/lib/time';
 import { generateMatchQuestions, type GeneratedQuestion } from '@/lib/data/questions';
 import type {
@@ -315,9 +315,17 @@ export function buildDemoSnapshot(now = new Date()): SeasonSnapshot {
   const players = buildPlayers();
   const questions = buildQuestions();
   const matches = buildMatches();
-  const board = generateBoard(20261112);
+  const board = generateReworkedBoard();
 
   const regular = questions.filter((q) => !q.isBonus);
+
+  const rawCells = board.cells.map((c) => ({ idx: c.idx, kind: c.kind, mechanicCode: c.mechanicCode }));
+  const secretRevealed = players.some((p) => p.position >= 30);
+  const cells = secretRevealed
+    ? rawCells
+    : rawCells.map((cell) =>
+        cell.idx >= 41 && cell.idx <= 80 ? { ...cell, kind: 'event' as const, mechanicCode: 'secret' } : cell,
+      );
 
   return {
     season: {
@@ -329,7 +337,7 @@ export function buildDemoSnapshot(now = new Date()): SeasonSnapshot {
       endsOn: '2027-03-01',
     },
     players,
-    cells: board.cells.map((c) => ({ idx: c.idx, kind: c.kind, mechanicCode: c.mechanicCode })),
+    cells,
     matchday: {
       id: MATCHDAY_ID,
       gameDate: GAME_DATE,

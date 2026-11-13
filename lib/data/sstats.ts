@@ -7,6 +7,7 @@
  */
 
 import { AppError } from '@/lib/errors';
+import { teamNameRu } from './team-names';
 import type { NormalizedMatch } from './normalize';
 
 const BASE_URL = 'https://api.sstats.net';
@@ -106,8 +107,8 @@ export function normalizeSstatsUnlGame(game: SstatsGame): NormalizedMatch | null
 
   const homeTeam: any = game.homeTeam as any;
   const awayTeam: any = game.awayTeam as any;
-  const homeName = cleanName(homeTeam?.shortName ?? homeTeam?.name ?? homeTeam, 'Хозяева');
-  const awayName = cleanName(awayTeam?.shortName ?? awayTeam?.name ?? awayTeam, 'Гости');
+  const homeName = teamNameRu(cleanName(homeTeam?.shortName ?? homeTeam?.name ?? homeTeam, 'Хозяева'));
+  const awayName = teamNameRu(cleanName(awayTeam?.shortName ?? awayTeam?.name ?? awayTeam, 'Гости'));
   if (!homeName || !awayName) return null;
 
   const status = mapSstatsStatus(toText((game as any).statusName ?? (game as any).status) ?? (game as any).status);

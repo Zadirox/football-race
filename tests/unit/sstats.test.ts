@@ -35,8 +35,8 @@ describe('normalizeSstatsUnlGame', () => {
     expect(match?.provider).toBe('sstats');
     expect(match?.externalId).toBe('123');
     expect(match?.leagueCode).toBe('UNL');
-    expect(match?.homeName).toBe('Portugal');
-    expect(match?.awayName).toBe('Spain');
+    expect(match?.homeName).toBe('Португалия');
+    expect(match?.awayName).toBe('Испания');
     expect(match?.status).toBe('NS');
     expect(match?.kickoffUtc.toISOString()).toBe('2026-11-12T19:45:00.000Z');
   });
@@ -72,8 +72,8 @@ describe('normalizeSstatsUnlGame', () => {
     } as any);
 
     expect(match).not.toBeNull();
-    expect(match?.homeName).toBe('Portugal');
-    expect(match?.awayName).toBe('Spain');
+    expect(match?.homeName).toBe('Португалия');
+    expect(match?.awayName).toBe('Испания');
     expect(match?.homeScore).toBe(1);
   });
 });

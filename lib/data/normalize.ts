@@ -4,6 +4,7 @@
  */
 
 import { isAllowedMatch, leagueByProviderCode } from './leagues';
+import { teamNameRu } from './team-names';
 
 export type ProviderMatch = {
   id: number | string;
@@ -64,6 +65,13 @@ function cleanName(name: string | null | undefined, fallback: string): string {
 /** Убираем суффиксы «FC», «CF» из короткого имени — так аккуратнее в карточке. */
 export function displayTeamName(raw: { name?: string | null; shortName?: string | null }, fallback: string): string {
   const short = (raw.shortName ?? '').trim();
+  if (short.length > 0) return teamNameRu(short);
+  const base = cleanName(raw.name, fallback).replace(/\s+(FC|CF|AFC|SC)$/i, '');
+  return teamNameRu(base);
+}
+
+function originalTeamName(raw: { name?: string | null; shortName?: string | null }, fallback: string): string {
+  const short = (raw.shortName ?? '').trim();
   if (short.length > 0) return short;
   return cleanName(raw.name, fallback).replace(/\s+(FC|CF|AFC|SC)$/i, '');
 }
@@ -73,10 +81,13 @@ export function normalizeMatch(raw: ProviderMatch): NormalizedMatch | null {
   const league = leagueByProviderCode(competitionCode);
   if (!league) return null;
 
-  const homeName = displayTeamName(raw.homeTeam, 'Хозяева');
-  const awayName = displayTeamName(raw.awayTeam, 'Гости');
+  const homeOriginal = originalTeamName(raw.homeTeam, 'Хозяева');
+  const awayOriginal = originalTeamName(raw.awayTeam, 'Гости');
+  const homeName = teamNameRu(homeOriginal);
+  const awayName = teamNameRu(awayOriginal);
 
-  if (!isAllowedMatch({ competitionCode, homeName, awayName })) return null;
+  // Фильтр товарищеских проверяем по исходным именам (список топ-сборных на английском).
+  if (!isAllowedMatch({ competitionCode, homeName: homeOriginal, awayName: awayOriginal })) return null;
 
   const kickoff = new Date(raw.utcDate);
   if (Number.isNaN(kickoff.getTime())) return null;

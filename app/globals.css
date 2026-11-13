@@ -1863,6 +1863,17 @@ a {
   overflow-wrap: anywhere;
 }
 
+.team__name--abbr {
+  display: inline-block;
+  font-size: 14px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  line-height: 1;
+  white-space: nowrap;
+  overflow: visible;
+  text-overflow: clip;
+}
+
 .score {
   font-family: var(--font-mono);
   font-size: 22px;

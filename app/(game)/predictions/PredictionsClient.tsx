@@ -1,9 +1,11 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useTransition } from 'react';
 import { Panel, EmptyState, Notice } from '@/components/ui/Panel';
 import { participationOk, PARTICIPATION_THRESHOLD_PERCENT } from '@/lib/game/dice';
 import { canAnswer, dayState, type MatchdayView } from '@/lib/game/day-state';
+import { submitAnswerAction } from '@/lib/actions/game';
+import { teamDisplay } from '@/lib/data/team-names';
 import type { MatchView, QuestionView, SeasonSnapshot } from '@/lib/types';
 
 function kickoffMsk(iso: string): string {
@@ -31,6 +33,9 @@ export function PredictionsClient({ snapshot }: { snapshot: SeasonSnapshot }) {
     }
     return initial;
   });
+  const [saveError, setSaveError] = useState<string | null>(null);
+  const [savingId, setSavingId] = useState<string | null>(null);
+  const [, startTransition] = useTransition();
   const [league, setLeague] = useState<string | null>(null);
 
   const matchesById = useMemo(() => new Map(matches.map((m) => [m.id, m])), [matches]);
@@ -47,13 +52,36 @@ export function PredictionsClient({ snapshot }: { snapshot: SeasonSnapshot }) {
 
   const pick = (questionId: string, key: string) => {
     if (!canPlay) return;
-    setChoices((prev) => ({ ...prev, [questionId]: key }));
+    const prev = choices[questionId];
+    setChoices((state) => ({ ...state, [questionId]: key }));
+    setSaveError(null);
+
+    // В демо без базы ответ остаётся только в этой сессии браузера.
+    if (demo) return;
+
+    setSavingId(questionId);
+    startTransition(async () => {
+      const result = await submitAnswerAction({ questionId, choice: key });
+      setSavingId(null);
+      if (!result.ok) {
+        // Если сохранить не удалось (например вопрос уже закрыт), возвращаем прежний выбор.
+        setChoices((state) => {
+          const next = { ...state };
+          if (prev) next[questionId] = prev;
+          else delete next[questionId];
+          return next;
+        });
+        setSaveError(result.message || 'Не удалось сохранить ответ. Попробуй ещё раз.');
+      }
+    });
   };
 
   const answersChip = !canPlay ? (
     <span className="chip chip--muted">только просмотр</span>
   ) : dayClosed ? (
     <span className="chip chip--trap">приём закрыт</span>
+  ) : savingId ? (
+    <span className="chip chip--info">сохраняем…</span>
   ) : phase === 'upcoming' ? (
     <span className="chip chip--info">до старта матчей</span>
   ) : (
@@ -76,6 +104,12 @@ export function PredictionsClient({ snapshot }: { snapshot: SeasonSnapshot }) {
               ? 'Зрительский режим: вопросы видны, но ответы принимает только участник сезона.'
               : 'Ты не вошёл в сезон: вопросы видны всем, ответы — только участникам. Вход — кнопкой «Войти» в шапке.'}
           </Notice>
+        </div>
+      )}
+
+      {saveError && (
+        <div style={{ marginBottom: 16 }}>
+          <Notice>{saveError}</Notice>
         </div>
       )}
 
@@ -193,11 +227,14 @@ function MatchQuestions({
   const answered = regular.filter((q) => choices[q.id]).length;
   const allLocked = questions.length > 0 && questions.every((q) => !canAnswer(q, matchday, nowMs));
 
+  const home = teamDisplay(match.homeName);
+  const away = teamDisplay(match.awayName);
+
   return (
     <section className="section" style={{ marginBottom: 0 }}>
       <div className="section__title" style={{ textTransform: 'none', letterSpacing: '0.02em', fontSize: 14, color: 'var(--snow)' }}>
-        <span>
-          {match.homeName} — {match.awayName}
+        <span title={`${home.name} — ${away.name}`}>
+          {home.name} — {away.name}
         </span>
         <span className="chip chip--muted" style={{ textTransform: 'uppercase' }}>
           {match.leagueTitle} · {kickoffMsk(match.kickoffUtc)}

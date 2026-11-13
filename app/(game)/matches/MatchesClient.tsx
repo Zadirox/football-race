@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Panel, EmptyState, Notice } from '@/components/ui/Panel';
+import { teamDisplay } from '@/lib/data/team-names';
 import type { MatchView } from '@/lib/types';
 
 const STATUS_LABEL: Record<MatchView['status'], string> = {
@@ -87,6 +88,8 @@ export function MatchesClient({ matches }: { matches: MatchView[] }) {
           {visible.map((match) => {
             const finished = match.status === 'FT';
             const live = match.status === 'LIVE' || match.status === 'HT';
+            const home = teamDisplay(match.homeName);
+            const away = teamDisplay(match.awayName);
             return (
               <article key={match.id} className="match-card">
                 <div className="match-card__top">
@@ -96,8 +99,10 @@ export function MatchesClient({ matches }: { matches: MatchView[] }) {
 
                 <div className="match-card__teams">
                   <div className="team">
-                    <Crest name={match.homeName} url={match.homeLogo} />
-                    <span className="team__name">{match.homeName}</span>
+                    <Crest name={home.name} url={match.homeLogo} />
+                    <span className="team__name team__name--abbr" title={home.name} aria-label={home.name}>
+                      {home.short}
+                    </span>
                   </div>
                   <div className={live ? 'score score--live' : 'score'}>
                     {match.homeScore !== null && match.awayScore !== null
@@ -108,8 +113,10 @@ export function MatchesClient({ matches }: { matches: MatchView[] }) {
                     </span>
                   </div>
                   <div className="team team--away">
-                    <Crest name={match.awayName} url={match.awayLogo} />
-                    <span className="team__name">{match.awayName}</span>
+                    <Crest name={away.name} url={match.awayLogo} />
+                    <span className="team__name team__name--abbr" title={away.name} aria-label={away.name}>
+                      {away.short}
+                    </span>
                   </div>
                 </div>
 

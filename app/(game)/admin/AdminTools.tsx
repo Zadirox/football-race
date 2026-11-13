@@ -3,6 +3,7 @@
 import { useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { Notice, SectionTitle } from '@/components/ui/Panel';
+import { teamDisplay } from '@/lib/data/team-names';
 import {
   changeRoleAction,
   forceClosePendingAction,
@@ -151,11 +152,15 @@ export function AdminTools({ enabled, players, matches, pending }: ToolsProps) {
               onChange={(event) => pickMatch(event.target.value)}
             >
               {matchList.length === 0 && <option value="">матчей нет</option>}
-              {matchList.map((match) => (
-                <option key={match.id} value={match.id}>
-                  {match.homeName} — {match.awayName}
-                </option>
-              ))}
+              {matchList.map((match) => {
+                const home = teamDisplay(match.homeName);
+                const away = teamDisplay(match.awayName);
+                return (
+                  <option key={match.id} value={match.id}>
+                    {home.name} — {away.name}
+                  </option>
+                );
+              })}
             </select>
           </div>
 

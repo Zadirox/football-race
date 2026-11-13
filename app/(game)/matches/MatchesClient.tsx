@@ -30,10 +30,14 @@ function Crest({ name, url }: { name: string; url: string | null }) {
   if (url) {
     // Логотипы провайдера — внешние; приватный проект, поэтому без оптимизатора Next.
     // eslint-disable-next-line @next/next/no-img-element
-    return <img className="team__crest" src={url} alt="" loading="lazy" />;
+    return <img className="team__crest" src={url} alt="" loading="lazy" title={name} />;
   }
   return (
-    <span className="team__crest" style={{ display: 'grid', placeItems: 'center', fontSize: 12, fontWeight: 800 }}>
+    <span
+      className="team__crest"
+      title={name}
+      style={{ display: 'grid', placeItems: 'center', fontSize: 12, fontWeight: 800 }}
+    >
       {name.slice(0, 2).toUpperCase()}
     </span>
   );
@@ -98,21 +102,33 @@ export function MatchesClient({ matches }: { matches: MatchView[] }) {
                 </div>
 
                 <div className="match-card__teams">
-                  <div className="team">
+                  <div className="team" title={home.name}>
                     <Crest name={home.name} url={match.homeLogo} />
                     <span className="team__name team__name--abbr" title={home.name} aria-label={home.name}>
                       {home.short}
                     </span>
                   </div>
                   <div className={live ? 'score score--live' : 'score'}>
-                    {match.homeScore !== null && match.awayScore !== null
-                      ? `${match.homeScore} : ${match.awayScore}`
-                      : '— : —'}
+                    <span className="score__line">
+                      {match.homeScore !== null && match.awayScore !== null ? (
+                        <>
+                          <span>{match.homeScore}</span>
+                          <span className="score__sep">:</span>
+                          <span>{match.awayScore}</span>
+                        </>
+                      ) : (
+                        <>
+                          <span>—</span>
+                          <span className="score__sep">:</span>
+                          <span>—</span>
+                        </>
+                      )}
+                    </span>
                     <span className="score__sub">
                       {match.minute !== null ? `${match.minute}′` : kickoffMsk(match.kickoffUtc)}
                     </span>
                   </div>
-                  <div className="team team--away">
+                  <div className="team team--away" title={away.name}>
                     <Crest name={away.name} url={match.awayLogo} />
                     <span className="team__name team__name--abbr" title={away.name} aria-label={away.name}>
                       {away.short}

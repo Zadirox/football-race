@@ -37,14 +37,14 @@ function remainingLabel(closesAt: string | null): string {
   if (!closesAt) return 'игровой день ещё не открыт';
   const diff = Date.parse(closesAt) - Date.now();
   if (Number.isNaN(diff)) return '—';
-  if (diff <= 0) return 'приём ответов закрыт';
+  if (diff <= 0) return 'игровой день закончился';
   const total = Math.floor(diff / 1000);
   const days = Math.floor(total / 86400);
   const hours = Math.floor((total % 86400) / 3600);
   const minutes = Math.floor((total % 3600) / 60);
   const seconds = total % 60;
-  if (days > 0) return `до конца приёма: ${days} д ${pad(hours)}:${pad(minutes)}`;
-  return `до конца приёма: ${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
+  if (days > 0) return `до конца игрового дня: ${days} д ${pad(hours)}:${pad(minutes)}`;
+  return `до конца игрового дня: ${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
 }
 
 export function Header({ me, closesAt, demo }: HeaderProps) {
@@ -87,10 +87,20 @@ export function Header({ me, closesAt, demo }: HeaderProps) {
         title={active ? 'Закрыть' : item.label}
         onClick={(event) => {
           play('click');
-          if (active) {
-            event.preventDefault();
-            closePanel();
+          if (!active) return;
+
+          event.preventDefault();
+          const holder = document.querySelector<HTMLElement>('.panel-holder');
+          const closing = holder?.classList.contains('panel-holder--closing');
+          // Во время закрытия игнорируем повторные клики, чтобы не спорить с анимацией.
+          if (closing) return;
+
+          // Если вкладка активна по адресу, но панель не найдена, открываем её заново.
+          if (!holder) {
+            router.push(item.href);
+            return;
           }
+          closePanel();
         }}
       >
         <span className="tab__icon" aria-hidden="true">{item.icon}</span>

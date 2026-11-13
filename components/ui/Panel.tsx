@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useCallback, type ReactNode } from 'react';
+import { useState, useCallback, useEffect, useRef, type ReactNode } from 'react';
 import { useRouter } from 'next/navigation';
 import { PanelCloseButton } from './PanelCloseButton';
 
@@ -22,14 +22,27 @@ type PanelProps = {
 export function Panel({ title, subtitle, actions, children, size = 'default', hug = false }: PanelProps) {
   const router = useRouter();
   const [closing, setClosing] = useState(false);
+  const timerRef = useRef<number | null>(null);
+  const closingRef = useRef(false);
+
+  useEffect(() => {
+    return () => {
+      if (timerRef.current !== null) {
+        window.clearTimeout(timerRef.current);
+        timerRef.current = null;
+      }
+    };
+  }, []);
 
   const handleClose = useCallback(() => {
-    if (closing) return;
+    if (closingRef.current) return;
+    closingRef.current = true;
     setClosing(true);
-    window.setTimeout(() => {
+    timerRef.current = window.setTimeout(() => {
+      timerRef.current = null;
       router.push('/');
     }, 170);
-  }, [closing, router]);
+  }, [router]);
 
   const sizeClass = size === 'wide' ? 'panel--wide' : size === 'narrow' ? 'panel--narrow' : '';
   const holderClass = `panel-holder page-enter${hug ? ' panel-holder--hug' : ''}${closing ? ' panel-holder--closing' : ''}`;

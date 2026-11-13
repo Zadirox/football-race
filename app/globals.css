@@ -1880,6 +1880,27 @@ a {
   font-weight: 800;
   letter-spacing: 0.06em;
   white-space: nowrap;
+  text-align: center;
+  min-width: 64px;
+  justify-self: center;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.score__line {
+  display: inline-flex;
+  align-items: baseline;
+  justify-content: center;
+  gap: 0;
+  font-variant-numeric: tabular-nums;
+  line-height: 1;
+}
+
+.score__sep {
+  padding: 0 4px;
+  opacity: 0.9;
 }
 
 .score--live {
@@ -1894,6 +1915,7 @@ a {
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: var(--text-faint);
+  line-height: 1.2;
 }
 
 /* предикты */

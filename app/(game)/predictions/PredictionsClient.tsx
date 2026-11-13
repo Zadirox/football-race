@@ -86,14 +86,14 @@ export function PredictionsClient({ snapshot }: { snapshot: SeasonSnapshot }) {
     <span className="chip chip--info">до старта матчей</span>
   ) : (
     <span className={participationOk(answered, regular.length) ? 'chip chip--positive' : 'chip'}>
-      {answered} из {regular.length} обычных
+      отвечено {answered} из {regular.length}
     </span>
   );
 
   return (
     <Panel
-      title="Предикты"
-      subtitle={`Вопросы без букмекерской линии: ответ считается из финального счёта. Порог участия — ${PARTICIPATION_THRESHOLD_PERCENT}% вопросов дня.`}
+      title="Прогнозы"
+      subtitle="Отвечай на вопросы по матчам дня. Ответы проверяются автоматически по итогам игр. Чтобы получить кубик за день, нужно ответить минимум на 80% основных вопросов."
       size="wide"
       actions={answersChip}
     >
@@ -142,28 +142,32 @@ export function PredictionsClient({ snapshot }: { snapshot: SeasonSnapshot }) {
 
       <div className="stats" style={{ marginBottom: 18 }}>
         <div className="stat">
-          <div className="stat__label">Участие</div>
+          <div className="stat__label">Твой прогресс</div>
           <div className="stat__value stat__value--lime">{Math.round(participation * 100)}%</div>
+          <div className="card__meta">отвечено {answered} из {regular.length} основных</div>
         </div>
         <div className="stat">
-          <div className="stat__label">Вопросов дня</div>
+          <div className="stat__label">Основных вопросов</div>
           <div className="stat__value">{regular.length}</div>
         </div>
         <div className="stat">
-          <div className="stat__label">Бонусных</div>
+          <div className="stat__label">Бонусных вопросов</div>
           <div className="stat__value">{questions.filter((q) => q.isBonus).length}</div>
         </div>
         <div className="stat">
-          <div className="stat__label">Кубик за день</div>
+          <div className="stat__label">Кубик за ответы</div>
           <div className="stat__value" style={{ fontSize: 15 }}>
             {!canPlay
               ? 'недоступен'
               : dayClosed
-                ? 'закрыт'
+                ? 'день завершён'
                 : participationOk(answered, regular.length)
-                  ? 'будет'
-                  : `нужно ${Math.ceil(regular.length * 0.8)} ответов`}
+                  ? 'получишь'
+                  : `осталось ответить на ${Math.max(0, Math.ceil(regular.length * 0.8) - answered)}`}
           </div>
+          {!dayClosed && canPlay && !participationOk(answered, regular.length) && (
+            <div className="card__meta">нужно не меньше 80% основных вопросов</div>
+          )}
         </div>
       </div>
 
@@ -230,6 +234,11 @@ function MatchQuestions({
   const home = teamDisplay(match.homeName);
   const away = teamDisplay(match.awayName);
 
+  const localizeText = (text: string): string =>
+    text
+      .replaceAll(match.homeName, home.name)
+      .replaceAll(match.awayName, away.name);
+
   return (
     <section className="section" style={{ marginBottom: 0 }}>
       <div className="section__title" style={{ textTransform: 'none', letterSpacing: '0.02em', fontSize: 14, color: 'var(--snow)' }}>
@@ -237,7 +246,7 @@ function MatchQuestions({
           {home.name} — {away.name}
         </span>
         <span className="chip chip--muted" style={{ textTransform: 'uppercase' }}>
-          {match.leagueTitle} · {kickoffMsk(match.kickoffUtc)}
+          {match.leagueTitle} · начало {kickoffMsk(match.kickoffUtc)}
         </span>
         {allLocked ? (
           <span className="chip chip--trap" style={{ marginLeft: 'auto' }}>
@@ -245,7 +254,7 @@ function MatchQuestions({
           </span>
         ) : (
           <span className="card__meta" style={{ marginLeft: 'auto' }}>
-            {answered} из {regular.length} обычных
+            приём ответов до {kickoffMsk(match.kickoffUtc)} · отвечено {answered} из {regular.length}
           </span>
         )}
       </div>
@@ -259,27 +268,32 @@ function MatchQuestions({
           const hit = resolved && selected !== undefined && selected === question.correctOption;
           const miss = resolved && selected !== undefined && selected !== question.correctOption;
 
-          const options = question.options.map((option) => (
-            <button
-              key={option.key}
-              type="button"
-              className="option"
-              data-selected={selected === option.key}
-              data-correct={resolved && question.correctOption === option.key ? 'true' : undefined}
-              data-wrong={miss && selected === option.key ? 'true' : undefined}
-              disabled={!open}
-              onClick={() => {
-                if (open) onPick(question.id, option.key);
-              }}
-            >
-              {option.label}
-            </button>
-          ));
+          const options = question.options.map((option) => {
+            let label = localizeText(option.label);
+            if (option.key === 'home') label = home.name;
+            if (option.key === 'away') label = away.name;
+            return (
+              <button
+                key={option.key}
+                type="button"
+                className="option"
+                data-selected={selected === option.key}
+                data-correct={resolved && question.correctOption === option.key ? 'true' : undefined}
+                data-wrong={miss && selected === option.key ? 'true' : undefined}
+                disabled={!open}
+                onClick={() => {
+                  if (open) onPick(question.id, option.key);
+                }}
+              >
+                {label}
+              </button>
+            );
+          });
 
           return (
             <div key={question.id} className="question" data-bonus={question.isBonus}>
               <div className="question__prompt">
-                <span>{question.prompt}</span>
+                <span>{localizeText(question.prompt)}</span>
                 {question.isBonus && <span className="chip chip--gold">бонус · золотой кубик</span>}
                 {hit && <span className="chip chip--positive">верно</span>}
                 {miss && <span className="chip chip--negative">мимо</span>}

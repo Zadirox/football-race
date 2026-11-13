@@ -1,11 +1,22 @@
 'use client';
 
-import { useMemo, useState, useTransition } from 'react';
+import { useEffect, useMemo, useState, useTransition } from 'react';
+import { useRouter } from 'next/navigation';
 import { Panel, EmptyState, Notice } from '@/components/ui/Panel';
 import { canAnswer, dayState, type MatchdayView } from '@/lib/game/day-state';
 import { submitAnswerAction } from '@/lib/actions/game';
 import { teamDisplay } from '@/lib/data/team-names';
 import type { MatchView, QuestionView, SeasonSnapshot } from '@/lib/types';
+
+const STATUS_LABEL: Record<MatchView['status'], string> = {
+  NS: 'не начался',
+  LIVE: 'идёт',
+  HT: 'перерыв',
+  FT: 'завершён',
+  PST: 'перенесён',
+  CANC: 'отменён',
+  ABD: 'прерван',
+};
 
 function kickoffMsk(iso: string): string {
   return new Date(iso).toLocaleString('ru-RU', {
@@ -19,6 +30,7 @@ function kickoffMsk(iso: string): string {
 
 export function PredictionsClient({ snapshot }: { snapshot: SeasonSnapshot }) {
   const { matches, questions, demo } = snapshot;
+  const router = useRouter();
   const nowMs = Date.parse(snapshot.serverNow);
   const phase = dayState(snapshot.matchday, nowMs);
   const dayClosed = phase === 'closed';
@@ -36,6 +48,16 @@ export function PredictionsClient({ snapshot }: { snapshot: SeasonSnapshot }) {
   const [savingId, setSavingId] = useState<string | null>(null);
   const [, startTransition] = useTransition();
   const [league, setLeague] = useState<string | null>(null);
+
+  const hasLiveMatches = matches.some((m) => m.status === 'LIVE' || m.status === 'HT');
+
+  useEffect(() => {
+    if (!hasLiveMatches || demo) return;
+    const id = setInterval(() => {
+      router.refresh();
+    }, 60_000);
+    return () => clearInterval(id);
+  }, [hasLiveMatches, demo, router]);
 
   const matchesById = useMemo(() => new Map(matches.map((m) => [m.id, m])), [matches]);
   const leagues = useMemo(() => {
@@ -139,6 +161,12 @@ export function PredictionsClient({ snapshot }: { snapshot: SeasonSnapshot }) {
         </div>
       )}
 
+      {hasLiveMatches && (
+        <div style={{ marginBottom: 16 }}>
+          <Notice tone="info">Идут матчи: счёт на этой странице обновляется автоматически примерно раз в минуту (по мере того, как подтягиваются новые данные).</Notice>
+        </div>
+      )}
+
       <div className="stats" style={{ marginBottom: 18 }}>
         <div className="stat">
           <div className="stat__label">Твой прогресс</div>
@@ -223,6 +251,9 @@ function MatchQuestions({
   const regular = questions.filter((q) => !q.isBonus);
   const answered = regular.filter((q) => choices[q.id]).length;
   const allLocked = questions.length > 0 && questions.every((q) => !canAnswer(q, matchday, nowMs));
+  const live = match.status === 'LIVE' || match.status === 'HT';
+  const finished = match.status === 'FT';
+  const hasScore = match.homeScore !== null && match.awayScore !== null;
 
   const home = teamDisplay(match.homeName);
   const away = teamDisplay(match.awayName);
@@ -239,6 +270,13 @@ function MatchQuestions({
           {home.name} <span className="predictions-match__vs">—</span> {away.name}
         </div>
         <div className="predictions-match__meta">
+          <span className={live ? 'chip chip--positive' : 'chip chip--muted'}>
+            {STATUS_LABEL[match.status]}
+          </span>
+          <span className={live ? 'chip chip--info' : 'chip chip--muted'}>
+            {hasScore ? `${match.homeScore} : ${match.awayScore}` : '— : —'}
+            {match.minute !== null ? ` · ${match.minute}′` : ''}
+          </span>
           <span className="chip chip--muted">{match.leagueTitle}</span>
           <span className="chip chip--muted">начало {kickoffMsk(match.kickoffUtc)}</span>
           {allLocked ? (

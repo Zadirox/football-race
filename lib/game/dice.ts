@@ -15,8 +15,11 @@ export const DICE_SIDES: Record<DiceTier, number> = {
   gold: 6,
 };
 
-/** Минимальная доля отвеченных вопросов для получения кубика. */
-export const PARTICIPATION_THRESHOLD_PERCENT = 80;
+/**
+ * Исторический порог участия (раньше требовалось 80% ответов).
+ * Теперь порог не применяется: при наличии вопросов дня кубик выдаётся всем.
+ */
+export const PARTICIPATION_THRESHOLD_PERCENT = 0;
 
 export type DayDiceInput = {
   /** Q — число действительных обычных вопросов дня. */
@@ -38,14 +41,19 @@ export type DayDiceResult = {
   accuracy: number;
 };
 
-/** Порог участия: answered / qTotal >= 0.8, целочисленно. */
+/** Порог участия больше не применяется: при наличии вопросов дня кубик положен всегда. */
 export function participationOk(answered: number, qTotal: number): boolean {
   if (qTotal <= 0) return false;
-  return answered * 100 >= qTotal * PARTICIPATION_THRESHOLD_PERCENT;
+  return true;
 }
 
-/** Тиры: 3C >= 2Q → золото, 3C >= Q → серебро, иначе бронза. */
+/**
+ * Тиры: 0 верных — деревянный, 3C >= 2Q → золото, 3C >= Q → серебро,
+ * иначе бронза.
+ */
 export function tierFor(qTotal: number, correct: number): DiceTier {
+  if (qTotal <= 0) return 'wood';
+  if (correct <= 0) return 'wood';
   if (correct * 3 >= qTotal * 2) return 'gold';
   if (correct * 3 >= qTotal) return 'silver';
   return 'bronze';
@@ -59,7 +67,7 @@ export function diceForDay({ qTotal, answered, correct, exactScoreHit }: DayDice
   const participation = safeQ === 0 ? 0 : safeA / safeQ;
   const accuracy = safeQ === 0 ? 0 : safeC / safeQ;
 
-  if (safeQ === 0 || !participationOk(safeA, safeQ)) {
+  if (safeQ === 0) {
     return { base: null, bonus: null, participation, accuracy };
   }
 

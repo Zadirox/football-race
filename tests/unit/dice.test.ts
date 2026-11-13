@@ -2,38 +2,41 @@ import { describe, expect, it } from 'vitest';
 import { diceForDay, DICE_SIDES, participationOk } from '@/lib/game/dice';
 
 describe('участие', () => {
-  it('80% — порог допуска к кубику', () => {
+  it('порог 80% убран: кубик положен при наличии вопросов дня', () => {
+    expect(participationOk(0, 10)).toBe(true);
+    expect(participationOk(1, 10)).toBe(true);
     expect(participationOk(8, 10)).toBe(true);
-    expect(participationOk(16, 20)).toBe(true);
-    expect(participationOk(7, 10)).toBe(false);
-    expect(participationOk(15, 20)).toBe(false);
   });
 
-  it('нет вопросов — нет допуска', () => {
+  it('нет вопросов — участия нет', () => {
     expect(participationOk(0, 0)).toBe(false);
   });
 });
 
 describe('тиры кубика (целочисленная математика)', () => {
-  const cases: Array<[number, number, 'bronze' | 'silver' | 'gold']> = [
-    [20, 0, 'bronze'],
+  const cases: Array<[number, number, 'wood' | 'bronze' | 'silver' | 'gold']> = [
+    [20, 0, 'wood'],
+    [20, 1, 'bronze'],
     [20, 6, 'bronze'],
     [20, 7, 'silver'],
     [20, 13, 'silver'],
     [20, 14, 'gold'],
     [20, 20, 'gold'],
+    [16, 0, 'wood'],
     [16, 5, 'bronze'],
     [16, 6, 'silver'],
     [16, 10, 'silver'],
     [16, 11, 'gold'],
+    [12, 0, 'wood'],
     [12, 3, 'bronze'],
     [12, 4, 'silver'],
     [12, 7, 'silver'],
     [12, 8, 'gold'],
+    [4, 0, 'wood'],
     [4, 1, 'bronze'],
     [4, 2, 'silver'],
     [4, 3, 'gold'],
-    [3, 0, 'bronze'],
+    [3, 0, 'wood'],
     [3, 1, 'silver'],
     [3, 2, 'gold'],
   ];
@@ -50,16 +53,16 @@ describe('тиры кубика (целочисленная математика
   });
 });
 
-describe('порог участия в выдаче', () => {
-  it('ответил мало — кубика нет, даже если всё угадал', () => {
-    const result = diceForDay({ qTotal: 20, answered: 10, correct: 10, exactScoreHit: true });
-    expect(result.base).toBeNull();
+describe('выдача кубика без порога участия', () => {
+  it('даже без ответов и без угаданных — деревянный кубик', () => {
+    const result = diceForDay({ qTotal: 20, answered: 0, correct: 0, exactScoreHit: false });
+    expect(result.base).toBe('wood');
     expect(result.bonus).toBeNull();
   });
 
-  it('на границе 80% кубик выдаётся', () => {
-    const result = diceForDay({ qTotal: 10, answered: 8, correct: 0, exactScoreHit: false });
-    expect(result.base).toBe('bronze');
+  it('ответил мало, но кубик всё равно положен', () => {
+    const result = diceForDay({ qTotal: 20, answered: 2, correct: 0, exactScoreHit: false });
+    expect(result.base).toBe('wood');
   });
 });
 

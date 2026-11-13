@@ -2,7 +2,6 @@
 
 import { useMemo, useState, useTransition } from 'react';
 import { Panel, EmptyState, Notice } from '@/components/ui/Panel';
-import { participationOk, PARTICIPATION_THRESHOLD_PERCENT } from '@/lib/game/dice';
 import { canAnswer, dayState, type MatchdayView } from '@/lib/game/day-state';
 import { submitAnswerAction } from '@/lib/actions/game';
 import { teamDisplay } from '@/lib/data/team-names';
@@ -85,7 +84,7 @@ export function PredictionsClient({ snapshot }: { snapshot: SeasonSnapshot }) {
   ) : phase === 'upcoming' ? (
     <span className="chip chip--info">до старта матчей</span>
   ) : (
-    <span className={participationOk(answered, regular.length) ? 'chip chip--positive' : 'chip'}>
+    <span className="chip chip--positive">
       отвечено {answered} из {regular.length}
     </span>
   );
@@ -93,7 +92,7 @@ export function PredictionsClient({ snapshot }: { snapshot: SeasonSnapshot }) {
   return (
     <Panel
       title="Прогнозы"
-      subtitle="Отвечай на вопросы по матчам дня. Ответы проверяются автоматически по итогам игр. Чтобы получить кубик за день, нужно ответить минимум на 80% основных вопросов."
+      subtitle="Отвечай на вопросы по матчам дня. Ответы проверяются автоматически по итогам игр. Кубик за день получат все: даже без угаданных ответов — деревянный, а за точные прогнозы — лучше."
       size="wide"
       actions={answersChip}
     >
@@ -155,18 +154,12 @@ export function PredictionsClient({ snapshot }: { snapshot: SeasonSnapshot }) {
           <div className="stat__value">{questions.filter((q) => q.isBonus).length}</div>
         </div>
         <div className="stat">
-          <div className="stat__label">Кубик за ответы</div>
+          <div className="stat__label">Кубик за день</div>
           <div className="stat__value" style={{ fontSize: 15 }}>
-            {!canPlay
-              ? 'недоступен'
-              : dayClosed
-                ? 'день завершён'
-                : participationOk(answered, regular.length)
-                  ? 'получишь'
-                  : `осталось ответить на ${Math.max(0, Math.ceil(regular.length * 0.8) - answered)}`}
+            {!canPlay ? 'недоступен' : dayClosed ? 'день завершён' : 'деревянный или лучше'}
           </div>
-          {!dayClosed && canPlay && !participationOk(answered, regular.length) && (
-            <div className="card__meta">нужно не меньше 80% основных вопросов</div>
+          {canPlay && !dayClosed && (
+            <div className="card__meta">кубик дадут всем участникам, даже без угаданных ответов</div>
           )}
         </div>
       </div>
@@ -191,7 +184,7 @@ export function PredictionsClient({ snapshot }: { snapshot: SeasonSnapshot }) {
       {visibleMatches.length === 0 ? (
         <EmptyState title="Вопросов нет" text="Как только день будет собран, здесь появятся матчи и вопросы к ним." />
       ) : (
-        <div className="list" style={{ gap: 22 }}>
+        <div className="predictions-matches">
           {visibleMatches.map((match) => (
             <MatchQuestions
               key={match.id}
@@ -240,26 +233,24 @@ function MatchQuestions({
       .replaceAll(match.awayName, away.name);
 
   return (
-    <section className="section" style={{ marginBottom: 0 }}>
-      <div className="section__title" style={{ textTransform: 'none', letterSpacing: '0.02em', fontSize: 14, color: 'var(--snow)' }}>
-        <span title={`${home.name} — ${away.name}`}>
-          {home.name} — {away.name}
-        </span>
-        <span className="chip chip--muted" style={{ textTransform: 'uppercase' }}>
-          {match.leagueTitle} · начало {kickoffMsk(match.kickoffUtc)}
-        </span>
-        {allLocked ? (
-          <span className="chip chip--trap" style={{ marginLeft: 'auto' }}>
-            приём закрыт
-          </span>
-        ) : (
-          <span className="card__meta" style={{ marginLeft: 'auto' }}>
-            приём ответов до {kickoffMsk(match.kickoffUtc)} · отвечено {answered} из {regular.length}
-          </span>
-        )}
+    <section className="predictions-match">
+      <div className="predictions-match__head">
+        <div className="predictions-match__title" title={`${home.name} — ${away.name}`}>
+          {home.name} <span className="predictions-match__vs">—</span> {away.name}
+        </div>
+        <div className="predictions-match__meta">
+          <span className="chip chip--muted">{match.leagueTitle}</span>
+          <span className="chip chip--muted">начало {kickoffMsk(match.kickoffUtc)}</span>
+          {allLocked ? (
+            <span className="chip chip--trap">приём закрыт</span>
+          ) : (
+            <span className="chip chip--info">приём до {kickoffMsk(match.kickoffUtc)}</span>
+          )}
+          <span className="card__meta">отвечено {answered} из {regular.length}</span>
+        </div>
       </div>
 
-      <div className="grid" style={{ gap: 10 }}>
+      <div className="predictions-match__questions">
         {questions.map((question) => {
           const selected = choices[question.id];
           const closed = !canAnswer(question, matchday, nowMs);
@@ -291,13 +282,15 @@ function MatchQuestions({
           });
 
           return (
-            <div key={question.id} className="question" data-bonus={question.isBonus}>
+            <div key={question.id} className="question question--compact" data-bonus={question.isBonus}>
               <div className="question__prompt">
                 <span>{localizeText(question.prompt)}</span>
-                {question.isBonus && <span className="chip chip--gold">бонус · золотой кубик</span>}
-                {hit && <span className="chip chip--positive">верно</span>}
-                {miss && <span className="chip chip--negative">мимо</span>}
-                {closed && !resolved && <span className="chip chip--muted">приём закрыт</span>}
+                <span className="question__tags">
+                  {question.isBonus && <span className="chip chip--gold">бонус</span>}
+                  {hit && <span className="chip chip--positive">верно</span>}
+                  {miss && <span className="chip chip--negative">мимо</span>}
+                  {closed && !resolved && <span className="chip chip--muted">закрыт</span>}
+                </span>
               </div>
 
               {question.kind === 'exact_score' ? (

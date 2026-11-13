@@ -88,7 +88,7 @@ export function MatchesClient({ matches }: { matches: MatchView[] }) {
       {visible.length === 0 ? (
         <EmptyState title="Матчей нет" text="Игровой день ещё не собран. Как только расписание появится, матчи приедут сюда." />
       ) : (
-        <div className="grid grid--cards">
+        <div className="grid grid--cards grid--cards-3">
           {visible.map((match) => {
             const finished = match.status === 'FT';
             const live = match.status === 'LIVE' || match.status === 'HT';
@@ -104,8 +104,8 @@ export function MatchesClient({ matches }: { matches: MatchView[] }) {
                 <div className="match-card__teams">
                   <div className="team" title={home.name}>
                     <Crest name={home.name} url={match.homeLogo} />
-                    <span className="team__name team__name--abbr" title={home.name} aria-label={home.name}>
-                      {home.short}
+                    <span className="team__name" title={home.name}>
+                      {home.name}
                     </span>
                   </div>
                   <div className={live ? 'score score--live' : 'score'}>
@@ -130,8 +130,8 @@ export function MatchesClient({ matches }: { matches: MatchView[] }) {
                   </div>
                   <div className="team team--away" title={away.name}>
                     <Crest name={away.name} url={match.awayLogo} />
-                    <span className="team__name team__name--abbr" title={away.name} aria-label={away.name}>
-                      {away.short}
+                    <span className="team__name" title={away.name}>
+                      {away.name}
                     </span>
                   </div>
                 </div>

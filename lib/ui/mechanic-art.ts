@@ -6,7 +6,7 @@
  * появился в карточке клетки.
  */
 
-const MECHANIC_CODE = /^(0[1-9]|1[0-8])$/;
+const MECHANIC_CODE = /^(0[1-9]|1[0-9]|20)$/;
 
 export function artSrcFor(code: string | null | undefined): string | null {
   if (!code || !MECHANIC_CODE.test(code)) return null;

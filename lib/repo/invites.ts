@@ -222,15 +222,6 @@ export async function acceptInvite(
 
   try {
     await sql.begin(async (tx) => {
-      // Атомарно помечаем инвайт использованным (защита от гонки)
-      const [claimed] = await tx<{ id: string }[]>`
-        update invites
-        set used_at = now(), used_by = ${userId}::uuid
-        where id = ${invite.id}::uuid and used_at is null
-        returning id
-      `;
-      if (!claimed) throw new Error('INVITE_USED');
-
       await tx`
         insert into profiles (
           id, nickname, role, favorite_club_id, favorite_national_team_id, favorite_player_id
@@ -256,6 +247,16 @@ export async function acceptInvite(
         values (${invite.season_id}::uuid, ${userId}::uuid, true)
         on conflict (season_id, profile_id) do update set is_active = true
       `;
+
+      // Атомарно помечаем инвайт использованным (защита от гонки) после создания профиля,
+      // т.к. invites.used_by ссылается на profiles(id).
+      const [claimed] = await tx<{ id: string }[]>`
+        update invites
+        set used_at = now(), used_by = ${userId}::uuid
+        where id = ${invite.id}::uuid and used_at is null
+        returning id
+      `;
+      if (!claimed) throw new Error('INVITE_USED');
     });
   } catch (e) {
     // Откат auth-пользователя при ошибке записи профиля/инвайта
@@ -267,7 +268,14 @@ export async function acceptInvite(
     if (e instanceof Error && e.message === 'INVITE_USED') {
       return { ok: false, message: 'Ссылка уже использована' };
     }
-    console.error('Ошибка активации инвайта:', e);
+    const code = typeof e === 'object' && e !== null && 'code' in e ? String((e as { code?: unknown }).code) : '';
+    console.error('Ошибка активации инвайта:', { code, error: e });
+    if (code === '23503') {
+      return { ok: false, message: 'Не удалось сохранить выбранные клуб/сборную/игрока. Обновите страницу и попробуйте ещё раз.' };
+    }
+    if (code === '23505') {
+      return { ok: false, message: 'Этот ник или приглашение уже используется. Попробуйте войти или запросите новую ссылку.' };
+    }
     return { ok: false, message: 'Не удалось завершить регистрацию. Попробуйте ещё раз' };
   }
 

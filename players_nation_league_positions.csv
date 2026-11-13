@@ -1,0 +1,200 @@
+﻿team,player,position,role_group,note
+Франция,Mike Maignan,GK,GK,
+Франция,Malo Gusto,RB,DEF,
+Франция,Warren Zaire-Emery,CM,MID,
+Франция,Jeremy Jacquet,CB,DEF,
+Франция,Ibrahima Konate,CB,DEF,
+Франция,Adrien Truffert,LB,DEF,
+Франция,Adrien Rabiot,CM,MID,
+Франция,Lucas Da Cunha,AM,MID,
+Франция,Rayan Cherki,AM,MID,
+Франция,Michael Olise,RW,FWD,
+Франция,Desire Doue,AM,MID,
+Франция,Bradley Barcola,LW,FWD,
+Италия,Gianluigi Donnarumma,GK,GK,
+Италия,Michael Kayode,RB,DEF,
+Италия,Giorgio Scalvini,CB,DEF,
+Италия,Alessandro Bastoni,CB,DEF,
+Италия,Riccardo Calafiori,LB,DEF,
+Италия,Nicolo Barella,CM,MID,
+Италия,Sandro Tonali,CM,MID,
+Италия,Davide Frattesi,CM,MID,
+Италия,Sebastiano Esposito,CF,FWD,
+Италия,Francesco Pio Esposito,CF,FWD,
+Италия,Nicolo Cambiaghi,LW,FWD,
+Бельгия,Senne Lammens,GK,GK,
+Бельгия,Timothy Castagne,RB,DEF,
+Бельгия,Nathan Ngoy,CB,DEF,
+Бельгия,Brandon Mechele,CB,DEF,
+Бельгия,Maxim De Cuyper,LB,DEF,
+Бельгия,Youri Tielemans,CM,MID,
+Бельгия,Kevin De Bruyne,AM,MID,
+Бельгия,Nicolas Raskin,DM,MID,
+Бельгия,Romeo Lavia,DM,MID,
+Бельгия,Diego Moreira,LW,FWD,
+Бельгия,Charles De Ketelaere,AM,MID,
+Бельгия,Jeremy Doku,RW,FWD,
+Германия,Marc-Andre ter Stegen,GK,GK,
+Германия,Philipp Treu,RB,DEF,
+Германия,Jonathan Tah,CB,DEF,
+Германия,Nico Schlotterbeck,CB,DEF,
+Германия,Nathaniel Brown,LB,DEF,
+Германия,Joshua Kimmich,DM,MID,
+Германия,Aleksandar Pavlovic,DM,MID,
+Германия,Lennart Karl,RW,FWD,
+Германия,Florian Wirtz,AM,MID,
+Германия,Derry Scherhant,LW,FWD,
+Германия,Kai Havertz,CF,FWD,
+Нидерланды,Bart Verbruggen,GK,GK,
+Нидерланды,Jurrien Timber,RB,DEF,
+Нидерланды,Jan Paul van Hecke,CB,DEF,
+Нидерланды,Micky van de Ven,CB,DEF,
+Нидерланды,Ian Maatsen,LB,DEF,
+Нидерланды,Frenkie de Jong,CM,MID,
+Нидерланды,Joey Veerman,CM,MID,
+Нидерланды,Tijjani Reijnders,CM,MID,
+Нидерланды,Crysencio Summerville,LW,FWD,
+Нидерланды,Donyell Malen,CF,FWD,
+Нидерланды,Cody Gakpo,LW,FWD,
+Греция,Konstantinos Tzolakis,GK,GK,
+Греция,Lazaros Rota,RB,DEF,
+Греция,Konstantinos Mavropanos,CB,DEF,
+Греция,Panagiotis Retsos,CB,DEF,
+Греция,Kostas Tsimikas,LB,DEF,
+Греция,Athanasios Androutsos,CM,MID,
+Греция,Dimitris Kourbelis,DM,MID,
+Греция,Nectarios Triantis,DM,MID,
+Греция,Konstantinos Karetsas,AM,MID,
+Греция,Christos Tzolis,LW,FWD,
+Греция,Fotis Ioannidis,CF,FWD,
+Греция,Vangelis Pavlidis,CF,FWD,
+Испания,Unai Simon,GK,GK,
+Испания,Marc Pubill,RB,DEF,
+Испания,Pau Cubarsi,CB,DEF,
+Испания,Aymeric Laporte,CB,DEF,
+Испания,Dean Huijsen,CB,DEF,
+Испания,Marc Cucurella,LB,DEF,
+Испания,Martin Zubimendi,DM,MID,
+Испания,Lamine Yamal,RW,FWD,
+Испания,Alex Baena,AM,MID,
+Испания,Nico Williams,LW,FWD,
+Испания,Mikel Oyarzabal,CF,FWD,
+Англия,Jordan Pickford,GK,GK,
+Англия,Trent Alexander-Arnold,RB,DEF,
+Англия,Jarell Quansah,CB,DEF,
+Англия,Dan Burn,CB,DEF,
+Англия,Lewis Hall,LB,DEF,
+Англия,Declan Rice,DM,MID,
+Англия,Elliot Anderson,CM,MID,
+Англия,Morgan Rogers,AM,MID,
+Англия,Jude Bellingham,AM,MID,
+Англия,Anthony Gordon,LW,FWD,
+Англия,Harry Kane,CF,FWD,
+Хорватия,Dominik Livakovic,GK,GK,
+Хорватия,Josip Stanisic,RB,DEF,
+Хорватия,Luka Vuskovic,CB,DEF,
+Хорватия,Josko Gvardiol,CB,DEF,
+Хорватия,Ivan Smolcic,RB,DEF,
+Хорватия,Mateo Kovacic,CM,MID,
+Хорватия,Petar Sucic,CM,MID,
+Хорватия,Luka Modric,CM,MID,
+Хорватия,Martin Baturina,AM,MID,
+Хорватия,Nikola Vlasic,AM,MID,
+Хорватия,Ivan Perisic,LW,FWD,
+Хорватия,Igor Matanovic,CF,FWD,
+Португалия,Diogo Costa,GK,GK,
+Португалия,Diogo Dalot,RB,DEF,
+Португалия,Ruben Dias,CB,DEF,
+Португалия,Renato Veiga,CB,DEF,
+Португалия,Flavio Nazinho,LB,DEF,
+Португалия,Bruno Fernandes,AM,MID,
+Португалия,Joao Palhinha,DM,MID,
+Португалия,Joao Neves,CM,MID,
+Португалия,Pedro Neto,RW,FWD,
+Португалия,Joao Felix,CF,FWD,
+Португалия,Goncalo Ramos,CF,FWD,
+Дания,Mads Hermansen,GK,GK,
+Дания,Rasmus Nissen Kristensen,RB,DEF,
+Дания,Joachim Andersen,CB,DEF,
+Дания,Oliver Provstgaard,CB,DEF,
+Дания,Joakim Maehle,LB,DEF,
+Дания,Morten Hjulmand,DM,MID,
+Дания,Pierre-Emile Hojbjerg,DM,MID,
+Дания,Gustav Isaksen,RW,FWD,
+Дания,Victor Froholdt,CM,MID,
+Дания,Mikkel Damsgaard,AM,MID,
+Дания,Mohamed Daramy,LW,FWD,
+Дания,Rasmus Hojlund,CF,FWD,
+Норвегия,Julian Ryerson,RB,DEF,
+Норвегия,Kristoffer Ajer,CB,DEF,
+Норвегия,Torbjorn Heggem,CB,DEF,
+Норвегия,Leo Ostigard,CB,DEF,
+Норвегия,David Moller Wolfe,LB,DEF,
+Норвегия,Patrick Berg,DM,MID,
+Норвегия,Sander Berge,DM,MID,
+Норвегия,Martin Odegaard,AM,MID,
+Норвегия,Antonio Nusa,LW,FWD,
+Норвегия,Andreas Schjelderup,LW,FWD,
+Норвегия,Erling Haaland,CF,FWD,
+Уэльс,Danny Ward,GK,GK,
+Уэльс,Neco Williams,RB,DEF,
+Уэльс,Joe Rodon,CB,DEF,
+Уэльс,Ben Davies,CB,DEF,
+Уэльс,Jay Dasilva,LB,DEF,
+Уэльс,Ethan Ampadu,DM,MID,
+Уэльс,Josh Sheehan,CM,MID,
+Уэльс,Brennan Johnson,RW,FWD,
+Уэльс,Dan James,LW,FWD,
+Уэльс,Harry Wilson,RW,FWD,
+Уэльс,Liam Cullen,CF,FWD,
+Уэльс,Lewis Koumas,CF,FWD,
+Франция,Eduardo Camavinga,CM,MID,bench option
+Франция,Kylian Mbappe,CF,FWD,conditional return
+Италия,Federico Dimarco,LWB,DEF,bench/start contender
+Италия,Antonio Vergara,AM,MID,bench
+Италия,Issa Doumbia,MF,MID,bench
+Италия,Gianluca Scamacca,CF,FWD,bench
+Бельгия,Mika Godts,LW,FWD,bench
+Бельгия,Dodi Lukebakio,RW,FWD,bench
+Бельгия,Leandro Trossard,LW,FWD,bench
+Германия,Felix Nmecha,CM,MID,bench
+Германия,Said El Mala,LW,FWD,bench
+Германия,Tom Bischof,CM,MID,bench
+Германия,Niclas Fullkrug,CF,FWD,bench/CF option
+Германия,Younes Ebnoutalib,CF,FWD,bench/CF option
+Нидерланды,Mexx Meerdink,CF,FWD,bench/start contender
+Нидерланды,Denzel Dumfries,RWB,DEF,bench/start contender
+Нидерланды,Noa Lang,LW,FWD,bench
+Нидерланды,Quinten Timber,CM,MID,bench
+Греция,Tasos Douvikas,CF,FWD,bench
+Греция,Giorgos Masouras,RW,FWD,bench
+Греция,Tasos Bakasetas,AM,MID,bench
+Испания,Fermin Lopez,AM,MID,bench
+Испания,Mikel Merino,CM,MID,bench
+Испания,Ferran Torres,RW,FWD,bench
+Испания,Fabian Ruiz,CM,MID,bench
+Испания,Yeremy Pino,RW,FWD,bench
+Англия,Myles Lewis-Skelly,LB,DEF,bench/start contender
+Англия,James Garner,CM,MID,bench
+Англия,Rio Ngumoha,LW,FWD,bench
+Англия,Eberechi Eze,AM,MID,bench
+Англия,Ezri Konsa,CB,DEF,conditional if fit
+Хорватия,Ante Budimir,CF,FWD,bench
+Хорватия,Mario Pasalic,CM,MID,bench
+Хорватия,Marco Pasalic,RW,FWD,bench
+Хорватия,Josip Misic,CM,MID,bench/start contender
+Португалия,Bernardo Silva,RW,FWD,bench
+Португалия,Francisco Trincao,RW,FWD,bench
+Португалия,Ruben Neves,CM,MID,bench
+Португалия,Joao Cancelo,RB,DEF,suspended/return option
+Дания,Andreas Skov Olsen,RW,FWD,bench
+Дания,Mathias Jensen,CM,MID,bench
+Дания,Jesper Lindstrom,RW,FWD,bench
+Норвегия,Egil Selvik,GK,GK,GK option
+Норвегия,Orjan Nyland,GK,GK,GK contender
+Норвегия,Oscar Bobb,RW,FWD,bench
+Норвегия,Alexander Sorloth,CF,FWD,bench
+Норвегия,Thelo Aasgaard,AM,MID,bench
+Уэльс,David Brooks,RW,FWD,bench
+Испания,Pedri,CM,MID,
+Португалия,Vitinha,CM,MID,

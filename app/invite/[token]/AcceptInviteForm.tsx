@@ -3,9 +3,18 @@
 import { useActionState } from 'react';
 import Link from 'next/link';
 import { Notice } from '@/components/ui/Panel';
+import { SearchSelect, type SearchSelectOption } from '@/components/ui/SearchSelect';
 import { acceptInviteAction, type InviteActionResult } from '@/lib/actions/invites';
 
-export function AcceptInviteForm({ token, nickname }: { token: string; nickname: string }) {
+type Props = {
+  token: string;
+  nickname: string;
+  teams: SearchSelectOption[];
+  clubs: SearchSelectOption[];
+  players: SearchSelectOption[];
+};
+
+export function AcceptInviteForm({ token, nickname, teams, clubs, players }: Props) {
   const [state, formAction, pending] = useActionState<InviteActionResult | null, FormData>(acceptInviteAction, null);
 
   if (state?.ok) {
@@ -45,6 +54,28 @@ export function AcceptInviteForm({ token, nickname }: { token: string; nickname:
           placeholder="Минимум 8 символов"
         />
       </div>
+
+      <SearchSelect
+        name="favoriteNationalTeamId"
+        label="Любимая сборная"
+        options={teams}
+        placeholder="Начните вводить название сборной"
+        required
+      />
+      <SearchSelect
+        name="favoriteClubId"
+        label="Любимый клуб"
+        options={clubs}
+        placeholder="Начните вводить название клуба"
+        required
+      />
+      <SearchSelect
+        name="favoritePlayerId"
+        label="Любимый игрок"
+        options={players}
+        placeholder="Начните вводить имя игрока"
+        required
+      />
 
       <button type="submit" className="btn btn--primary btn--block" disabled={pending}>
         {pending ? 'Активируем…' : 'Активировать и войти в сезон'}

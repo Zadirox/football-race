@@ -53,6 +53,12 @@ export type PlayerRow = {
   dice_bronze: number | string | null;
   dice_silver: number | string | null;
   dice_gold: number | string | null;
+  favorite_club_id: string | null;
+  favorite_club_name: string | null;
+  favorite_national_team_id: string | null;
+  favorite_national_team_name: string | null;
+  favorite_player_id: string | null;
+  favorite_player_name: string | null;
 };
 
 export type EffectRow = {
@@ -231,6 +237,18 @@ export function toPlayerViews(rows: PlayerRow[], effectRows: EffectRow[], meId: 
       dice,
       lastAction: row.last_action,
       isMe: row.profile_id === meId,
+      favoriteClub:
+        row.favorite_club_id && row.favorite_club_name
+          ? { id: row.favorite_club_id, name: row.favorite_club_name }
+          : null,
+      favoriteNationalTeam:
+        row.favorite_national_team_id && row.favorite_national_team_name
+          ? { id: row.favorite_national_team_id, name: row.favorite_national_team_name }
+          : null,
+      favoritePlayer:
+        row.favorite_player_id && row.favorite_player_name
+          ? { id: row.favorite_player_id, name: row.favorite_player_name }
+          : null,
     };
   });
 }

@@ -11,6 +11,11 @@ export type Role = 'admin' | 'player' | 'spectator';
 
 export type QuestionOptionView = { key: string; label: string };
 
+export type FavoriteRef = {
+  id: string;
+  name: string;
+};
+
 export type PlayerView = {
   profileId: string;
   nickname: string;
@@ -26,6 +31,9 @@ export type PlayerView = {
   /** Что игрок сделал последним — для мини-профиля. */
   lastAction: string | null;
   isMe: boolean;
+  favoriteClub: FavoriteRef | null;
+  favoriteNationalTeam: FavoriteRef | null;
+  favoritePlayer: FavoriteRef | null;
 };
 
 export type MatchView = {

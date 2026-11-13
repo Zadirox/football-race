@@ -10,6 +10,7 @@ import {
   syntheticEmailForNickname,
   validateNickname,
 } from '@/lib/auth/invite';
+import { favoritesExist, type FavoritesPayload } from '@/lib/repo/reference-data';
 
 export type AdminInviteView = {
   id: string;
@@ -154,9 +155,15 @@ export async function getInviteByToken(token: string): Promise<PublicInviteView 
 export async function acceptInvite(
   token: string,
   password: string,
+  favorites: FavoritesPayload,
 ): Promise<{ ok: true; nickname: string } | { ok: false; message: string }> {
   if (!hasDatabase()) return { ok: false, message: 'База не подключена' };
   if (password.length < 8) return { ok: false, message: 'Пароль должен быть не короче 8 символов' };
+  if (!favorites.favoriteClubId || !favorites.favoriteNationalTeamId || !favorites.favoritePlayerId) {
+    return { ok: false, message: 'Выберите любимый клуб, сборную и игрока' };
+  }
+  const favsOk = await favoritesExist(favorites);
+  if (!favsOk) return { ok: false, message: 'Выбранные клуб, сборная или игрок не найдены' };
 
   const tokenHash = hashInviteToken(token);
   const sql = db();
@@ -225,9 +232,23 @@ export async function acceptInvite(
       if (!claimed) throw new Error('INVITE_USED');
 
       await tx`
-        insert into profiles (id, nickname, role)
-        values (${userId}::uuid, ${nickname}, ${invite.role}::user_role)
-        on conflict (id) do update set nickname = excluded.nickname, role = excluded.role
+        insert into profiles (
+          id, nickname, role, favorite_club_id, favorite_national_team_id, favorite_player_id
+        )
+        values (
+          ${userId}::uuid,
+          ${nickname},
+          ${invite.role}::user_role,
+          ${favorites.favoriteClubId}::uuid,
+          ${favorites.favoriteNationalTeamId}::uuid,
+          ${favorites.favoritePlayerId}::uuid
+        )
+        on conflict (id) do update set
+          nickname = excluded.nickname,
+          role = excluded.role,
+          favorite_club_id = excluded.favorite_club_id,
+          favorite_national_team_id = excluded.favorite_national_team_id,
+          favorite_player_id = excluded.favorite_player_id
       `;
 
       await tx`

@@ -13,7 +13,8 @@
     "typecheck": "tsc --noEmit",
     "seed": "tsx scripts/seed.ts",
     "bootstrap:admin": "tsx scripts/bootstrap-admin.ts",
-    "bootstrap:season": "tsx scripts/bootstrap-season.ts"
+    "bootstrap:season": "tsx scripts/bootstrap-season.ts",
+    "load:reference-data": "tsx scripts/load-reference-data.ts"
   },
   "dependencies": {
     "@supabase/ssr": "^0.5.2",

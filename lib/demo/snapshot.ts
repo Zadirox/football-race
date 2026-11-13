@@ -283,6 +283,9 @@ function buildPlayers(): PlayerView[] {
     dice: p.dice,
     lastAction: p.lastAction,
     isMe: p.id === me,
+    favoriteClub: null,
+    favoriteNationalTeam: null,
+    favoritePlayer: null,
   }));
 }
 

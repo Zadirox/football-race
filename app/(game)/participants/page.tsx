@@ -2,8 +2,10 @@ import Link from 'next/link';
 import { Panel } from '@/components/ui/Panel';
 import { describeEffects } from '@/lib/game/engine';
 import { accuracyOf, formatAccuracy, MIN_ANSWERS_FOR_ACCURACY } from '@/lib/game/scoring';
+import { loadFavoritesOptions } from '@/lib/repo/reference-data';
 import { loadSeasonSnapshot } from '@/lib/repo/season';
 import type { PlayerView } from '@/lib/types';
+import { EditFavorites } from './EditFavorites';
 
 const ROLE_LABEL: Record<PlayerView['role'], string> = {
   admin: 'админ',
@@ -33,6 +35,7 @@ function hueFor(name: string): number {
 export default async function ParticipantsPage() {
   const snapshot = await loadSeasonSnapshot();
   const players = [...snapshot.players].sort((a, b) => b.position - a.position);
+  const favoritesOptions = await loadFavoritesOptions();
 
   return (
     <Panel
@@ -104,7 +107,7 @@ export default async function ParticipantsPage() {
                 ))}
               </div>
 
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 12 }}>
                 {effects.length === 0 ? (
                   <span className="chip chip--muted">эффектов нет</span>
                 ) : (
@@ -116,6 +119,24 @@ export default async function ParticipantsPage() {
                   ))
                 )}
               </div>
+
+              <div style={{ fontSize: 14 }}>
+                <div className="card__meta" style={{ marginBottom: 6 }}>Любимые</div>
+                <div style={{ display: 'grid', gap: 4 }}>
+                  <div><span style={{ opacity: 0.7 }}>Сборная:</span> {player.favoriteNationalTeam?.name ?? '—'}</div>
+                  <div><span style={{ opacity: 0.7 }}>Клуб:</span> {player.favoriteClub?.name ?? '—'}</div>
+                  <div><span style={{ opacity: 0.7 }}>Игрок:</span> {player.favoritePlayer?.name ?? '—'}</div>
+                </div>
+              </div>
+
+              {player.isMe && (
+                <EditFavorites
+                  player={player}
+                  teams={favoritesOptions.teams}
+                  clubs={favoritesOptions.clubs}
+                  players={favoritesOptions.players}
+                />
+              )}
 
               {player.answered < MIN_ANSWERS_FOR_ACCURACY && (
                 <p className="card__meta" style={{ marginTop: 10 }}>

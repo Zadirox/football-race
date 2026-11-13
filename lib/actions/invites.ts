@@ -67,6 +67,9 @@ export async function revokeInviteAction(inviteId: string): Promise<InviteAction
 const acceptSchema = z.object({
   token: z.string().min(10).max(200),
   password: z.string().min(8).max(128),
+  favoriteNationalTeamId: z.string().uuid(),
+  favoriteClubId: z.string().uuid(),
+  favoritePlayerId: z.string().uuid(),
 });
 
 export async function acceptInviteAction(
@@ -77,11 +80,21 @@ export async function acceptInviteAction(
     const parsed = acceptSchema.safeParse({
       token: String(formData.get('token') ?? ''),
       password: String(formData.get('password') ?? ''),
+      favoriteNationalTeamId: String(formData.get('favoriteNationalTeamId') ?? ''),
+      favoriteClubId: String(formData.get('favoriteClubId') ?? ''),
+      favoritePlayerId: String(formData.get('favoritePlayerId') ?? ''),
     });
     if (!parsed.success) {
-      return { ok: false, message: 'Проверьте данные: пароль не короче 8 символов' };
+      const msg = parsed.error.issues.some((i) => i.path[0] === 'password')
+        ? 'Проверьте данные: пароль не короче 8 символов'
+        : 'Выберите любимую сборную, клуб и игрока';
+      return { ok: false, message: msg };
     }
-    const result = await acceptInviteRepo(parsed.data.token, parsed.data.password);
+    const result = await acceptInviteRepo(parsed.data.token, parsed.data.password, {
+      favoriteNationalTeamId: parsed.data.favoriteNationalTeamId,
+      favoriteClubId: parsed.data.favoriteClubId,
+      favoritePlayerId: parsed.data.favoritePlayerId,
+    });
     if (!result.ok) return { ok: false, message: result.message };
     return { ok: true, nickname: result.nickname, message: 'Аккаунт создан. Теперь войдите по нику и паролю.' };
   } catch (error) {

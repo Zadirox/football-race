@@ -1,0 +1,398 @@
+﻿club,player,position,role_group,note
+Арсенал,David Raya,GK,GK,
+Арсенал,Jurrien Timber,RB,DEF,
+Арсенал,Gabriel Magalhaes,CB,DEF,
+Арсенал,Riccardo Calafiori,LB,DEF,
+Арсенал,Ezri Konsa,CB,DEF,
+Арсенал,William Saliba,CB,DEF,
+Арсенал,Declan Rice,DM,MID,
+Арсенал,Martin Odegaard,AM,MID,
+Арсенал,Bruno Guimaraes,CM,MID,
+Арсенал,Noni Madueke,RW,FWD,
+Арсенал,Christos Tzolis,LW,FWD,
+Арсенал,Kai Havertz,CF,FWD,
+Арсенал,Viktor Gyokeres,CF,FWD,
+Арсенал,Eberechi Eze,AM,MID,
+Арсенал,Mikel Merino,CM,MID,
+Арсенал,Martin Zubimendi,DM,MID,
+Арсенал,Bukayo Saka,RW,FWD,
+Манчестер Сити,Gianluigi Donnarumma,GK,GK,
+Манчестер Сити,Abdukodir Khusanov,RB,DEF,
+Манчестер Сити,Ruben Dias,CB,DEF,
+Манчестер Сити,Marc Guehi,CB,DEF,
+Манчестер Сити,Josko Gvardiol,LB,DEF,
+Манчестер Сити,Elliot Anderson,CM,MID,
+Манчестер Сити,Enzo Fernandez,CM,MID,
+Манчестер Сити,Iliman Ndiaye,RW,FWD,
+Манчестер Сити,Rayan Cherki,AM,MID,
+Манчестер Сити,Jeremy Doku,LW,FWD,
+Манчестер Сити,Erling Haaland,CF,FWD,
+Манчестер Сити,Phil Foden,AM,MID,
+Манчестер Сити,Matheus Nunes,CM,MID,
+Манчестер Сити,Ayyoub Bouaddi,CM,MID,
+Ливерпуль,Ronald Araujo,CB,DEF,
+Ливерпуль,Virgil van Dijk,CB,DEF,
+Ливерпуль,Jeremy Jacquet,CB,DEF,
+Ливерпуль,Milos Kerkez,LB,DEF,
+Ливерпуль,Alexis Mac Allister,CM,MID,
+Ливерпуль,Dominik Szoboszlai,AM,MID,
+Ливерпуль,Florian Wirtz,AM,MID,
+Ливерпуль,Cody Gakpo,LW,FWD,
+Ливерпуль,Bradley Barcola,LW,FWD,
+Ливерпуль,Alexander Isak,CF,FWD,
+Ливерпуль,Rio Ngumoha,LW,FWD,
+Ливерпуль,Victor Munoz,RW,FWD,
+Ливерпуль,Trey Nyoni,CM,MID,
+Ливерпуль,Joe Gomez,CB,DEF,
+Челси,Mike Penders,GK,GK,
+Челси,Marco Palestra,RB,DEF,
+Челси,Wesley Fofana,CB,DEF,
+Челси,Levi Colwill,CB,DEF,
+Челси,Pep Chavarria,LB,DEF,
+Челси,Moises Caicedo,DM,MID,
+Челси,Romeo Lavia,DM,MID,
+Челси,Jordan Henderson,CM,MID,
+Челси,Cole Palmer,AM,MID,
+Челси,Morgan Rogers,AM,MID,
+Челси,Pedro Neto,RW,FWD,
+Челси,Estevao Willian,RW,FWD,
+Челси,Geovany Quenda,RW,FWD,
+Челси,Malo Gusto,RB,DEF,
+Челси,Danny Welbeck,CF,FWD,
+Челси,Emiliano Martinez,GK,GK,
+Манчестер Юнайтед,Senne Lammens,GK,GK,
+Манчестер Юнайтед,Noussair Mazraoui,RB,DEF,
+Манчестер Юнайтед,Leny Yoro,CB,DEF,
+Манчестер Юнайтед,Harry Maguire,CB,DEF,
+Манчестер Юнайтед,Diogo Dalot,LB,DEF,
+Манчестер Юнайтед,Kobbie Mainoo,CM,MID,
+Манчестер Юнайтед,Youri Tielemans,CM,MID,
+Манчестер Юнайтед,Amad Diallo,RW,FWD,
+Манчестер Юнайтед,Bruno Fernandes,AM,MID,
+Манчестер Юнайтед,Matheus Cunha,CF,FWD,
+Манчестер Юнайтед,Bryan Mbeumo,RW,FWD,
+Манчестер Юнайтед,Patrick Dorgu,LB,DEF,
+Манчестер Юнайтед,Mason Mount,AM,MID,
+Манчестер Юнайтед,Joshua Zirkzee,CF,FWD,
+Тоттенхэм,Antonin Kinsky,GK,GK,
+Тоттенхэм,Pedro Porro,RB,DEF,
+Тоттенхэм,Andrew Robertson,LB,DEF,
+Тоттенхэм,Archie Gray,CM,MID,
+Тоттенхэм,Sandro Tonali,CM,MID,
+Тоттенхэм,Mateus Fernandes,CM,MID,
+Тоттенхэм,Mohammed Kudus,RW,FWD,
+Тоттенхэм,Omar Marmoush,LW,FWD,
+Тоттенхэм,Mathys Tel,LW,FWD,
+Тоттенхэм,Dominic Solanke,CF,FWD,
+Тоттенхэм,Dejan Kulusevski,RW,FWD,
+Тоттенхэм,James Maddison,AM,MID,
+Тоттенхэм,Rodrigo Bentancur,CM,MID,
+Ньюкасл,Lukas Hornicek,GK,GK,
+Ньюкасл,Amar Dedic,RB,DEF,
+Ньюкасл,Malick Thiaw,CB,DEF,
+Ньюкасл,Dan Burn,CB,DEF,
+Ньюкасл,Lewis Hall,LB,DEF,
+Ньюкасл,Nico Gonzalez,CM,MID,
+Ньюкасл,Sean Steur,CM,MID,
+Ньюкасл,Jacob Murphy,RW,FWD,
+Ньюкасл,Yoane Wissa,CF,FWD,
+Ньюкасл,Harvey Barnes,LW,FWD,
+Ньюкасл,William Osula,CF,FWD,
+Ньюкасл,Anthony Elanga,RW,FWD,
+Ньюкасл,Joe Willock,CM,MID,
+Ньюкасл,Lewis Miley,CM,MID,
+Ньюкасл,Matias Fernandez-Pardo,LW,FWD,
+Ньюкасл,Nick Pope,GK,GK,
+Астон Вилла,Zion Suzuki,GK,GK,
+Астон Вилла,Matty Cash,RB,DEF,
+Астон Вилла,Victor Lindelof,CB,DEF,
+Астон Вилла,Pau Torres,CB,DEF,
+Астон Вилла,Ian Maatsen,LB,DEF,
+Астон Вилла,Boubacar Kamara,DM,MID,
+Астон Вилла,Leon Goretzka,CM,MID,
+Астон Вилла,Joao Gomes,CM,MID,
+Астон Вилла,John McGinn,CM,MID,
+Астон Вилла,Johan Manzambi,AM,MID,
+Астон Вилла,Nicolas Jackson,CF,FWD,
+Астон Вилла,Ross Barkley,CM,MID,
+Астон Вилла,Ibrahim Mbaye,RW,FWD,
+Астон Вилла,Emiliano Buendia,AM,MID,
+Астон Вилла,Taylor Harwood-Bellis,CB,DEF,mentioned in squad context
+Брайтон,Bart Verbruggen,GK,GK,
+Брайтон,Luka Vuskovic,CB,DEF,
+Брайтон,Lewis Dunk,CB,DEF,
+Брайтон,Olivier Boscagli,LB,DEF,
+Брайтон,Pascal Gross,CM,MID,
+Брайтон,Chema Andres,DM,MID,
+Брайтон,Diego Gomez,AM,MID,
+Брайтон,Yasin Ayari,CM,MID,
+Брайтон,Maxim De Cuyper,LW,FWD,
+Брайтон,Charalampos Kostoulas,CF,FWD,
+Брайтон,Yankuba Minteh,RW,FWD,
+Брайтон,Georginio Rutter,AM,MID,
+Брайтон,Jack Hinshelwood,CM,MID,
+Реал Мадрид,Thibaut Courtois,GK,GK,
+Реал Мадрид,Federico Valverde,RB,DEF,
+Реал Мадрид,Ibrahima Konate,CB,DEF,
+Реал Мадрид,Dean Huijsen,CB,DEF,
+Реал Мадрид,Marc Cucurella,LB,DEF,
+Реал Мадрид,Bernardo Silva,CM,MID,
+Реал Мадрид,Aurelien Tchouameni,DM,MID,
+Реал Мадрид,Arda Guler,AM,MID,
+Реал Мадрид,Jude Bellingham,AM,MID,
+Реал Мадрид,Vinicius Junior,LW,FWD,
+Реал Мадрид,Kylian Mbappe,CF,FWD,
+Реал Мадрид,Yan Diomande,RW,FWD,
+Реал Мадрид,Eduardo Camavinga,CM,MID,
+Реал Мадрид,Brahim Diaz,RW,FWD,
+Барселона,Joan Garcia,GK,GK,
+Барселона,Joao Cancelo,RB,DEF,
+Барселона,Pau Cubarsi,CB,DEF,
+Барселона,Gerard Martin,LB,DEF,
+Барселона,Eric Garcia,CB,DEF,
+Барселона,Marc Bernal,DM,MID,
+Барселона,Fermin Lopez,AM,MID,
+Барселона,Lamine Yamal,RW,FWD,
+Барселона,Anthony Gordon,LW,FWD,
+Барселона,Frenkie de Jong,CM,MID,
+Барселона,Alejandro Balde,LB,DEF,
+Барселона,Karim Adeyemi,RW,FWD,
+Барселона,Brian Farinas,CM,MID,youth option mentioned
+Атлетико Мадрид,Jan Oblak,GK,GK,
+Атлетико Мадрид,Marcos Llorente,RB,DEF,
+Атлетико Мадрид,David Hancko,CB,DEF,
+Атлетико Мадрид,Marc Pubill,CB,DEF,
+Атлетико Мадрид,Alejandro Grimaldo,LB,DEF,
+Атлетико Мадрид,Pablo Barrios,CM,MID,
+Атлетико Мадрид,Alex Baena,AM,MID,
+Атлетико Мадрид,Giuliano Simeone,RW,FWD,
+Атлетико Мадрид,Lee Kang-in,AM,MID,
+Атлетико Мадрид,Julian Alvarez,CF,FWD,
+Атлетико Мадрид,Ademola Lookman,RW,FWD,
+Атлетико Мадрид,Jonathan David,CF,FWD,
+Атлетико Мадрид,Morten Hjulmand,DM,MID,
+Атлетико Мадрид,Johnny Cardoso,DM,MID,
+Вильярреал,Peter Gulacsi,GK,GK,
+Вильярреал,Santiago Mourino,RB,DEF,
+Вильярреал,Logan Costa,CB,DEF,
+Вильярреал,Renato Veiga,CB,DEF,
+Вильярреал,Carlos Romero,LB,DEF,
+Вильярреал,Carlos Macia,DM,MID,
+Вильярреал,Pape Gueye,DM,MID,
+Вильярреал,Tajon Buchanan,RW,FWD,
+Вильярреал,Alberto Moleiro,AM,MID,
+Вильярреал,Tani Oluwaseyi,CF,FWD,
+Вильярреал,Georges Mikautadze,CF,FWD,
+Вильярреал,Ayoze Perez,CF,FWD,
+Вильярреал,Nicolas Pepe,RW,FWD,
+Вильярреал,Santi Comesana,CM,MID,
+Вильярреал,Alex Freeman,RB,DEF,
+ПСЖ,Matvey Safonov,GK,GK,
+ПСЖ,Warren Zaire-Emery,RB,DEF,
+ПСЖ,Illia Zabarnyi,CB,DEF,
+ПСЖ,Willian Pacho,CB,DEF,
+ПСЖ,Lucas Hernandez,LB,DEF,
+ПСЖ,Fabian Ruiz,CM,MID,
+ПСЖ,Joao Neves,CM,MID,
+ПСЖ,Desire Doue,RW,FWD,
+ПСЖ,Ferran Torres,CF,FWD,
+ПСЖ,Mika Godts,LW,FWD,
+ПСЖ,Senny Mayulu,AM,MID,
+ПСЖ,Lucas Beraldo,CB,DEF,
+ПСЖ,Achraf Hakimi,RB,DEF,
+ПСЖ,Ousmane Dembele,RW,FWD,
+ПСЖ,Khvicha Kvaratskhelia,LW,FWD,
+ПСЖ,Nuno Mendes,LB,DEF,
+ПСЖ,Maghnes Akliouche,RW,FWD,
+Бавария,Jonas Urbig,GK,GK,
+Бавария,Konrad Laimer,RB,DEF,
+Бавария,Dayot Upamecano,CB,DEF,
+Бавария,Jonathan Tah,CB,DEF,
+Бавария,Josip Stanisic,RB,DEF,
+Бавария,Joshua Kimmich,DM,MID,
+Бавария,Aleksandar Pavlovic,DM,MID,
+Бавария,Michael Olise,RW,FWD,
+Бавария,Lennart Karl,AM,MID,
+Бавария,Nathaniel Brown,LB,DEF,
+Бавария,Alphonso Davies,LB,DEF,
+Бавария,Harry Kane,CF,FWD,
+Бавария,Tom Bischof,CM,MID,
+Бавария,Hiroki Ito,CB,DEF,
+Бавария,Manuel Neuer,GK,GK,
+Бавария,Jamal Musiala,AM,MID,
+Бавария,Luis Diaz,LW,FWD,
+Боруссия Дортмунд,Gregor Kobel,GK,GK,
+Боруссия Дортмунд,Joane Gadou,CB,DEF,
+Боруссия Дортмунд,Waldemar Anton,CB,DEF,
+Боруссия Дортмунд,Nico Schlotterbeck,CB,DEF,
+Боруссия Дортмунд,Daniel Svensson,LB,DEF,
+Боруссия Дортмунд,Joey Veerman,CM,MID,
+Боруссия Дортмунд,Jobe Bellingham,CM,MID,
+Боруссия Дортмунд,Felix Nmecha,CM,MID,
+Боруссия Дортмунд,Konstantinos Karetsas,RW,FWD,
+Боруссия Дортмунд,Fabio Silva,CF,FWD,
+Боруссия Дортмунд,Maximilian Beier,CF,FWD,
+Боруссия Дортмунд,Julian Ryerson,RB,DEF,
+Боруссия Дортмунд,Ramy Bensebaini,LB,DEF,
+Боруссия Дортмунд,Marcel Sabitzer,CM,MID,
+Боруссия Дортмунд,Ethan Nwaneri,AM,MID,
+Боруссия Дортмунд,Carney Chukwuemeka,CM,MID,
+Боруссия Дортмунд,Serhou Guirassy,CF,FWD,
+Интер,Josep Martinez,GK,GK,
+Интер,Manuel Akanji,CB,DEF,
+Интер,Alessandro Bastoni,CB,DEF,
+Интер,Carlos Augusto,LB,DEF,
+Интер,Djed Spence,RWB,DEF,
+Интер,Nicolo Barella,CM,MID,
+Интер,Hakan Calhanoglu,DM,MID,
+Интер,Piotr Zielinski,CM,MID,
+Интер,Federico Dimarco,LWB,DEF,
+Интер,Francesco Pio Esposito,CF,FWD,
+Интер,Petar Sucic,CM,MID,
+Интер,Henrikh Mkhitaryan,CM,MID,
+Интер,Andy Diouf,CM,MID,
+Интер,Benjamin Pavard,CB,DEF,
+Интер,Marcus Thuram,CF,FWD,
+Интер,Lautaro Martinez,CF,FWD,
+Интер,Ange-Yoan Bonny,CF,FWD,
+Милан,Mike Maignan,GK,GK,
+Милан,Mario Gila,CB,DEF,
+Милан,Koni De Winter,CB,DEF,
+Милан,Sankhoun Diawara,CB,DEF,
+Милан,Yunus Musah,LB,DEF,
+Милан,Luka Modric,CM,MID,
+Милан,Adrien Rabiot,CM,MID,
+Милан,Diego Moreira,LW,FWD,
+Милан,Christian Pulisic,RW,FWD,
+Милан,Alphadjo Cisse,CF,FWD,
+Милан,Goncalo Ramos,CF,FWD,
+Милан,Omari Hutchinson,RW,FWD,
+Милан,Ardon Jashari,CM,MID,
+Милан,Pervis Estupinan,LB,DEF,
+Милан,Filippo Terracciano,RB,DEF,
+Ювентус,Guglielmo Vicario,GK,GK,
+Ювентус,Federico Gatti,CB,DEF,
+Ювентус,Zeki Celik,RB,DEF,
+Ювентус,Jhon Lucumi,CB,DEF,
+Ювентус,Juan Cabal,LB,DEF,
+Ювентус,Weston McKennie,CM,MID,
+Ювентус,Teun Koopmeiners,CM,MID,
+Ювентус,Douglas Luiz,DM,MID,
+Ювентус,Jeremie Boga,LW,FWD,
+Ювентус,Randal Kolo Muani,CF,FWD,
+Ювентус,Nick Woltemade,CF,FWD,
+Ювентус,Edon Zhegrova,RW,FWD,
+Ювентус,Kerim Alajbegovic,LW,FWD,
+Ювентус,Francisco Conceicao,RW,FWD,
+Ювентус,Pierre Kalulu,RB,DEF,
+Ювентус,Andrea Cambiaso,LB,DEF,
+Ювентус,Nicolas Gonzalez,RW,FWD,
+Наполи,Vanja Milinkovic-Savic,GK,GK,
+Наполи,Amir Rrahmani,CB,DEF,
+Наполи,Sam Beukema,CB,DEF,
+Наполи,Rafa Marin,CB,DEF,
+Наполи,Mathias Olivera,LB,DEF,
+Наполи,Billy Gilmour,CM,MID,
+Наполи,Scott McTominay,CM,MID,
+Наполи,Kevin De Bruyne,AM,MID,
+Наполи,Antonio Vergara,AM,MID,
+Наполи,Noa Lang,LW,FWD,
+Наполи,Rasmus Hojlund,CF,FWD,
+Наполи,Frank Anguissa,CM,MID,
+Наполи,Matteo Politano,RW,FWD,
+Наполи,Lorenzo Lucca,CF,FWD,
+Ливерпуль,Alisson,GK,GK,
+Астон Вилла,Alysson,RW,FWD,
+Брайтон,Costinha,RB,DEF,
+Барселона,Pedri,CM,MID,
+Барселона,Gavi,CM,MID,
+Атлетико Мадрид,Koke,CM,MID,
+ПСЖ,Vitinha,CM,MID,
+Ювентус,Bremer,CB,DEF,
+Барселона,Dani Olmo,AM,MID,added from players_fix
+Барселона,Jules Kounde,RB,DEF,added from players_fix
+Барселона,Rodri,DM,MID,added from players_fix
+Барселона,Andreas Christensen,CB,DEF,added from players_fix
+Барселона,Gabriel Jesus,CF,FWD,added from players_fix
+Барселона,Xavi Espart,RB,DEF,added from players_fix
+Арсенал,Ben White,RB,DEF,added from players_fix
+Арсенал,Myles Lewis-Skelly,LB,DEF,added from players_fix
+Арсенал,Piero Hincapie,CB,DEF,added from players_fix
+Манчестер Сити,Antoine Semenyo,RW,FWD,added from players_fix
+Манчестер Сити,Rayan Ait-Nouri,LB,DEF,added from players_fix
+Манчестер Сити,Mateo Kovacic,CM,MID,added from players_fix
+Ливерпуль,Ryan Gravenberch,CM,MID,added from players_fix
+Ливерпуль,Jeremie Frimpong,RB,DEF,added from players_fix
+Ливерпуль,Conor Bradley,RB,DEF,added from players_fix
+Ливерпуль,Hugo Ekitike,CF,FWD,added from players_fix
+Челси,Joao Pedro,CF,FWD,added from players_fix
+Челси,Reece James,RB,DEF,added from players_fix
+Челси,Jorrel Hato,CB,DEF,added from players_fix
+Челси,Maxence Lacroix,CB,DEF,added from players_fix
+Челси,Jamie Gittens,LW,FWD,added from players_fix
+Манчестер Юнайтед,Matthijs de Ligt,CB,DEF,added from players_fix
+Манчестер Юнайтед,Lisandro Martinez,CB,DEF,added from players_fix
+Манчестер Юнайтед,Carlos Baleba,DM,MID,added from players_fix
+Манчестер Юнайтед,Benjamin Sesko,CF,FWD,added from players_fix
+Манчестер Юнайтед,Luke Shaw,LB,DEF,added from players_fix
+Манчестер Юнайтед,Manuel Ugarte,DM,MID,added from players_fix
+Манчестер Юнайтед,Marcus Rashford,LW,FWD,added from players_fix
+Манчестер Юнайтед,Andrey Santos,CM,MID,added from players_fix
+Тоттенхэм,Xavi Simons,AM,MID,added from players_fix
+Тоттенхэм,Lucas Bergvall,CM,MID,added from players_fix
+Тоттенхэм,Destiny Udogie,LB,DEF,added from players_fix
+Тоттенхэм,Conor Gallagher,CM,MID,added from players_fix
+Ньюкасл,Sven Botman,CB,DEF,added from players_fix
+Ньюкасл,Tino Livramento,RB,DEF,added from players_fix
+Ньюкасл,Jacob Ramsey,CM,MID,added from players_fix
+Ньюкасл,Fabian Schar,CB,DEF,added from players_fix
+Астон Вилла,Amadou Onana,DM,MID,added from players_fix
+Астон Вилла,Alejandro Garnacho,LW,FWD,added from players_fix
+Астон Вилла,Aaron Wan-Bissaka,RB,DEF,added from players_fix
+Астон Вилла,Matteo Ruggeri,LB,DEF,added from players_fix
+Астон Вилла,Tammy Abraham,CF,FWD,added from players_fix
+Брайтон,Kaoru Mitoma,LW,FWD,added from players_fix
+Брайтон,Ferdi Kadioglu,LB,DEF,added from players_fix
+Брайтон,Mats Wieffer,DM,MID,added from players_fix
+Реал Мадрид,Trent Alexander-Arnold,RB,DEF,added from players_fix
+Реал Мадрид,Denzel Dumfries,RB,DEF,added from players_fix
+Реал Мадрид,Eder Militao,CB,DEF,added from players_fix
+Реал Мадрид,Antonio Rudiger,CB,DEF,added from players_fix
+Реал Мадрид,Alvaro Carreras,LB,DEF,added from players_fix
+Атлетико Мадрид,Cristian Romero,CB,DEF,added from players_fix
+Атлетико Мадрид,Robin Le Normand,CB,DEF,added from players_fix
+Атлетико Мадрид,Alexander Sorloth,CF,FWD,added from players_fix
+Вильярреал,Gerard Moreno,CF,FWD,added from players_fix
+Вильярреал,Juan Foyth,RB,DEF,added from players_fix
+Вильярреал,Ilias Akhomach,RW,FWD,added from players_fix
+ПСЖ,Lucas Digne,LB,DEF,added from players_fix
+ПСЖ,Dro Fernandez,AM,MID,added from players_fix
+Бавария,Kim Min-jae,CB,DEF,added from players_fix
+Бавария,Ismael Saibari,AM,MID,added from players_fix
+Бавария,Serge Gnabry,RW,FWD,added from players_fix
+Боруссия Дортмунд,Emre Can,DM,MID,added from players_fix
+Боруссия Дортмунд,Giannis Konstantelias,RW,FWD,added from players_fix
+Интер,Yann-Aurel Bisseck,CB,DEF,added from players_fix
+Интер,Luis Henrique,RW,FWD,added from players_fix
+Интер,Curtis Jones,CM,MID,added from players_fix
+Интер,John Stones,CB,DEF,added from players_fix
+Интер,Aleksandar Stankovic,DM,MID,added from players_fix
+Милан,Alexis Saelemaekers,RW,DEF,added from players_fix
+Милан,Davide Bartesaghi,LB,DEF,added from players_fix
+Милан,Ruben Loftus-Cheek,CM,MID,added from players_fix
+Ювентус,Kenan Yildiz,LW,FWD,added from players_fix
+Ювентус,Manuel Locatelli,DM,MID,added from players_fix
+Ювентус,Khephren Thuram,CM,MID,added from players_fix
+Ювентус,Pape Matar Sarr,CM,MID,added from players_fix
+Наполи,Giovanni Di Lorenzo,RB,DEF,added from players_fix
+Наполи,Stanislav Lobotka,DM,MID,added from players_fix
+Наполи,Alessandro Buongiorno,CB,DEF,added from players_fix
+Наполи,David Neres,RW,FWD,added from players_fix
+Наполи,Leonardo Spinazzola,LB,DEF,added from players_fix
+Наполи,Benoit Badiashile,CB,DEF,added from players_fix
+Наполи,Alisson Santos,RW,FWD,added from players_fix
+Наполи,Costantino Favasuli,MF,MID,added from players_fix
+Реал Мадрид,Rodrygo,RW,FWD,added from players_fix
+Ньюкасл,Joelinton,CM,MID,added from players_fix
+Тоттенхэм,Savinho,RW,FWD,added from players_fix
+Брайтон,Matt O'Riley,CM,MID,added from players_fix

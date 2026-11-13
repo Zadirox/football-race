@@ -33,6 +33,12 @@ const PLAYER: PlayerRow = {
   dice_bronze: 2,
   dice_silver: '1',
   dice_gold: null,
+  favorite_club_id: null,
+  favorite_club_name: null,
+  favorite_national_team_id: null,
+  favorite_national_team_name: null,
+  favorite_player_id: null,
+  favorite_player_name: null,
 };
 
 const PLAYER_TWO: PlayerRow = {

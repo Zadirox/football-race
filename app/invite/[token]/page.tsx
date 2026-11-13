@@ -2,6 +2,7 @@ import type { Metadata } from 'next';
 import Link from 'next/link';
 import { Panel, Notice } from '@/components/ui/Panel';
 import { getInviteByToken } from '@/lib/repo/invites';
+import { loadFavoritesOptions } from '@/lib/repo/reference-data';
 import { AcceptInviteForm } from './AcceptInviteForm';
 
 export const metadata: Metadata = {
@@ -77,6 +78,8 @@ export default async function InvitePage({ params }: Props) {
     );
   }
 
+  const favorites = await loadFavoritesOptions();
+
   return (
     <InviteShell>
       <Panel
@@ -85,11 +88,17 @@ export default async function InvitePage({ params }: Props) {
         size="narrow"
       >
         <Notice tone="info">
-          Тебя пригласили под ником <strong>{invite.nickname}</strong>. Придумай пароль — это нужно сделать один раз. После
-          активации ты будешь добавлен в сезон как игрок.
+          Тебя пригласили под ником <strong>{invite.nickname}</strong>. Придумай пароль и выбери любимые сборную, клуб и
+          игрока — это нужно сделать один раз. После активации ты будешь добавлен в сезон как игрок.
         </Notice>
         <div style={{ marginTop: 16 }}>
-          <AcceptInviteForm token={token} nickname={invite.nickname} />
+          <AcceptInviteForm
+            token={token}
+            nickname={invite.nickname}
+            teams={favorites.teams}
+            clubs={favorites.clubs}
+            players={favorites.players}
+          />
         </div>
       </Panel>
     </InviteShell>

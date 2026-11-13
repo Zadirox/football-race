@@ -135,9 +135,18 @@ async function loadFromDatabase(viewer: SeasonViewer): Promise<SeasonSnapshot> {
         coalesce(dc.wood, 0) as dice_wood,
         coalesce(dc.bronze, 0) as dice_bronze,
         coalesce(dc.silver, 0) as dice_silver,
-        coalesce(dc.gold, 0) as dice_gold
+        coalesce(dc.gold, 0) as dice_gold,
+        p.favorite_club_id,
+        fc.name as favorite_club_name,
+        p.favorite_national_team_id,
+        fnt.name as favorite_national_team_name,
+        p.favorite_player_id,
+        fp.name as favorite_player_name
       from season_players sp
       join profiles p on p.id = sp.profile_id
+      left join clubs fc on fc.id = p.favorite_club_id
+      left join national_teams fnt on fnt.id = p.favorite_national_team_id
+      left join players fp on fp.id = p.favorite_player_id
       left join lateral (
         select sum(se.points)::int as total
         from score_events se

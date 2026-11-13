@@ -9,7 +9,7 @@
 import { db } from '@/lib/db';
 import { hasDatabase, serverEnv } from '@/lib/env';
 import { fetchFixtures } from '@/lib/data/footballData';
-import { fetchSstatsUnlFixtures } from '@/lib/data/sstats';
+import { enrichSstatsMatchesWithStats, fetchSstatsUnlFixtures } from '@/lib/data/sstats';
 import { normalizeMatches, type NormalizedMatch } from '@/lib/data/normalize';
 import { generateMatchQuestions } from '@/lib/data/questions';
 import { syncWindow } from '@/lib/data/sync-window';
@@ -182,7 +182,13 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
     fetchedTotal += unl.fetched;
     requestsUsed += unl.requestsUsed;
     if (httpStatus === null) httpStatus = unl.httpStatus;
-    groups.push(unl.matches);
+
+    const enriched = await enrichSstatsMatchesWithStats({
+      matches: unl.matches,
+      apiKey: env.sstatsApiKey,
+    });
+    requestsUsed += enriched.requestsUsed;
+    groups.push(enriched.matches);
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Источник Лиги наций недоступен';
     errors.push(`Лига наций: ${message}`);
@@ -248,7 +254,13 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
           provider, external_id, league_code, league_title,
           home_name, home_logo, away_name, away_logo,
           kickoff_utc, status, minute, home_score, away_score,
-          ht_home_score, ht_away_score, raw
+          ht_home_score, ht_away_score,
+          corners_home, corners_away,
+          yellow_cards_home, yellow_cards_away,
+          red_cards_home, red_cards_away,
+          possession_home, possession_away,
+          shots_on_target_home, shots_on_target_away,
+          raw
         ) values (
           ${match.provider},
           ${match.externalId},
@@ -265,6 +277,16 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
           ${match.awayScore},
           ${match.htHomeScore},
           ${match.htAwayScore},
+          ${match.stats.cornersHome},
+          ${match.stats.cornersAway},
+          ${match.stats.yellowCardsHome},
+          ${match.stats.yellowCardsAway},
+          ${match.stats.redCardsHome},
+          ${match.stats.redCardsAway},
+          ${match.stats.possessionHome},
+          ${match.stats.possessionAway},
+          ${match.stats.shotsOnTargetHome},
+          ${match.stats.shotsOnTargetAway},
           ${tx.json(match.raw as any)}
         )
         on conflict (provider, external_id) do update set
@@ -281,6 +303,16 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
           away_score = excluded.away_score,
           ht_home_score = excluded.ht_home_score,
           ht_away_score = excluded.ht_away_score,
+          corners_home = excluded.corners_home,
+          corners_away = excluded.corners_away,
+          yellow_cards_home = excluded.yellow_cards_home,
+          yellow_cards_away = excluded.yellow_cards_away,
+          red_cards_home = excluded.red_cards_home,
+          red_cards_away = excluded.red_cards_away,
+          possession_home = excluded.possession_home,
+          possession_away = excluded.possession_away,
+          shots_on_target_home = excluded.shots_on_target_home,
+          shots_on_target_away = excluded.shots_on_target_away,
           raw = excluded.raw
         returning id
       `;

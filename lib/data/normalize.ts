@@ -20,6 +20,32 @@ export type ProviderMatch = {
   } | null;
 };
 
+export type MatchStats = {
+  cornersHome: number | null;
+  cornersAway: number | null;
+  yellowCardsHome: number | null;
+  yellowCardsAway: number | null;
+  redCardsHome: number | null;
+  redCardsAway: number | null;
+  possessionHome: number | null;
+  possessionAway: number | null;
+  shotsOnTargetHome: number | null;
+  shotsOnTargetAway: number | null;
+};
+
+export const EMPTY_MATCH_STATS: MatchStats = {
+  cornersHome: null,
+  cornersAway: null,
+  yellowCardsHome: null,
+  yellowCardsAway: null,
+  redCardsHome: null,
+  redCardsAway: null,
+  possessionHome: null,
+  possessionAway: null,
+  shotsOnTargetHome: null,
+  shotsOnTargetAway: null,
+};
+
 export type NormalizedMatch = {
   provider: 'football-data' | 'sstats';
   externalId: string;
@@ -36,6 +62,7 @@ export type NormalizedMatch = {
   awayScore: number | null;
   htHomeScore: number | null;
   htAwayScore: number | null;
+  stats: MatchStats;
   raw: unknown;
 };
 
@@ -111,6 +138,7 @@ export function normalizeMatch(raw: ProviderMatch): NormalizedMatch | null {
     awayScore: fullTime?.away ?? null,
     htHomeScore: halfTime?.home ?? null,
     htAwayScore: halfTime?.away ?? null,
+    stats: { ...EMPTY_MATCH_STATS },
     raw,
   };
 }

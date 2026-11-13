@@ -8,7 +8,7 @@
 
 import { AppError } from '@/lib/errors';
 import { teamNameRu } from './team-names';
-import type { NormalizedMatch } from './normalize';
+import { EMPTY_MATCH_STATS, type MatchStats, type NormalizedMatch } from './normalize';
 
 const BASE_URL = 'https://api.sstats.net';
 const TIMEOUT_MS = 15_000;
@@ -139,6 +139,7 @@ export function normalizeSstatsUnlGame(game: SstatsGame): NormalizedMatch | null
     awayScore,
     htHomeScore,
     htAwayScore,
+    stats: { ...EMPTY_MATCH_STATS },
     raw: game,
   };
 }
@@ -219,4 +220,114 @@ export async function fetchSstatsUnlFixtures(input: {
     durationMs,
     requestsUsed: 1,
   };
+}
+
+function toStatNumber(value: unknown): number | null {
+  if (typeof value === 'number' && Number.isFinite(value)) return value;
+  if (typeof value === 'string' && value.trim() !== '' && Number.isFinite(Number(value))) return Number(value);
+  return null;
+}
+
+function pickStat(obj: Record<string, unknown> | null | undefined, keys: string[]): number | null {
+  if (!obj) return null;
+  for (const key of keys) {
+    const v = toStatNumber(obj[key]);
+    if (v !== null) return v;
+  }
+  return null;
+}
+
+export function extractSstatsMatchStats(detail: unknown): MatchStats {
+  const root = (detail && typeof detail === 'object' ? detail : {}) as Record<string, unknown>;
+  const data = (root.data && typeof root.data === 'object' ? root.data : root) as Record<string, unknown>;
+  const game = (data.game && typeof data.game === 'object' ? data.game : data) as Record<string, unknown>;
+  const stats = (data.statistics && typeof data.statistics === 'object'
+    ? data.statistics
+    : game.statistics && typeof game.statistics === 'object'
+      ? game.statistics
+      : null) as Record<string, unknown> | null;
+
+  const cornersHome = pickStat(stats, ['cornerKicksHome', 'cornersHome', 'homeCorners']) ?? pickStat(game, ['cornerKicksHome', 'cornersHome']);
+  const cornersAway = pickStat(stats, ['cornerKicksAway', 'cornersAway', 'awayCorners']) ?? pickStat(game, ['cornerKicksAway', 'cornersAway']);
+  const yellowCardsHome = pickStat(stats, ['yellowCardsHome', 'homeYellowCards']) ?? pickStat(game, ['yellowCardsHome']);
+  const yellowCardsAway = pickStat(stats, ['yellowCardsAway', 'awayYellowCards']) ?? pickStat(game, ['yellowCardsAway']);
+  const redCardsHome = pickStat(stats, ['redCardsHome', 'homeRedCards']) ?? pickStat(game, ['redCardsHome']);
+  const redCardsAway = pickStat(stats, ['redCardsAway', 'awayRedCards']) ?? pickStat(game, ['redCardsAway']);
+  const possessionHome = pickStat(stats, ['ballPossessionHome', 'possessionHome', 'homePossession']) ?? pickStat(game, ['ballPossessionHome', 'possessionHome']);
+  const possessionAway = pickStat(stats, ['ballPossessionAway', 'possessionAway', 'awayPossession']) ?? pickStat(game, ['ballPossessionAway', 'possessionAway']);
+  const shotsOnTargetHome = pickStat(stats, ['shotsOnTargetHome', 'homeShotsOnTarget']) ?? pickStat(game, ['shotsOnTargetHome']);
+  const shotsOnTargetAway = pickStat(stats, ['shotsOnTargetAway', 'awayShotsOnTarget']) ?? pickStat(game, ['shotsOnTargetAway']);
+
+  return {
+    cornersHome,
+    cornersAway,
+    yellowCardsHome,
+    yellowCardsAway,
+    redCardsHome,
+    redCardsAway,
+    possessionHome,
+    possessionAway,
+    shotsOnTargetHome,
+    shotsOnTargetAway,
+  };
+}
+
+export async function fetchSstatsGameDetail(input: {
+  id: string | number;
+  apiKey?: string | null;
+  fetchImpl?: typeof fetch;
+}): Promise<{ stats: MatchStats; requestsUsed: number }> {
+  const url = new URL(`${BASE_URL}/Games/${encodeURIComponent(String(input.id))}`);
+  const doFetch = input.fetchImpl ?? fetch;
+  const headers: Record<string, string> = { accept: 'application/json' };
+  if (input.apiKey) {
+    headers['Authorization'] = `ApiKey ${input.apiKey}`;
+    headers['apikey'] = input.apiKey;
+  }
+
+  const response = await doFetch(url, {
+    headers,
+    cache: 'no-store',
+    signal: AbortSignal.timeout(TIMEOUT_MS),
+  });
+  if (!response.ok) {
+    throw new AppError('SYNC_PROVIDER_DOWN', `Детали матча вернули ${response.status}`);
+  }
+  const payload = await response.json();
+  return { stats: extractSstatsMatchStats(payload), requestsUsed: 1 };
+}
+
+export async function enrichSstatsMatchesWithStats(input: {
+  matches: NormalizedMatch[];
+  apiKey?: string | null;
+  fetchImpl?: typeof fetch;
+}): Promise<{ matches: NormalizedMatch[]; requestsUsed: number }> {
+  let requestsUsed = 0;
+  const enriched: NormalizedMatch[] = [];
+
+  for (const match of input.matches) {
+    if (match.provider !== 'sstats') {
+      enriched.push(match);
+      continue;
+    }
+    // Для ещё не начавшихся матчей статистики обычно нет — пропускаем лишние запросы.
+    if (match.status === 'NS' || match.status === 'PST' || match.status === 'CANC') {
+      enriched.push(match);
+      continue;
+    }
+    try {
+      const detail = await fetchSstatsGameDetail({
+        id: match.externalId,
+        apiKey: input.apiKey,
+        fetchImpl: input.fetchImpl,
+      });
+      requestsUsed += detail.requestsUsed;
+      enriched.push({ ...match, stats: detail.stats });
+    } catch {
+      // Если детали недоступны, оставляем матч без статистики — синк не ломаем.
+      enriched.push(match);
+    }
+  }
+
+  return { matches: enriched, requestsUsed };
 }

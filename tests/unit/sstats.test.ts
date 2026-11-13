@@ -58,6 +58,24 @@ describe('normalizeSstatsUnlGame', () => {
     expect(match?.awayScore).toBe(1);
     expect(match?.htHomeScore).toBe(1);
   });
+
+  it('не падает на необычных полях', () => {
+    const match = normalizeSstatsUnlGame({
+      id: 125,
+      dateUtc: 1794528000000 as any, // число (мс) вместо строки
+      statusName: { name: 'Not Started' } as any,
+      homeTeam: 'Portugal' as any,
+      awayTeam: { title: 'Spain' } as any,
+      homeResult: '1' as any,
+      awayResult: '0' as any,
+      htResult: { home: '1', away: '0' } as any,
+    } as any);
+
+    expect(match).not.toBeNull();
+    expect(match?.homeName).toBe('Portugal');
+    expect(match?.awayName).toBe('Spain');
+    expect(match?.homeScore).toBe(1);
+  });
 });
 
 describe('fetchSstatsUnlFixtures', () => {

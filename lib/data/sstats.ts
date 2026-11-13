@@ -37,9 +37,28 @@ export type SstatsGame = {
   [key: string]: unknown;
 };
 
-function parseUtc(value: string | null | undefined): Date | null {
-  if (!value) return null;
-  const trimmed = value.trim();
+function toText(value: unknown): string | null {
+  if (value == null) return null;
+  if (typeof value === 'string') return value;
+  if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+  if (typeof value === 'object') {
+    const obj = value as { name?: unknown; shortName?: unknown; title?: unknown; label?: unknown };
+    return toText(obj.shortName ?? obj.name ?? obj.title ?? obj.label);
+  }
+  return null;
+}
+
+function parseUtc(value: unknown): Date | null {
+  if (value == null || value === '') return null;
+  if (value instanceof Date) return Number.isNaN(value.getTime()) ? null : value;
+  if (typeof value === 'number') {
+    const ms = value > 1e12 ? value : value > 1e9 ? value * 1000 : NaN;
+    const d = new Date(ms);
+    return Number.isNaN(d.getTime()) ? null : d;
+  }
+  const raw = toText(value);
+  if (!raw) return null;
+  const trimmed = raw.trim();
   if (!trimmed) return null;
   // "2026-11-12 19:45:00" -> трактуем как UTC
   const iso = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}(:\d{2})?$/.test(trimmed)
@@ -76,8 +95,8 @@ export function mapSstatsStatus(status: string | number | null | undefined): Nor
   return 'NS';
 }
 
-function cleanName(name: string | null | undefined, fallback: string): string {
-  const value = (name ?? '').trim();
+function cleanName(name: unknown, fallback: string): string {
+  const value = (toText(name) ?? '').trim();
   return value.length > 0 ? value : fallback;
 }
 
@@ -85,15 +104,23 @@ export function normalizeSstatsUnlGame(game: SstatsGame): NormalizedMatch | null
   const kickoffUtc = parseUtc(game.dateUtc ?? game.date ?? null);
   if (!kickoffUtc) return null;
 
-  const homeName = cleanName(game.homeTeam?.shortName ?? game.homeTeam?.name, 'Хозяева');
-  const awayName = cleanName(game.awayTeam?.shortName ?? game.awayTeam?.name, 'Гости');
+  const homeTeam: any = game.homeTeam as any;
+  const awayTeam: any = game.awayTeam as any;
+  const homeName = cleanName(homeTeam?.shortName ?? homeTeam?.name ?? homeTeam, 'Хозяева');
+  const awayName = cleanName(awayTeam?.shortName ?? awayTeam?.name ?? awayTeam, 'Гости');
   if (!homeName || !awayName) return null;
 
-  const status = mapSstatsStatus(game.statusName ?? game.status);
-  const homeScore = typeof game.homeResult === 'number' ? game.homeResult : null;
-  const awayScore = typeof game.awayResult === 'number' ? game.awayResult : null;
-  const htHomeScore = typeof game.htResult?.home === 'number' ? game.htResult.home : null;
-  const htAwayScore = typeof game.htResult?.away === 'number' ? game.htResult.away : null;
+  const status = mapSstatsStatus(toText((game as any).statusName ?? (game as any).status) ?? (game as any).status);
+  const toNum = (v: unknown): number | null => {
+    if (typeof v === 'number' && Number.isFinite(v)) return v;
+    if (typeof v === 'string' && v.trim() !== '' && Number.isFinite(Number(v))) return Number(v);
+    return null;
+  };
+  const homeScore = toNum(game.homeResult);
+  const awayScore = toNum(game.awayResult);
+  const ht = (game.htResult ?? (game as any).htResult) as any;
+  const htHomeScore = toNum(ht?.home);
+  const htAwayScore = toNum(ht?.away);
 
   return {
     provider: 'sstats',
@@ -175,7 +202,9 @@ export async function fetchSstatsUnlFixtures(input: {
     ? (payload as SstatsGame[])
     : Array.isArray((payload as { data?: unknown })?.data)
       ? ((payload as { data: SstatsGame[] }).data)
-      : [];
+      : Array.isArray((payload as { games?: unknown })?.games)
+        ? ((payload as { games: SstatsGame[] }).games)
+        : [];
 
   const matches = games
     .map(normalizeSstatsUnlGame)

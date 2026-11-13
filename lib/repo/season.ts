@@ -10,6 +10,7 @@
  * юнит-тестами, потому что живой базы до подключения ключей нет).
  */
 
+import { cache } from 'react';
 import { db } from '@/lib/db';
 import { getViewer } from '@/lib/auth/session';
 import { buildDemoSnapshot } from '@/lib/demo/snapshot';
@@ -39,18 +40,47 @@ import type { SeasonSnapshot } from '@/lib/types';
 
 export type SeasonViewer = Awaited<ReturnType<typeof getViewer>>;
 
-export async function loadSeasonSnapshot(): Promise<SeasonSnapshot> {
-  if (!hasDatabase()) return buildDemoSnapshot();
+const getCachedViewer = cache(getViewer);
 
+// Короткий серверный кэш: вкладки запрашивают снимок подряд при навигации,
+// а полный сбор из БД + auth заметно задерживает открытие (1-2с).
+// TTL очень маленький, чтобы не мешать обновлениям после мутаций/revalidatePath.
+const SNAPSHOT_TTL_MS = 5_000;
+
+export function invalidateSeasonSnapshotCache(profileId?: string | null): void {
+  if (profileId) {
+    snapshotCache.delete(profileId);
+    return;
+  }
+  snapshotCache.clear();
+}
+const snapshotCache = new Map<string, { at: number; value: Promise<SeasonSnapshot> }>();
+
+async function loadSeasonSnapshotUncachedForViewer(viewer: SeasonViewer): Promise<SeasonSnapshot> {
+  if (!hasDatabase()) return buildDemoSnapshot();
   try {
-    return await loadFromDatabase(await getViewer());
+    return await loadFromDatabase(viewer);
   } catch (error) {
-    // Кривые ключи, сеть или неприменённые миграции не должны ронять сайт:
-    // показываем демо-сезон с явным баннером «Демо-режим».
     console.error('Не удалось собрать снимок сезона из БД:', error);
     return buildDemoSnapshot();
   }
 }
+
+/** Дедупликация в рамках одного запроса + короткий TTL между запросами. */
+export const loadSeasonSnapshot = cache(async (): Promise<SeasonSnapshot> => {
+  const viewer = await getCachedViewer();
+  const key = viewer?.profileId ?? '__anon__';
+  const now = Date.now();
+  const hit = snapshotCache.get(key);
+  if (hit && now - hit.at < SNAPSHOT_TTL_MS) return hit.value;
+
+  const value = loadSeasonSnapshotUncachedForViewer(viewer).catch((err) => {
+    snapshotCache.delete(key);
+    throw err;
+  });
+  snapshotCache.set(key, { at: now, value });
+  return value;
+});
 
 async function loadFromDatabase(viewer: SeasonViewer): Promise<SeasonSnapshot> {
   const sql = db();

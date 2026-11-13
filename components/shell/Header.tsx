@@ -79,6 +79,7 @@ export function Header({ me, closesAt, demo }: HeaderProps) {
       <Link
         key={item.href}
         href={active ? '/' : item.href}
+        prefetch
         className="tab"
         data-active={active}
         aria-current={active ? 'page' : undefined}

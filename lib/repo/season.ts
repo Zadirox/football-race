@@ -36,6 +36,7 @@ import {
   type QuestionRow,
   type SeasonRow,
 } from '@/lib/repo/mappers';
+import { gameDateOf } from '@/lib/time';
 import type { SeasonSnapshot } from '@/lib/types';
 
 export type SeasonViewer = Awaited<ReturnType<typeof getViewer>>;
@@ -116,6 +117,8 @@ async function loadFromDatabase(viewer: SeasonViewer): Promise<SeasonSnapshot> {
     return buildDemoSnapshot();
   }
 
+  const todayGameDate = gameDateOf(new Date());
+
   const [playerRows, matchdayRows] = await Promise.all([
     sql<PlayerRow[]>`
       select
@@ -174,7 +177,14 @@ async function loadFromDatabase(viewer: SeasonViewer): Promise<SeasonSnapshot> {
       select id, game_date::text as game_date, opens_at, closes_at, status, q_total
       from matchdays
       where season_id = ${season.id}
-      order by game_date desc
+      order by
+        case
+          when game_date = ${todayGameDate}::date then 0
+          when game_date > ${todayGameDate}::date then 1
+          else 2
+        end,
+        case when game_date >= ${todayGameDate}::date then game_date end asc,
+        game_date desc
       limit 1
     `,
   ]);

@@ -1,16 +1,1 @@
-{
-  "crons": [
-    {
-      "path": "/api/cron/sync-fixtures",
-      "schedule": "*/15 * * * *"
-    },
-    {
-      "path": "/api/cron/close-matchday",
-      "schedule": "*/15 * * * *"
-    },
-    {
-      "path": "/api/cron/expire-pending",
-      "schedule": "*/15 * * * *"
-    }
-  ]
-}
+{}

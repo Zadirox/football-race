@@ -24,6 +24,8 @@ const LEFT_TABS: Tab[] = [
 const RIGHT_TABS: Tab[] = [
   { href: '/matches', label: 'Матчи', icon: '⚽' },
   { href: '/predictions', label: 'Предикты', icon: '✎' },
+  { href: '/collection', label: 'Коллекция', icon: '🃏' },
+  { href: '/lineups', label: 'Составы', icon: '▦' },
   { href: '/ratings', label: 'Рейтинги', icon: '▲' },
   { href: '/participants', label: 'Участники', icon: '☺' },
   { href: '/admin', label: 'Админка', icon: '⚙', adminOnly: true },

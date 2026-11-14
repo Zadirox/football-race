@@ -89,64 +89,57 @@ function toMatchdayView(row: MatchdayRow): MatchdayView {
   };
 }
 
-const RESULTS_SELECT = `
-  md.id as matchday_id,
-  md.game_date::text as game_date,
-  sp.profile_id,
-  p.nickname,
-  coalesce(ans.answered, 0)::int as answered,
-  coalesce(ans.correct, 0)::int as correct,
-  coalesce(md.q_total, qtot.total, 0)::int as total,
-  coalesce(bonus.bonus_hit, false) as bonus_hit,
-  day_die.tier as die_tier
-`;
-
-const RESULTS_FROM = `
-  from matchdays md
-  join season_players sp on sp.season_id = md.season_id and sp.is_active
-  join profiles p on p.id = sp.profile_id
-  left join lateral (
-    select
-      count(*) filter (where a.question_id is not null)::int as answered,
-      count(*) filter (where a.is_correct is true)::int as correct
-    from questions q
-    left join answers a on a.question_id = q.id and a.profile_id = sp.profile_id
-    where q.matchday_id = md.id
-      and q.status = 'resolved'
-      and q.is_bonus = false
-  ) ans on true
-  left join lateral (
-    select count(*)::int as total
-    from questions q
-    where q.matchday_id = md.id and q.status = 'resolved' and q.is_bonus = false
-  ) qtot on true
-  left join lateral (
-    select exists (
-      select 1
-      from answers a
-      join questions q on q.id = a.question_id
-      where a.profile_id = sp.profile_id
-        and q.matchday_id = md.id
-        and q.is_bonus = true
-        and a.is_correct is true
-    ) as bonus_hit
-  ) bonus on true
-  left join lateral (
-    select d.tier
-    from dice d
-    where d.profile_id = sp.profile_id
-      and d.matchday_id = md.id
-      and d.source = 'matchday'
-    limit 1
-  ) day_die on true
-`;
-
 export async function loadMatchdayResults(seasonId: string, matchdayId: string): Promise<MatchdayResultView[]> {
   if (!hasDatabase()) return [];
   const sql = db();
   const rows = await sql<MatchdayResultRow[]>`
-    select ${sql.unsafe(RESULTS_SELECT)}
-    ${sql.unsafe(RESULTS_FROM)}
+    select
+      md.id as matchday_id,
+      md.game_date::text as game_date,
+      sp.profile_id,
+      p.nickname,
+      coalesce(ans.answered, 0)::int as answered,
+      coalesce(ans.correct, 0)::int as correct,
+      coalesce(md.q_total, qtot.total, 0)::int as total,
+      coalesce(bonus.bonus_hit, false) as bonus_hit,
+      day_die.tier as die_tier
+    from matchdays md
+    join season_players sp on sp.season_id = md.season_id and sp.is_active
+    join profiles p on p.id = sp.profile_id
+    left join lateral (
+      select
+        count(*) filter (where a.question_id is not null)::int as answered,
+        count(*) filter (where a.is_correct is true)::int as correct
+      from questions q
+      left join answers a on a.question_id = q.id and a.profile_id = sp.profile_id
+      where q.matchday_id = md.id
+        and q.status = 'resolved'
+        and q.is_bonus = false
+    ) ans on true
+    left join lateral (
+      select count(*)::int as total
+      from questions q
+      where q.matchday_id = md.id and q.status = 'resolved' and q.is_bonus = false
+    ) qtot on true
+    left join lateral (
+      select exists (
+        select 1
+        from answers a
+        join questions q on q.id = a.question_id
+        where a.profile_id = sp.profile_id
+          and q.matchday_id = md.id
+          and q.is_bonus = true
+          and a.is_correct is true
+      ) as bonus_hit
+    ) bonus on true
+    left join lateral (
+      select d.tier
+      from dice d
+      where d.profile_id = sp.profile_id
+        and d.matchday_id = md.id
+        and d.source = 'matchday'
+      limit 1
+    ) day_die on true
     where md.season_id = ${seasonId} and md.id = ${matchdayId}
   `;
   return rankMatchdayResults(mapMatchdayResultRows(rows));
@@ -175,17 +168,13 @@ export async function loadLatestClosedMatchdayResultForViewer(
   const md = mdRows[0];
   if (!md) return null;
 
-  const rows = await sql<MatchdayResultRow[]>`
-    select ${sql.unsafe(RESULTS_SELECT)}
-    ${sql.unsafe(RESULTS_FROM)}
-    where md.season_id = ${seasonId} and md.id = ${md.id}
-  `;
-  const ranked = rankMatchdayResults(mapMatchdayResultRows(rows));
+  const matchday = toMatchdayView(md);
+  const ranked = await loadMatchdayResults(seasonId, md.id);
   const mine = ranked.find((r) => r.profileId === profileId);
   if (!mine) return null;
 
   return {
-    matchday: toMatchdayView(md),
+    matchday,
     mine,
     top: ranked.slice(0, 3),
   };

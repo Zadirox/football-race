@@ -14,6 +14,7 @@ import { normalizeMatches, type NormalizedMatch } from '@/lib/data/normalize';
 import { generateMatchQuestions } from '@/lib/data/questions';
 import { syncWindow } from '@/lib/data/sync-window';
 import { isAppError } from '@/lib/errors';
+import { grantPacksForResolvedNationalMatchday } from '@/lib/repo/cards-grants';
 import {
   allMatchesFinal,
   nextMatchdayStatus,
@@ -391,6 +392,7 @@ function hashString(value: string): number {
 
 type DayRow = {
   id: string;
+  season_id: string;
   status: MatchdayStatus;
   closes_ms: number | string | null;
 };
@@ -416,6 +418,7 @@ export async function advanceMatchdays(now = new Date()): Promise<AdvanceReport>
   const days = await sql<DayRow[]>`
     select
       id,
+      season_id,
       status,
       (extract(epoch from closes_at) * 1000)::bigint as closes_ms
     from matchdays
@@ -476,6 +479,13 @@ export async function advanceMatchdays(now = new Date()): Promise<AdvanceReport>
       `;
       if (result?.result?.ok) {
         report.resolved += 1;
+        try {
+          await grantPacksForResolvedNationalMatchday(day.id, day.season_id, sql);
+        } catch (error) {
+          report.errors.push(
+            `${day.id}: pack grants failed: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
       } else {
         report.errors.push(`${day.id}: ${result?.result?.code ?? 'RESOLVE_FAILED'}`);
       }

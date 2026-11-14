@@ -10,7 +10,7 @@ import { cronAuthorized } from '@/lib/cron/auth';
 import { syncFixtures } from '@/lib/repo/sync';
 
 export const dynamic = 'force-dynamic';
-export const maxDuration = 60;
+export const maxDuration = 120;
 
 async function run(request: Request): Promise<Response> {
   if (!cronAuthorized(request)) {

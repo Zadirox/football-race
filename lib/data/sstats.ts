@@ -301,33 +301,49 @@ export async function enrichSstatsMatchesWithStats(input: {
   matches: NormalizedMatch[];
   apiKey?: string | null;
   fetchImpl?: typeof fetch;
+  concurrency?: number;
 }): Promise<{ matches: NormalizedMatch[]; requestsUsed: number }> {
+  const concurrency = Math.max(1, input.concurrency ?? 4);
+  const results: NormalizedMatch[] = new Array(input.matches.length);
   let requestsUsed = 0;
-  const enriched: NormalizedMatch[] = [];
 
-  for (const match of input.matches) {
+  const toEnrich: Array<{ index: number; match: NormalizedMatch }> = [];
+  for (let i = 0; i < input.matches.length; i += 1) {
+    const match = input.matches[i]!;
     if (match.provider !== 'sstats') {
-      enriched.push(match);
+      results[i] = match;
       continue;
     }
     // Для ещё не начавшихся матчей статистики обычно нет — пропускаем лишние запросы.
     if (match.status === 'NS' || match.status === 'PST' || match.status === 'CANC') {
-      enriched.push(match);
+      results[i] = match;
       continue;
     }
-    try {
-      const detail = await fetchSstatsGameDetail({
-        id: match.externalId,
-        apiKey: input.apiKey,
-        fetchImpl: input.fetchImpl,
-      });
-      requestsUsed += detail.requestsUsed;
-      enriched.push({ ...match, stats: detail.stats });
-    } catch {
-      // Если детали недоступны, оставляем матч без статистики — синк не ломаем.
-      enriched.push(match);
+    toEnrich.push({ index: i, match });
+  }
+
+  for (let i = 0; i < toEnrich.length; i += concurrency) {
+    const chunk = toEnrich.slice(i, i + concurrency);
+    const chunkResults = await Promise.all(
+      chunk.map(async ({ index, match }) => {
+        try {
+          const detail = await fetchSstatsGameDetail({
+            id: match.externalId,
+            apiKey: input.apiKey,
+            fetchImpl: input.fetchImpl,
+          });
+          return { index, match: { ...match, stats: detail.stats }, requestsUsed: detail.requestsUsed };
+        } catch {
+          // Если детали недоступны, оставляем матч без статистики — синк не ломаем.
+          return { index, match, requestsUsed: 0 };
+        }
+      }),
+    );
+    for (const item of chunkResults) {
+      results[item.index] = item.match;
+      requestsUsed += item.requestsUsed;
     }
   }
 
-  return { matches: enriched, requestsUsed };
+  return { matches: results, requestsUsed };
 }

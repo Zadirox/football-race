@@ -170,7 +170,9 @@ async function loadFromDatabase(viewer: SeasonViewer): Promise<SeasonSnapshot> {
         from answers a
         join questions q on q.id = a.question_id
         join matchdays md on md.id = q.matchday_id
-        where md.season_id = sp.season_id and a.profile_id = sp.profile_id
+        where md.season_id = sp.season_id
+          and a.profile_id = sp.profile_id
+          and q.status = 'resolved'
       ) ans on true
       left join lateral (
         select al.message

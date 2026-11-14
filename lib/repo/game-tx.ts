@@ -23,6 +23,7 @@ import {
   type PlayerState,
 } from '@/lib/game/engine';
 import { keptEffects } from '@/lib/game/roll';
+import { serverEnv } from '@/lib/env';
 import { getActiveNationalPack, grantNationalPack } from '@/lib/repo/cards';
 import type { ActivityView } from '@/lib/types';
 
@@ -202,7 +203,7 @@ export async function moveAndResolve(
     `;
   }
 
-  if (code === '19' && event?.id) {
+  if (code === '19' && event?.id && serverEnv().cardsEnabled) {
     try {
       const pack = await getActiveNationalPack(ctx.seasonId, tx as never);
       if (pack) {

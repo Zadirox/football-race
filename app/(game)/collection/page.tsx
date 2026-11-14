@@ -1,12 +1,21 @@
 import Link from 'next/link';
 import { Panel, Notice } from '@/components/ui/Panel';
 import { getViewer } from '@/lib/auth/session';
-import { hasDatabase } from '@/lib/env';
+import { hasDatabase, serverEnv } from '@/lib/env';
 import { listCollection, listUnopenedPacks } from '@/lib/repo/cards';
 import { loadSeasonSnapshot } from '@/lib/repo/season';
 import { CollectionClient } from './CollectionClient';
 
 export default async function CollectionPage() {
+  const { cardsEnabled } = serverEnv();
+  if (!cardsEnabled) {
+    return (
+      <Panel title="Коллекция" subtitle="Карточки игроков сборных и паки." size="wide">
+        <Notice>Раздел карточек и паков временно скрыт. Скоро вернётся.</Notice>
+      </Panel>
+    );
+  }
+
   const snapshot = await loadSeasonSnapshot();
   const viewer = await getViewer();
   const seasonId = snapshot.season?.id ?? null;

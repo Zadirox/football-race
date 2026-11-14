@@ -21,12 +21,12 @@ function timeMsk(iso: string | undefined): string {
 
 export default async function AdminPage() {
   const snapshot = await loadSeasonSnapshot();
+  const env = serverEnv();
   const [pending, invites, manualBonusSlots] = await Promise.all([
     listPendingForAdmin(),
     listInvites(),
-    listManualLineupBonusSlots(),
+    env.cardsEnabled ? listManualLineupBonusSlots() : Promise.resolve([]),
   ]);
-  const env = serverEnv();
   const checks: Array<[string, boolean, string]> = [
     ['DATABASE_URL', env.databaseUrl !== null, 'подключение к Postgres'],
     ['SUPABASE_URL', env.supabaseUrl !== null, 'адрес проекта'],
@@ -100,6 +100,7 @@ export default async function AdminPage() {
         matches={snapshot.matches.slice(0, 20)}
         pending={pending}
         manualBonusSlots={manualBonusSlots}
+        cardsEnabled={env.cardsEnabled}
       />
 
       <SectionTitle>Окружение</SectionTitle>

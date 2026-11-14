@@ -4,6 +4,7 @@ import { Snowfall } from '@/components/map/Snowfall';
 import { Onboarding } from '@/components/game/Onboarding';
 import { DayResultsSummary } from '@/components/game/DayResultsSummary';
 import { GameHud } from '@/components/map/GameHud';
+import { serverEnv } from '@/lib/env';
 import { loadSeasonSnapshot } from '@/lib/repo/season';
 
 export const dynamic = 'force-dynamic';
@@ -15,6 +16,7 @@ export const dynamic = 'force-dynamic';
  */
 export default async function GameLayout({ children }: { children: React.ReactNode }) {
   const snapshot = await loadSeasonSnapshot();
+  const { cardsEnabled } = serverEnv();
 
   return (
     <div className="app-shell">
@@ -22,7 +24,12 @@ export default async function GameLayout({ children }: { children: React.ReactNo
         <GameHud snapshot={snapshot} />
       </Suspense>
       <Snowfall />
-      <Header me={snapshot.me} closesAt={snapshot.matchday?.closesAt ?? null} demo={snapshot.demo} />
+      <Header
+        me={snapshot.me}
+        closesAt={snapshot.matchday?.closesAt ?? null}
+        demo={snapshot.demo}
+        cardsEnabled={cardsEnabled}
+      />
       {children}
       <Suspense fallback={null}>
         <DayResultsSummary snapshot={snapshot} />

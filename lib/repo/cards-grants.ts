@@ -1,6 +1,7 @@
 import { matchdayPackCount } from '@/lib/game/cards';
 import type { DiceTier } from '@/lib/game/dice';
 import { db } from '@/lib/db';
+import { serverEnv } from '@/lib/env';
 import { getActiveNationalPack, grantNationalPack } from '@/lib/repo/cards';
 
 type DbClient = ReturnType<typeof db>;
@@ -40,6 +41,10 @@ export async function grantPacksForResolvedNationalMatchday(
   seasonId: string,
   sql: DbClient = db(),
 ): Promise<GrantPacksResult> {
+  if (!serverEnv().cardsEnabled) {
+    return { national: false, participants: 0, granted: 0 };
+  }
+
   const national = await isNationalMatchday(matchdayId, sql);
   if (!national) {
     return { national: false, participants: 0, granted: 0 };

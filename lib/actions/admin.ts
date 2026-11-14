@@ -19,7 +19,7 @@ import {
   syncFixturesSchema,
 } from '@/lib/actions/admin-schemas';
 import { getViewer, type Viewer } from '@/lib/auth/session';
-import { hasDatabase } from '@/lib/env';
+import { hasDatabase, serverEnv } from '@/lib/env';
 import { AppError, isAppError } from '@/lib/errors';
 import {
   awardManualLineupBonus,
@@ -207,6 +207,7 @@ export async function changeRoleAction(input: unknown): Promise<AdminRunResult> 
 /** Ручная выдача паков сборных активного сезона. */
 export async function grantPackAction(input: unknown): Promise<AdminRunResult> {
   if (!hasDatabase()) return demoOnly();
+  if (!serverEnv().cardsEnabled) return { ok: false, message: 'Раздел карточек и паков временно недоступен' };
 
   try {
     const viewer = await requireAdmin();
@@ -225,6 +226,7 @@ export async function grantPackAction(input: unknown): Promise<AdminRunResult> {
 /** Ручной бонус состава: засчитать/снять для FWD/MID/GK после FT. */
 export async function awardLineupBonusAction(input: unknown): Promise<AdminRunResult> {
   if (!hasDatabase()) return demoOnly();
+  if (!serverEnv().cardsEnabled) return { ok: false, message: 'Раздел карточек и составов временно недоступен' };
 
   try {
     const viewer = await requireAdmin();

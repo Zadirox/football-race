@@ -1,7 +1,7 @@
 import Link from 'next/link';
 import { Panel, Notice } from '@/components/ui/Panel';
 import { getViewer } from '@/lib/auth/session';
-import { hasDatabase } from '@/lib/env';
+import { hasDatabase, serverEnv } from '@/lib/env';
 import { listCollection } from '@/lib/repo/cards';
 import { getMyLineup, listLineupMatches } from '@/lib/repo/lineups';
 import { loadSeasonSnapshot } from '@/lib/repo/season';
@@ -9,6 +9,15 @@ import type { MatchLineupView } from '@/lib/types';
 import { LineupsClient } from './LineupsClient';
 
 export default async function LineupsPage() {
+  const { cardsEnabled } = serverEnv();
+  if (!cardsEnabled) {
+    return (
+      <Panel title="Составы" subtitle="Выставляйте карточки сборных на матчи дня." size="wide">
+        <Notice>Раздел карточек и составов временно скрыт. Скоро вернётся.</Notice>
+      </Panel>
+    );
+  }
+
   const snapshot = await loadSeasonSnapshot();
   const viewer = await getViewer();
   const seasonId = snapshot.season?.id ?? null;

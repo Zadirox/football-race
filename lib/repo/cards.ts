@@ -4,7 +4,7 @@ import { pickCardTemplate, rollRarity, type CardRarity } from '@/lib/game/cards'
 import type { OwnedCardView, PackGrantSource, PackGrantView, PackOpenResultView } from '@/lib/types';
 
 export const NATIONAL_CARD_SET_ID = '00000000-0000-0000-0000-00000000c001';
-export const NATIONAL_PACK_ID = '00000000-0000-0000-0000-00000000p001';
+export const NATIONAL_PACK_ID = '00000000-0000-0000-0000-00000000a001';
 
 type DbClient = ReturnType<typeof db>;
 

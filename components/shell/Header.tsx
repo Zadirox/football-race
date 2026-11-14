@@ -12,6 +12,7 @@ type HeaderProps = {
   /** Конец игрового дня по МСК; null — день ещё не собран. */
   closesAt: string | null;
   demo: boolean;
+  cardsEnabled?: boolean;
 };
 
 type Tab = { href: string; label: string; icon: string; adminOnly?: boolean };
@@ -49,7 +50,7 @@ function remainingLabel(closesAt: string | null): string {
   return `до конца игрового дня: ${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
 }
 
-export function Header({ me, closesAt, demo }: HeaderProps) {
+export function Header({ me, closesAt, demo, cardsEnabled }: HeaderProps) {
   const pathname = usePathname();
   const router = useRouter();
   const [now, setNow] = useState<string | null>(null);
@@ -62,8 +63,13 @@ export function Header({ me, closesAt, demo }: HeaderProps) {
   }, [closesAt]);
 
   const tabs = useMemo(
-    () => RIGHT_TABS.filter((tab) => !tab.adminOnly || me?.role === 'admin'),
-    [me?.role],
+    () =>
+      RIGHT_TABS.filter((tab) => {
+        if (tab.adminOnly && me?.role !== 'admin') return false;
+        if (!cardsEnabled && (tab.href === '/collection' || tab.href === '/lineups')) return false;
+        return true;
+      }),
+    [me?.role, cardsEnabled],
   );
 
   const closePanel = () => {

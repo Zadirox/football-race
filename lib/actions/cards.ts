@@ -2,7 +2,7 @@
 
 import { revalidatePath } from 'next/cache';
 import { getViewer } from '@/lib/auth/session';
-import { hasDatabase } from '@/lib/env';
+import { hasDatabase, serverEnv } from '@/lib/env';
 import { AppError, isAppError } from '@/lib/errors';
 import { openPackGrant } from '@/lib/repo/cards';
 import { loadSeasonSnapshot } from '@/lib/repo/season';
@@ -12,6 +12,9 @@ export type OpenPackActionResult =
   | { ok: false; message: string };
 
 export async function openPackAction(grantId: string): Promise<OpenPackActionResult> {
+  if (!serverEnv().cardsEnabled) {
+    return { ok: false, message: 'Раздел карточек и паков временно недоступен' };
+  }
   if (!hasDatabase()) {
     return { ok: false, message: 'Демо-режим: база не подключена, открыть пак нельзя' };
   }

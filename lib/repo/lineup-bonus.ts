@@ -1,4 +1,5 @@
 import { db } from '@/lib/db';
+import { serverEnv } from '@/lib/env';
 import { LINEUP_POINTS, defBonusTriggered, type CardRarity } from '@/lib/game/cards';
 import { matchCardToMatchSide } from '@/lib/repo/lineups';
 
@@ -96,6 +97,7 @@ export async function awardAutoDefBonusesForMatchdays(
   matchdayIds: string[],
   sql: DbClient = db(),
 ): Promise<number> {
+  if (!serverEnv().cardsEnabled) return 0;
   if (matchdayIds.length === 0) return 0;
 
   const rows = await sql<CandidateRow[]>`
@@ -135,6 +137,7 @@ export async function awardAutoDefBonusesForMatches(
   matchIds: string[],
   sql: DbClient = db(),
 ): Promise<number> {
+  if (!serverEnv().cardsEnabled) return 0;
   if (matchIds.length === 0) return 0;
 
   const rows = await sql<CandidateRow[]>`

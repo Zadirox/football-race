@@ -3,7 +3,7 @@
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
 import { getViewer } from '@/lib/auth/session';
-import { hasDatabase } from '@/lib/env';
+import { hasDatabase, serverEnv } from '@/lib/env';
 import { AppError, isAppError } from '@/lib/errors';
 import { removeLineupSlot, upsertLineupSlot } from '@/lib/repo/lineups';
 import { loadSeasonSnapshot } from '@/lib/repo/season';
@@ -29,6 +29,7 @@ function invalidInput(error: unknown): LineupActionResult | null {
 }
 
 export async function saveLineupSlotAction(input: unknown): Promise<LineupActionResult> {
+  if (!serverEnv().cardsEnabled) return { ok: false, message: 'Раздел карточек и составов временно недоступен' };
   if (!hasDatabase()) return { ok: false, message: 'Демо-режим: база не подключена' };
 
   try {
@@ -54,6 +55,7 @@ export async function saveLineupSlotAction(input: unknown): Promise<LineupAction
 }
 
 export async function removeLineupSlotAction(input: unknown): Promise<LineupActionResult> {
+  if (!serverEnv().cardsEnabled) return { ok: false, message: 'Раздел карточек и составов временно недоступен' };
   if (!hasDatabase()) return { ok: false, message: 'Демо-режим: база не подключена' };
 
   try {

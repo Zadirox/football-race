@@ -83,6 +83,7 @@ type ToolsProps = {
   matches: MatchView[];
   pending: AdminPendingView[];
   manualBonusSlots: AdminManualLineupSlotView[];
+  cardsEnabled?: boolean;
 };
 
 /**
@@ -90,7 +91,7 @@ type ToolsProps = {
  * Все кнопки — server actions, поэтому ключи провайдера и БД не попадают
  * в браузер. В демо-режиме блоки отключены и объясняют почему.
  */
-export function AdminTools({ enabled, players, matches, pending, manualBonusSlots }: ToolsProps) {
+export function AdminTools({ enabled, players, matches, pending, manualBonusSlots, cardsEnabled }: ToolsProps) {
   const router = useRouter();
   const [pendingTx, startTransition] = useTransition();
   const [busy, setBusy] = useState<Block | null>(null);
@@ -386,109 +387,113 @@ export function AdminTools({ enabled, players, matches, pending, manualBonusSlot
           </button>
         </section>
 
-        <section className="card" aria-label="Пак сборных">
-          <h3 className="card__title">Пак сборных (выдача)</h3>
-          <p className="card__meta">Ручная выдача паков национальных сборных активного сезона.</p>
-          {notice('pack')}
+        {cardsEnabled ? (
+          <>
+            <section className="card" aria-label="Пак сборных">
+              <h3 className="card__title">Пак сборных (выдача)</h3>
+              <p className="card__meta">Ручная выдача паков национальных сборных активного сезона.</p>
+              {notice('pack')}
 
-          <div className="field">
-            <label htmlFor="admin-pack-profile">Игрок</label>
-            <select
-              id="admin-pack-profile"
-              className="select"
-              value={packProfile}
-              disabled={!enabled || pendingTx || players.length === 0}
-              onChange={(event) => setPackProfile(event.target.value)}
-            >
-              {players.length === 0 && <option value="">игроков нет</option>}
-              {players.map((player) => (
-                <option key={player.profileId} value={player.profileId}>
-                  {player.nickname}
-                </option>
-              ))}
-            </select>
-          </div>
+              <div className="field">
+                <label htmlFor="admin-pack-profile">Игрок</label>
+                <select
+                  id="admin-pack-profile"
+                  className="select"
+                  value={packProfile}
+                  disabled={!enabled || pendingTx || players.length === 0}
+                  onChange={(event) => setPackProfile(event.target.value)}
+                >
+                  {players.length === 0 && <option value="">игроков нет</option>}
+                  {players.map((player) => (
+                    <option key={player.profileId} value={player.profileId}>
+                      {player.nickname}
+                    </option>
+                  ))}
+                </select>
+              </div>
 
-          <div className="field">
-            <label htmlFor="admin-pack-count">Количество</label>
-            <input
-              id="admin-pack-count"
-              className="input"
-              type="number"
-              min={1}
-              max={20}
-              inputMode="numeric"
-              value={packCount}
-              disabled={!enabled || pendingTx}
-              onChange={(event) => setPackCount(event.target.value)}
-            />
-          </div>
+              <div className="field">
+                <label htmlFor="admin-pack-count">Количество</label>
+                <input
+                  id="admin-pack-count"
+                  className="input"
+                  type="number"
+                  min={1}
+                  max={20}
+                  inputMode="numeric"
+                  value={packCount}
+                  disabled={!enabled || pendingTx}
+                  onChange={(event) => setPackCount(event.target.value)}
+                />
+              </div>
 
-          <button
-            type="button"
-            className="btn btn--sm"
-            disabled={!enabled || pendingTx || !packProfile}
-            title={disabledHint}
-            onClick={() =>
-              run('pack', () =>
-                grantPackAction({
-                  profileId: packProfile,
-                  count: packCount,
-                }),
-              )
-            }
-          >
-            {busy === 'pack' ? 'Выдаём…' : 'Выдать паки'}
-          </button>
-        </section>
+              <button
+                type="button"
+                className="btn btn--sm"
+                disabled={!enabled || pendingTx || !packProfile}
+                title={disabledHint}
+                onClick={() =>
+                  run('pack', () =>
+                    grantPackAction({
+                      profileId: packProfile,
+                      count: packCount,
+                    }),
+                  )
+                }
+              >
+                {busy === 'pack' ? 'Выдаём…' : 'Выдать паки'}
+              </button>
+            </section>
 
-        <section className="card" aria-label="Бонус состава">
-          <h3 className="card__title">Бонус состава (вручную)</h3>
-          <p className="card__meta">
-            Засчитать или снять бонус для вратаря, полузащитника и нападающего после финального свистка (FT).
-          </p>
-          {notice('bonus')}
+            <section className="card" aria-label="Бонус состава">
+              <h3 className="card__title">Бонус состава (вручную)</h3>
+              <p className="card__meta">
+                Засчитать или снять бонус для вратаря, полузащитника и нападающего после финального свистка (FT).
+              </p>
+              {notice('bonus')}
 
-          {manualBonusSlots.length === 0 ? (
-            <p className="card__text">Нет слотов для ручного бонуса по завершённым матчам.</p>
-          ) : (
-            <div className="list">
-              {manualBonusSlots.map((item) => {
-                const home = teamDisplay(item.homeTeamName);
-                const away = teamDisplay(item.awayTeamName);
-                const isBusy = busy === 'bonus' && busySlotId === item.slotId;
-                return (
-                  <div key={item.slotId} className="list-row" style={{ alignItems: 'flex-start', gap: 10 }}>
-                    <span className={item.awarded ? 'chip chip--positive' : 'chip chip--muted'}>
-                      {item.awarded ? `+${item.points}` : `${item.points} оч.`}
-                    </span>
-                    <span className="list-row__main">
-                      <span className="list-row__title">
-                        {item.nickname} · {item.cardName} ({item.cardTeamName ?? '—'})
-                      </span>
-                      <span className="list-row__meta">
-                        {home.name} — {away.name} · {kickoffLabel(item.kickoffAt)} МСК · {item.slot} ·{' '}
-                        {ROLE_LABEL[item.roleGroup]} · {RARITY_LABEL[item.rarity]} · рейтинг {item.rating}
-                      </span>
-                      <span className="list-row__meta">
-                        Статус: {item.awarded ? `засчитан (${item.method ?? 'manual'})` : 'не засчитан'}
-                      </span>
-                    </span>
-                    <button
-                      type="button"
-                      className="btn btn--sm"
-                      disabled={!enabled || pendingTx}
-                      title={disabledHint}
-                      onClick={() => runSlotBonus(item.slotId, !item.awarded)}
-                    >
-                      {isBusy ? '…' : item.awarded ? 'Снять' : 'Засчитать бонус'}
-                    </button>
-                  </div>
-                );
-              })}
-            </div>
-          )}
-        </section>
+              {manualBonusSlots.length === 0 ? (
+                <p className="card__text">Нет слотов для ручного бонуса по завершённым матчам.</p>
+              ) : (
+                <div className="list">
+                  {manualBonusSlots.map((item) => {
+                    const home = teamDisplay(item.homeTeamName);
+                    const away = teamDisplay(item.awayTeamName);
+                    const isBusy = busy === 'bonus' && busySlotId === item.slotId;
+                    return (
+                      <div key={item.slotId} className="list-row" style={{ alignItems: 'flex-start', gap: 10 }}>
+                        <span className={item.awarded ? 'chip chip--positive' : 'chip chip--muted'}>
+                          {item.awarded ? `+${item.points}` : `${item.points} оч.`}
+                        </span>
+                        <span className="list-row__main">
+                          <span className="list-row__title">
+                            {item.nickname} · {item.cardName} ({item.cardTeamName ?? '—'})
+                          </span>
+                          <span className="list-row__meta">
+                            {home.name} — {away.name} · {kickoffLabel(item.kickoffAt)} МСК · {item.slot} ·{' '}
+                            {ROLE_LABEL[item.roleGroup]} · {RARITY_LABEL[item.rarity]} · рейтинг {item.rating}
+                          </span>
+                          <span className="list-row__meta">
+                            Статус: {item.awarded ? `засчитан (${item.method ?? 'manual'})` : 'не засчитан'}
+                          </span>
+                        </span>
+                        <button
+                          type="button"
+                          className="btn btn--sm"
+                          disabled={!enabled || pendingTx}
+                          title={disabledHint}
+                          onClick={() => runSlotBonus(item.slotId, !item.awarded)}
+                        >
+                          {isBusy ? '…' : item.awarded ? 'Снять' : 'Засчитать бонус'}
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </section>
+          </>
+        ) : null}
 
         <section className="card" aria-label="Ожидания">
           <h3 className="card__title">Ожидания</h3>

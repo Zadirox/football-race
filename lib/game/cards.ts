@@ -81,3 +81,7 @@ export function canSlotCard(params: { slot: LineupSlotKind; roleGroup: RoleGroup
   if (slot === 'GK') return roleGroup === 'GK';
   return isOutfield(roleGroup);
 }
+
+export function defBonusTriggered({ teamGoals, oppGoals }: { teamGoals: number; oppGoals: number }): boolean {
+  return teamGoals - oppGoals >= 2;
+}

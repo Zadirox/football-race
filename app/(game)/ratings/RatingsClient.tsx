@@ -1,17 +1,28 @@
 'use client';
 
 import { useState } from 'react';
+import Link from 'next/link';
 import { Panel, EmptyState } from '@/components/ui/Panel';
 import { avatarColor } from '@/components/map/MapBoard';
+import { dayResultDieLabel, formatDayAccuracy } from '@/lib/game/day-results';
 import { formatAccuracy, type RatingRow } from '@/lib/game/scoring';
+import type { ClosedMatchdayOption } from '@/lib/repo/matchday-results';
+import type { MatchdayResultView } from '@/lib/types';
 
-type Mode = 'distance' | 'points' | 'accuracy';
+type Mode = 'distance' | 'points' | 'accuracy' | 'day';
 
 const TABS: Array<{ key: Mode; label: string }> = [
   { key: 'distance', label: 'Дистанция' },
   { key: 'points', label: 'Очки' },
   { key: 'accuracy', label: 'Точность' },
+  { key: 'day', label: 'За день' },
 ];
+
+function formatGameDate(gameDate: string): string {
+  const date = new Date(`${gameDate}T12:00:00Z`);
+  if (Number.isNaN(date.getTime())) return gameDate;
+  return date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', timeZone: 'Europe/Moscow' });
+}
 
 function Avatar({ name }: { name: string }) {
   return (
@@ -25,17 +36,33 @@ function Avatar({ name }: { name: string }) {
   );
 }
 
-function PlayerCell({ row, meId }: { row: RatingRow; meId: string | null }) {
+function PlayerCell({ nickname, profileId, meId }: { nickname: string; profileId: string; meId: string | null }) {
   return (
     <div className="player-cell">
-      <Avatar name={row.nickname} />
-      <span>{row.nickname}</span>
-      {row.profileId === meId && <span className="chip chip--positive">ты</span>}
+      <Avatar name={nickname} />
+      <span>{nickname}</span>
+      {profileId === meId && <span className="chip chip--positive">ты</span>}
     </div>
   );
 }
 
-export function RatingsClient({ rows, meId }: { rows: RatingRow[]; meId: string | null }) {
+function SeasonPlayerCell({ row, meId }: { row: RatingRow; meId: string | null }) {
+  return <PlayerCell nickname={row.nickname} profileId={row.profileId} meId={meId} />;
+}
+
+export function RatingsClient({
+  rows,
+  meId,
+  closedDays,
+  selectedDayId,
+  dayResults,
+}: {
+  rows: RatingRow[];
+  meId: string | null;
+  closedDays: ClosedMatchdayOption[];
+  selectedDayId: string | null;
+  dayResults: MatchdayResultView[];
+}) {
   const [mode, setMode] = useState<Mode>('distance');
 
   const byDistance = rows;
@@ -52,7 +79,7 @@ export function RatingsClient({ rows, meId }: { rows: RatingRow[]; meId: string 
   return (
     <Panel
       title="Рейтинги"
-      subtitle="Три зачёта сезона. Дистанция решает, кто первым дойдёт до кубка; очки считаются за события и предикты; точность — доля верных ответов."
+      subtitle="Три зачёта сезона и итоги по каждому закрытому игровому дню. Дистанция решает путь к кубку, очки — за события и предикты, точность — доля верных ответов."
       size="wide"
     >
       <div className="tabs-lite" role="tablist" aria-label="Вид рейтинга">
@@ -70,7 +97,14 @@ export function RatingsClient({ rows, meId }: { rows: RatingRow[]; meId: string 
         ))}
       </div>
 
-      {list.length === 0 ? (
+      {mode === 'day' ? (
+        <DayResultsView
+          closedDays={closedDays}
+          selectedDayId={selectedDayId}
+          dayResults={dayResults}
+          meId={meId}
+        />
+      ) : list.length === 0 ? (
         <EmptyState title="Пока пусто" text="Рейтинг появится, как только участники сделают первые броски и ответят на вопросы." />
       ) : (
         <table className="table table--cards">
@@ -111,7 +145,7 @@ export function RatingsClient({ rows, meId }: { rows: RatingRow[]; meId: string 
                   </td>
                   <td data-label="Участник">
                     <div className="table-value table-value--stack">
-                      <PlayerCell row={row} meId={meId} />
+                      <SeasonPlayerCell row={row} meId={meId} />
                       {low && <span className="card__meta">мало ответов для зачёта</span>}
                     </div>
                   </td>
@@ -153,5 +187,76 @@ export function RatingsClient({ rows, meId }: { rows: RatingRow[]; meId: string 
         </table>
       )}
     </Panel>
+  );
+}
+
+function DayResultsView({
+  closedDays,
+  selectedDayId,
+  dayResults,
+  meId,
+}: {
+  closedDays: ClosedMatchdayOption[];
+  selectedDayId: string | null;
+  dayResults: MatchdayResultView[];
+  meId: string | null;
+}) {
+  if (closedDays.length === 0) {
+    return <EmptyState title="Пока нет закрытых дней" text="Итоги по дню появятся после того, как первый игровой день будет подведён." />;
+  }
+
+  return (
+    <>
+      <div className="filters" role="group" aria-label="Выбор игрового дня" style={{ marginBottom: 16 }}>
+        {closedDays.map((day) => (
+          <Link
+            key={day.id}
+            href={`/ratings?day=${encodeURIComponent(day.id)}`}
+            className="filter"
+            data-active={day.id === selectedDayId}
+          >
+            {formatGameDate(day.gameDate)}
+          </Link>
+        ))}
+      </div>
+
+      {dayResults.length === 0 ? (
+        <EmptyState title="Нет данных за этот день" text="Для выбранного дня пока нет результатов." />
+      ) : (
+        <table className="table table--cards">
+          <thead>
+            <tr>
+              <th style={{ width: 44 }}>#</th>
+              <th>Участник</th>
+              <th>Верно</th>
+              <th>Всего</th>
+              <th>Точность</th>
+              <th>Кубик за день</th>
+            </tr>
+          </thead>
+          <tbody>
+            {dayResults.map((row, index) => (
+              <tr key={row.profileId} data-me={row.profileId === meId}>
+                <td className="rank" data-top={row.rank && row.rank <= 3 ? row.rank : undefined}>
+                  {row.rank ? `#${row.rank}` : `#${index + 1}`}
+                </td>
+                <td data-label="Участник">
+                  <PlayerCell nickname={row.nickname} profileId={row.profileId} meId={meId} />
+                </td>
+                <td data-label="Верно">
+                  <strong>{row.correct}</strong>
+                </td>
+                <td data-label="Всего">{row.total}</td>
+                <td data-label="Точность">{formatDayAccuracy(row.correct, row.total)}</td>
+                <td data-label="Кубик за день">
+                  {dayResultDieLabel(row.dieTier) ?? '—'}
+                  {row.bonusHit ? ' (+бонус)' : ''}
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </>
   );
 }

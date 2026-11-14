@@ -4,6 +4,8 @@ import { useEffect, useMemo, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { Panel, EmptyState, Notice } from '@/components/ui/Panel';
 import { canAnswer, dayState, type MatchdayView } from '@/lib/game/day-state';
+import { distributionPercent, distributionTotal } from '@/lib/game/distribution';
+import { dayResultDieLabel, formatDayAccuracy } from '@/lib/game/day-results';
 import { submitAnswerAction } from '@/lib/actions/game';
 import { teamDisplay } from '@/lib/data/team-names';
 import type { MatchView, QuestionView, SeasonSnapshot } from '@/lib/types';
@@ -36,6 +38,7 @@ export function PredictionsClient({ snapshot }: { snapshot: SeasonSnapshot }) {
   const dayClosed = phase === 'closed';
   /** Отвечать может только участник сезона: зритель и гость смотрят. */
   const canPlay = snapshot.me?.isPlayer === true;
+  const lastClosed = canPlay ? snapshot.myLastClosedDayResult : null;
 
   const [choices, setChoices] = useState<Record<string, string>>(() => {
     const initial: Record<string, string> = {};
@@ -139,6 +142,17 @@ export function PredictionsClient({ snapshot }: { snapshot: SeasonSnapshot }) {
           <Notice>
             Приём ответов закрыт: игровой день завершён. Ответы зафиксированы и уходят на подсчёт — менять их уже
             нельзя.
+          </Notice>
+        </div>
+      )}
+
+      {lastClosed && (
+        <div style={{ marginBottom: 16 }}>
+          <Notice tone="info">
+            Итоги прошедшего дня ({lastClosed.gameDate}): угадано {lastClosed.correct} из {lastClosed.total} (
+            {formatDayAccuracy(lastClosed.correct, lastClosed.total)}), кубик за день —{' '}
+            {dayResultDieLabel(lastClosed.dieTier) ?? 'не выдан'}
+            {lastClosed.bonusHit ? ', бонус за точный счёт получен.' : '.'}
           </Notice>
         </div>
       )}
@@ -297,10 +311,12 @@ function MatchQuestions({
           const hit = resolved && selected !== undefined && selected === question.correctOption;
           const miss = resolved && selected !== undefined && selected !== question.correctOption;
 
+          const distTotal = distributionTotal(question.distribution);
           const options = question.options.map((option) => {
             let label = localizeText(option.label);
             if (option.key === 'home') label = home.name;
             if (option.key === 'away') label = away.name;
+            const pct = distTotal > 0 ? distributionPercent(question.distribution, option.key) : null;
             return (
               <button
                 key={option.key}
@@ -314,7 +330,8 @@ function MatchQuestions({
                   if (open) onPick(question.id, option.key);
                 }}
               >
-                {label}
+                <span>{label}</span>
+                {pct !== null && <span className="option__dist"> · {pct}%</span>}
               </button>
             );
           });

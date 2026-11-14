@@ -298,6 +298,25 @@ export function buildDemoSnapshot(now = new Date()): SeasonSnapshot {
         cell.idx >= 41 && cell.idx <= 80 ? { ...cell, kind: 'event' as const, mechanicCode: 'secret' } : cell,
       );
 
+  const lastClosedGameDate = shiftGameDate(gameDate, -1);
+  const lastClosedMatchdayId = `demo-matchday-${lastClosedGameDate}`;
+  const lastClosedTop = [
+    { matchdayId: lastClosedMatchdayId, gameDate: lastClosedGameDate, profileId: 'p-2', nickname: 'Аня', answered: 10, correct: 8, total: 10, bonusHit: true, dieTier: 'gold' as const, rank: 1 },
+    { matchdayId: lastClosedMatchdayId, gameDate: lastClosedGameDate, profileId: 'p-admin', nickname: 'Шах', answered: 10, correct: 7, total: 10, bonusHit: false, dieTier: 'silver' as const, rank: 2 },
+    { matchdayId: lastClosedMatchdayId, gameDate: lastClosedGameDate, profileId: 'p-3', nickname: 'Марк', answered: 10, correct: 6, total: 10, bonusHit: false, dieTier: 'silver' as const, rank: 3 },
+  ];
+  const myLastClosedDayResult = {
+    ...lastClosedTop[1]!,
+    matchday: {
+      id: lastClosedMatchdayId,
+      gameDate: lastClosedGameDate,
+      opensAt: new Date(`${lastClosedGameDate}T06:00:00.000Z`).toISOString(),
+      closesAt: new Date(`${lastClosedGameDate}T21:00:00.000Z`).toISOString(),
+      status: 'closed' as const,
+      qTotal: 10,
+    },
+  };
+
   return {
     season: {
       id: SEASON_ID,
@@ -336,8 +355,9 @@ export function buildDemoSnapshot(now = new Date()): SeasonSnapshot {
       isPlayer: true,
     },
     pending: null,
+    myLastClosedDayResult,
+    lastClosedDayTop: lastClosedTop,
     serverNow: now.toISOString(),
     demo: true,
   };
 }
-

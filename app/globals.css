@@ -2010,6 +2010,18 @@ a {
   opacity: 0.75;
 }
 
+.option__dist {
+  font-size: 0.85em;
+  opacity: 0.85;
+  font-weight: 600;
+}
+
+.option[data-selected='true'] .option__dist,
+.option[data-correct='true'] .option__dist,
+.option[data-wrong='true'] .option__dist {
+  opacity: 0.95;
+}
+
 .exact-grid {
   display: grid;
   grid-template-columns: repeat(5, 1fr);

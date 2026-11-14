@@ -15,6 +15,7 @@ import { db } from '@/lib/db';
 import { getViewer } from '@/lib/auth/session';
 import { buildDemoSnapshot } from '@/lib/demo/snapshot';
 import { hasDatabase } from '@/lib/env';
+import { loadLatestClosedMatchdayResultForViewer } from '@/lib/repo/matchday-results';
 import {
   toActivityViews,
   toCellViews,
@@ -37,7 +38,7 @@ import {
   type SeasonRow,
 } from '@/lib/repo/mappers';
 import { gameDateOf } from '@/lib/time';
-import type { CellView, SeasonSnapshot } from '@/lib/types';
+import type { CellView, MyLastClosedDayResult, SeasonSnapshot } from '@/lib/types';
 
 function maskSecretCells(cells: CellView[], players: { position: number }[]): CellView[] {
   const revealed = players.some((p) => p.position >= 30);
@@ -298,6 +299,16 @@ async function loadFromDatabase(viewer: SeasonViewer): Promise<SeasonSnapshot> {
   const players = toPlayerViews(playerRows, effectRows, viewerId);
   const cells = maskSecretCells(toCellViews(cellRows), players);
 
+  let myLastClosedDayResult: MyLastClosedDayResult | null = null;
+  let lastClosedDayTop: SeasonSnapshot['lastClosedDayTop'] = [];
+  if (viewerId) {
+    const closed = await loadLatestClosedMatchdayResultForViewer(season.id, viewerId);
+    if (closed) {
+      myLastClosedDayResult = { ...closed.mine, matchday: closed.matchday };
+      lastClosedDayTop = closed.top;
+    }
+  }
+
   return {
     season: toSeasonView(season),
     players,
@@ -309,6 +320,8 @@ async function loadFromDatabase(viewer: SeasonViewer): Promise<SeasonSnapshot> {
     ratingsSeed: toRatingsSeed(players),
     me: toMeView(playerRows, viewer),
     pending: toPendingChoice(pendingRows[0] ?? null),
+    myLastClosedDayResult,
+    lastClosedDayTop,
     serverNow: new Date().toISOString(),
     demo: false,
   };

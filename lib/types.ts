@@ -116,6 +116,23 @@ export type PendingChoiceView = {
   expiresAt: string;
 };
 
+export type MatchdayResultView = {
+  matchdayId: string;
+  gameDate: string;
+  profileId: string;
+  nickname: string;
+  answered: number;
+  correct: number;
+  total: number;
+  bonusHit: boolean;
+  dieTier: 'wood' | 'bronze' | 'silver' | 'gold' | null;
+  rank?: number;
+};
+
+export type MyLastClosedDayResult = MatchdayResultView & {
+  matchday: MatchdayView;
+};
+
 export type SeasonSnapshot = {
   season: SeasonView;
   players: PlayerView[];
@@ -135,6 +152,10 @@ export type SeasonSnapshot = {
   }[];
   me: MeView | null;
   pending: PendingChoiceView | null;
+  /** Итог последнего закрытого дня для текущего игрока (для сводки и отметки про кубик). */
+  myLastClosedDayResult: MyLastClosedDayResult | null;
+  /** Топ участников последнего закрытого дня (для контекста сводки). */
+  lastClosedDayTop: MatchdayResultView[];
   serverNow: string;
   /** Демо-режим: БД не подключена, играем локально. */
   demo: boolean;

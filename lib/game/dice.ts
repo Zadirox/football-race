@@ -15,6 +15,13 @@ export const DICE_SIDES: Record<DiceTier, number> = {
   gold: 6,
 };
 
+export const DICE_TIER_LABEL: Record<DiceTier, string> = {
+  wood: 'деревянный',
+  bronze: 'бронзовый',
+  silver: 'серебряный',
+  gold: 'золотой',
+};
+
 /**
  * Исторический порог участия (раньше требовалось 80% ответов).
  * Теперь порог не применяется: при наличии вопросов дня кубик выдаётся всем.

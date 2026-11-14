@@ -53,6 +53,20 @@ export const roleChangeSchema = z.object({
 
 export type RoleChangeInput = z.infer<typeof roleChangeSchema>;
 
+export const packGrantSchema = z.object({
+  profileId: z.uuid(),
+  count: z.coerce.number().int().min(1).max(20).default(1),
+});
+
+export type PackGrantInput = z.infer<typeof packGrantSchema>;
+
+export const lineupBonusManualSchema = z.object({
+  lineupSlotId: z.uuid(),
+  triggered: z.boolean(),
+});
+
+export type LineupBonusManualInput = z.infer<typeof lineupBonusManualSchema>;
+
 const gameDateString = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Формат даты: ГГГГ-ММ-ДД');
 
 export const syncFixturesSchema = z

@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { Panel, Notice, SectionTitle } from '@/components/ui/Panel';
 import { serverEnv } from '@/lib/env';
 import { listInvites } from '@/lib/repo/invites';
-import { listPendingForAdmin } from '@/lib/repo/admin-tools';
+import { listManualLineupBonusSlots, listPendingForAdmin } from '@/lib/repo/admin-tools';
 import { loadSeasonSnapshot } from '@/lib/repo/season';
 import { AdminActions } from './AdminActions';
 import { AdminTools } from './AdminTools';
@@ -21,7 +21,11 @@ function timeMsk(iso: string | undefined): string {
 
 export default async function AdminPage() {
   const snapshot = await loadSeasonSnapshot();
-  const [pending, invites] = await Promise.all([listPendingForAdmin(), listInvites()]);
+  const [pending, invites, manualBonusSlots] = await Promise.all([
+    listPendingForAdmin(),
+    listInvites(),
+    listManualLineupBonusSlots(),
+  ]);
   const env = serverEnv();
   const checks: Array<[string, boolean, string]> = [
     ['DATABASE_URL', env.databaseUrl !== null, 'подключение к Postgres'],
@@ -95,6 +99,7 @@ export default async function AdminPage() {
         players={snapshot.players}
         matches={snapshot.matches.slice(0, 20)}
         pending={pending}
+        manualBonusSlots={manualBonusSlots}
       />
 
       <SectionTitle>Окружение</SectionTitle>

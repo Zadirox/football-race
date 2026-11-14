@@ -5,16 +5,18 @@ import { useRouter } from 'next/navigation';
 import { Notice, SectionTitle } from '@/components/ui/Panel';
 import { teamDisplay } from '@/lib/data/team-names';
 import {
+  awardLineupBonusAction,
   changeRoleAction,
   forceClosePendingAction,
   grantDiceAction,
+  grantPackAction,
   updateMatchAction,
   type AdminRunResult,
 } from '@/lib/actions/admin';
 import type { MatchView, PlayerView, Role } from '@/lib/types';
-import type { AdminPendingView } from '@/lib/repo/admin-tools';
+import type { AdminManualLineupSlotView, AdminPendingView } from '@/lib/repo/admin-tools';
 
-type Block = 'match' | 'dice' | 'pending' | 'role';
+type Block = 'match' | 'dice' | 'pending' | 'role' | 'pack' | 'bonus';
 
 const STATUSES: Array<MatchView['status']> = ['NS', 'LIVE', 'HT', 'FT', 'PST', 'CANC', 'ABD'];
 
@@ -38,6 +40,19 @@ const PENDING_KIND: Record<string, string> = {
   passage: 'передача',
 };
 
+const ROLE_LABEL: Record<AdminManualLineupSlotView['roleGroup'], string> = {
+  GK: 'вратарь',
+  MID: 'полузащитник',
+  FWD: 'нападающий',
+};
+
+const RARITY_LABEL: Record<AdminManualLineupSlotView['rarity'], string> = {
+  common: 'Common',
+  rare: 'Rare',
+  epic: 'Epic',
+  legend: 'Legend',
+};
+
 function scoreText(value: number | null | undefined): string {
   return value === null || value === undefined ? '' : String(value);
 }
@@ -52,22 +67,34 @@ function expiresLabel(iso: string): string {
   });
 }
 
+function kickoffLabel(iso: string): string {
+  return new Date(iso).toLocaleString('ru-RU', {
+    day: '2-digit',
+    month: 'short',
+    hour: '2-digit',
+    minute: '2-digit',
+    timeZone: 'Europe/Moscow',
+  });
+}
+
 type ToolsProps = {
   enabled: boolean;
   players: PlayerView[];
   matches: MatchView[];
   pending: AdminPendingView[];
+  manualBonusSlots: AdminManualLineupSlotView[];
 };
 
 /**
- * Ручные правки сезона: матч, кубики, застрявшие ожидания и роли.
+ * Ручные правки сезона: матч, кубики, паки, бонус состава, ожидания и роли.
  * Все кнопки — server actions, поэтому ключи провайдера и БД не попадают
  * в браузер. В демо-режиме блоки отключены и объясняют почему.
  */
-export function AdminTools({ enabled, players, matches, pending }: ToolsProps) {
+export function AdminTools({ enabled, players, matches, pending, manualBonusSlots }: ToolsProps) {
   const router = useRouter();
   const [pendingTx, startTransition] = useTransition();
   const [busy, setBusy] = useState<Block | null>(null);
+  const [busySlotId, setBusySlotId] = useState<string | null>(null);
   const [feedback, setFeedback] = useState<{ block: Block; result: AdminRunResult } | null>(null);
 
   const matchList = matches.slice(0, 20);
@@ -84,17 +111,36 @@ export function AdminTools({ enabled, players, matches, pending }: ToolsProps) {
   const [diceCount, setDiceCount] = useState('1');
   const [diceReason, setDiceReason] = useState('');
 
+  const [packProfile, setPackProfile] = useState(players[0]?.profileId ?? '');
+  const [packCount, setPackCount] = useState('1');
+
   const [roleProfile, setRoleProfile] = useState(players[0]?.profileId ?? '');
   const [role, setRole] = useState<Role>('player');
 
   const run = (block: Block, action: () => Promise<AdminRunResult>) => {
     if (!enabled || pendingTx) return;
     setBusy(block);
+    setBusySlotId(null);
     setFeedback(null);
     startTransition(async () => {
       const result = await action();
       setFeedback({ block, result });
       setBusy(null);
+      setBusySlotId(null);
+      if (result.ok) router.refresh();
+    });
+  };
+
+  const runSlotBonus = (slotId: string, triggered: boolean) => {
+    if (!enabled || pendingTx) return;
+    setBusy('bonus');
+    setBusySlotId(slotId);
+    setFeedback(null);
+    startTransition(async () => {
+      const result = await awardLineupBonusAction({ lineupSlotId: slotId, triggered });
+      setFeedback({ block: 'bonus', result });
+      setBusy(null);
+      setBusySlotId(null);
       if (result.ok) router.refresh();
     });
   };
@@ -338,6 +384,110 @@ export function AdminTools({ enabled, players, matches, pending }: ToolsProps) {
           >
             {busy === 'dice' ? 'Выдаём…' : 'Выдать кубики'}
           </button>
+        </section>
+
+        <section className="card" aria-label="Пак сборных">
+          <h3 className="card__title">Пак сборных (выдача)</h3>
+          <p className="card__meta">Ручная выдача паков национальных сборных активного сезона.</p>
+          {notice('pack')}
+
+          <div className="field">
+            <label htmlFor="admin-pack-profile">Игрок</label>
+            <select
+              id="admin-pack-profile"
+              className="select"
+              value={packProfile}
+              disabled={!enabled || pendingTx || players.length === 0}
+              onChange={(event) => setPackProfile(event.target.value)}
+            >
+              {players.length === 0 && <option value="">игроков нет</option>}
+              {players.map((player) => (
+                <option key={player.profileId} value={player.profileId}>
+                  {player.nickname}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="field">
+            <label htmlFor="admin-pack-count">Количество</label>
+            <input
+              id="admin-pack-count"
+              className="input"
+              type="number"
+              min={1}
+              max={20}
+              inputMode="numeric"
+              value={packCount}
+              disabled={!enabled || pendingTx}
+              onChange={(event) => setPackCount(event.target.value)}
+            />
+          </div>
+
+          <button
+            type="button"
+            className="btn btn--sm"
+            disabled={!enabled || pendingTx || !packProfile}
+            title={disabledHint}
+            onClick={() =>
+              run('pack', () =>
+                grantPackAction({
+                  profileId: packProfile,
+                  count: packCount,
+                }),
+              )
+            }
+          >
+            {busy === 'pack' ? 'Выдаём…' : 'Выдать паки'}
+          </button>
+        </section>
+
+        <section className="card" aria-label="Бонус состава">
+          <h3 className="card__title">Бонус состава (вручную)</h3>
+          <p className="card__meta">
+            Засчитать или снять бонус для вратаря, полузащитника и нападающего после финального свистка (FT).
+          </p>
+          {notice('bonus')}
+
+          {manualBonusSlots.length === 0 ? (
+            <p className="card__text">Нет слотов для ручного бонуса по завершённым матчам.</p>
+          ) : (
+            <div className="list">
+              {manualBonusSlots.map((item) => {
+                const home = teamDisplay(item.homeTeamName);
+                const away = teamDisplay(item.awayTeamName);
+                const isBusy = busy === 'bonus' && busySlotId === item.slotId;
+                return (
+                  <div key={item.slotId} className="list-row" style={{ alignItems: 'flex-start', gap: 10 }}>
+                    <span className={item.awarded ? 'chip chip--positive' : 'chip chip--muted'}>
+                      {item.awarded ? `+${item.points}` : `${item.points} оч.`}
+                    </span>
+                    <span className="list-row__main">
+                      <span className="list-row__title">
+                        {item.nickname} · {item.cardName} ({item.cardTeamName ?? '—'})
+                      </span>
+                      <span className="list-row__meta">
+                        {home.name} — {away.name} · {kickoffLabel(item.kickoffAt)} МСК · {item.slot} ·{' '}
+                        {ROLE_LABEL[item.roleGroup]} · {RARITY_LABEL[item.rarity]} · рейтинг {item.rating}
+                      </span>
+                      <span className="list-row__meta">
+                        Статус: {item.awarded ? `засчитан (${item.method ?? 'manual'})` : 'не засчитан'}
+                      </span>
+                    </span>
+                    <button
+                      type="button"
+                      className="btn btn--sm"
+                      disabled={!enabled || pendingTx}
+                      title={disabledHint}
+                      onClick={() => runSlotBonus(item.slotId, !item.awarded)}
+                    >
+                      {isBusy ? '…' : item.awarded ? 'Снять' : 'Засчитать бонус'}
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
         </section>
 
         <section className="card" aria-label="Ожидания">

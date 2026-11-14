@@ -11,7 +11,9 @@
 import { revalidatePath } from 'next/cache';
 import {
   diceGrantSchema,
+  lineupBonusManualSchema,
   matchUpdateSchema,
+  packGrantSchema,
   pendingCloseSchema,
   roleChangeSchema,
   syncFixturesSchema,
@@ -19,7 +21,14 @@ import {
 import { getViewer, type Viewer } from '@/lib/auth/session';
 import { hasDatabase } from '@/lib/env';
 import { AppError, isAppError } from '@/lib/errors';
-import { forceClosePending, grantDice, setRole, updateMatch } from '@/lib/repo/admin-tools';
+import {
+  awardManualLineupBonus,
+  forceClosePending,
+  grantDice,
+  grantPackToProfile,
+  setRole,
+  updateMatch,
+} from '@/lib/repo/admin-tools';
 import { expirePending } from '@/lib/repo/pending';
 import { advanceMatchdays, syncFixtures } from '@/lib/repo/sync';
 
@@ -190,6 +199,44 @@ export async function changeRoleAction(input: unknown): Promise<AdminRunResult> 
     await setRole(viewer.profileId, parsed.data);
     revalidateAdmin();
     return { ok: true, message: `Роль изменена: ${parsed.data.role}` };
+  } catch (error) {
+    return toResult(error);
+  }
+}
+
+/** Ручная выдача паков сборных активного сезона. */
+export async function grantPackAction(input: unknown): Promise<AdminRunResult> {
+  if (!hasDatabase()) return demoOnly();
+
+  try {
+    const viewer = await requireAdmin();
+    const parsed = packGrantSchema.safeParse(input);
+    if (!parsed.success) return invalidInput(parsed.error) ?? { ok: false, message: 'Проверь поля' };
+
+    await grantPackToProfile(viewer.profileId, parsed.data);
+    revalidateAdmin();
+    const n = parsed.data.count;
+    return { ok: true, message: `Выдано паков сборных: ${n}` };
+  } catch (error) {
+    return toResult(error);
+  }
+}
+
+/** Ручной бонус состава: засчитать/снять для FWD/MID/GK после FT. */
+export async function awardLineupBonusAction(input: unknown): Promise<AdminRunResult> {
+  if (!hasDatabase()) return demoOnly();
+
+  try {
+    const viewer = await requireAdmin();
+    const parsed = lineupBonusManualSchema.safeParse(input);
+    if (!parsed.success) return invalidInput(parsed.error) ?? { ok: false, message: 'Проверь поля' };
+
+    await awardManualLineupBonus(viewer.profileId, parsed.data);
+    revalidateAdmin();
+    return {
+      ok: true,
+      message: parsed.data.triggered ? 'Бонус состава засчитан' : 'Бонус состава снят',
+    };
   } catch (error) {
     return toResult(error);
   }

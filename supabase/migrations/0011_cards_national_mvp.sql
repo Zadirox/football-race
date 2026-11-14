@@ -132,6 +132,12 @@ do $$ begin
     check (method in ('auto', 'manual'));
 exception when duplicate_object then null; end $$;
 
+do $$ begin
+  alter table lineup_card_results
+    add constraint lineup_card_results_rarity_check
+    check (rarity in ('common', 'rare', 'epic', 'legend'));
+exception when duplicate_object then null; end $$;
+
 create unique index if not exists lineup_card_results_slot_uidx
   on lineup_card_results (lineup_slot_id);
 

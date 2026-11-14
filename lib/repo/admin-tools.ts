@@ -399,7 +399,7 @@ export async function awardManualLineupBonus(
         )
         values (
           ${slot.id}, ${slot.profile_id}, ${slot.match_id}, ${slot.card_instance_id},
-          ${rarity}, ${points}, false, 'manual', null, null, 'manual_revoke'
+          ${rarity}, 0, false, 'manual', null, null, 'manual_revoke'
         )
         on conflict (lineup_slot_id)
         do update set

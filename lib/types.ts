@@ -8,6 +8,10 @@ import type { DiceTier } from '@/lib/game/dice';
 import type { ActiveEffect } from '@/lib/game/engine';
 
 export type Role = 'admin' | 'player' | 'spectator';
+export type CardRarity = 'common' | 'rare' | 'epic' | 'legend';
+export type CardRoleGroup = 'GK' | 'DEF' | 'MID' | 'FWD';
+export type LineupSlotKind = 'GK' | 'OF1' | 'OF2';
+export type PackGrantSource = 'admin' | 'matchday' | 'cell';
 
 export type QuestionOptionView = { key: string; label: string };
 
@@ -159,4 +163,54 @@ export type SeasonSnapshot = {
   serverNow: string;
   /** Демо-режим: БД не подключена, играем локально. */
   demo: boolean;
+};
+
+export type CardTemplateView = {
+  id: string;
+  playerName: string;
+  nationalTeam: string;
+  nationalTeamSlug?: string | null;
+  roleGroup: CardRoleGroup;
+  rating: number;
+  photoUrl: string | null;
+  rarity: CardRarity;
+};
+
+export type OwnedCardView = CardTemplateView & {
+  instanceId: string;
+  obtainedAt: string;
+};
+
+export type PackGrantView = {
+  id: string;
+  packTitle: string;
+  source: PackGrantSource;
+  createdAt: string;
+};
+
+export type PackOpenResultView = {
+  grantId: string;
+  card: OwnedCardView | null;
+  /** Явный исход: null card + collectionComplete когда новых шаблонов не осталось. */
+  collectionComplete?: boolean;
+};
+
+export type LineupSlotView = {
+  matchId: string;
+  slot: LineupSlotKind;
+  card: OwnedCardView | null;
+  bonusPoints?: number | null;
+  bonusAwarded?: boolean;
+  bonusMethod?: 'auto' | 'manual' | null;
+};
+
+export type MatchLineupView = {
+  matchId: string;
+  matchdayId?: string | null;
+  homeName: string;
+  awayName: string;
+  kickoffUtc: string;
+  status: MatchView['status'];
+  locked: boolean;
+  slots: LineupSlotView[];
 };

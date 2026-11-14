@@ -305,7 +305,7 @@ export async function awardManualLineupBonus(
         profile_id: string;
         card_instance_id: string;
         match_status: string;
-        kickoff_at: string | Date;
+        kickoff_utc: string | Date;
         role_group: string | null;
         rarity: CardRarity | null;
       }[]
@@ -316,7 +316,7 @@ export async function awardManualLineupBonus(
              ls.profile_id,
              ls.card_instance_id,
              m.status as match_status,
-             m.kickoff_at,
+             m.kickoff_utc,
              c.role_group,
              c.rarity
         from lineup_slots ls
@@ -338,7 +338,7 @@ export async function awardManualLineupBonus(
       throw new AppError('EVENT_NOT_CHOOSABLE', 'Бонус можно начислить только после финального свистка (FT)');
     }
 
-    const kickoffMs = new Date(slot.kickoff_at).getTime();
+    const kickoffMs = new Date(slot.kickoff_utc).getTime();
     if (!Number.isFinite(kickoffMs) || kickoffMs > Date.now()) {
       throw new AppError('EVENT_NOT_CHOOSABLE', 'Матч ещё не начался');
     }
@@ -453,12 +453,10 @@ export async function listManualLineupBonusSlots(): Promise<AdminManualLineupSlo
       profile_id: string;
       nickname: string;
       match_id: string;
-      kickoff_at: string | Date;
+      kickoff_utc: string | Date;
       match_status: string;
-      home_team_name: string;
-      away_team_name: string;
-      home_team_short_name: string | null;
-      away_team_short_name: string | null;
+      home_name: string;
+      away_name: string;
       slot: 'GK' | 'OF1' | 'OF2';
       card_name: string;
       card_team_name: string | null;
@@ -474,15 +472,13 @@ export async function listManualLineupBonusSlots(): Promise<AdminManualLineupSlo
            ls.profile_id,
            pr.nickname,
            ls.match_id,
-           m.kickoff_at,
+           m.kickoff_utc,
            m.status as match_status,
-           ht.name as home_team_name,
-           at.name as away_team_name,
-           ht.short_name as home_team_short_name,
-           at.short_name as away_team_short_name,
+           m.home_name,
+           m.away_name,
            ls.slot,
            c.player_name as card_name,
-           nt.name as card_team_name,
+           coalesce(nt.name, c.nationality) as card_team_name,
            c.role_group,
            c.rarity,
            c.rating,
@@ -492,15 +488,13 @@ export async function listManualLineupBonusSlots(): Promise<AdminManualLineupSlo
       from lineup_slots ls
       join profiles pr on pr.id = ls.profile_id
       join matches m on m.id = ls.match_id
-      join teams ht on ht.id = m.home_team_id
-      join teams at on at.id = m.away_team_id
       join card_instances ci on ci.id = ls.card_instance_id
       join cards c on c.id = ci.card_id
       left join national_teams nt on nt.id = c.national_team_id
       left join lineup_card_results lcr on lcr.lineup_slot_id = ls.id
      where m.status = 'FT'
        and c.role_group in ('GK', 'MID', 'FWD')
-     order by m.kickoff_at desc, pr.nickname asc, ls.slot asc
+     order by m.kickoff_utc desc, pr.nickname asc, ls.slot asc
      limit 200
   `;
 
@@ -513,12 +507,12 @@ export async function listManualLineupBonusSlots(): Promise<AdminManualLineupSlo
       profileId: row.profile_id,
       nickname: row.nickname,
       matchId: row.match_id,
-      kickoffAt: toIsoDate(row.kickoff_at),
+      kickoffAt: toIsoDate(row.kickoff_utc),
       matchStatus: row.match_status,
-      homeTeamName: row.home_team_name,
-      awayTeamName: row.away_team_name,
-      homeTeamShortName: row.home_team_short_name,
-      awayTeamShortName: row.away_team_short_name,
+      homeTeamName: row.home_name,
+      awayTeamName: row.away_name,
+      homeTeamShortName: null,
+      awayTeamShortName: null,
       slot: row.slot,
       cardName: row.card_name,
       cardTeamName: row.card_team_name,

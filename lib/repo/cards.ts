@@ -79,6 +79,10 @@ function asRoleGroup(value: string | null): 'GK' | 'DEF' | 'MID' | 'FWD' {
   return 'MID';
 }
 
+function isUniqueViolation(error: unknown): boolean {
+  return !!error && typeof error === 'object' && 'code' in error && (error as { code?: unknown }).code === '23505';
+}
+
 function mapOwnedCard(row: {
   instance_id: string;
   obtained_at: string | Date;
@@ -238,10 +242,13 @@ async function loadOpenResult(tx: DbClient, grantId: string): Promise<PackOpenRe
      where g.id = ${grantId}
      limit 1
   `;
-  if (!row) return null;
-  if (!row.opening_id) return null;
+  if (!row?.opening_id) return null;
 
-  if (row.card_instance_id && row.instance_id && row.card_id && row.player_name && row.rarity) {
+  if (!row.card_instance_id) {
+    return { grantId, card: null, collectionComplete: true };
+  }
+
+  if (row.instance_id && row.card_id && row.player_name && row.rarity) {
     return {
       grantId,
       card: mapOwnedCard({
@@ -259,17 +266,24 @@ async function loadOpenResult(tx: DbClient, grantId: string): Promise<PackOpenRe
     };
   }
 
-  return { grantId, card: null, collectionComplete: true };
+  return null;
 }
 
-export async function openPackGrant(opts: {
+async function resolveOpenedGrantResult(
+  tx: DbClient,
+  grantId: string,
+): Promise<PackOpenResultView> {
+  const result = await loadOpenResult(tx, grantId);
+  if (result) return result;
+  throw new AppError('CONFLICT', 'Pack grant is opened but opening state is inconsistent');
+}
+
+async function openPackGrantOnce(opts: {
   grantId: string;
   profileId: string;
   seasonId: string;
-  random?: () => number;
-}, sql: DbClient = db()): Promise<PackOpenResultView> {
-  const random = opts.random ?? Math.random;
-
+  random: () => number;
+}, sql: DbClient): Promise<PackOpenResultView> {
   return await sql.begin(async (tx) => {
     const client = tx as unknown as DbClient;
     const [grant] = await client<GrantRow[]>`
@@ -285,8 +299,7 @@ export async function openPackGrant(opts: {
     }
 
     if (grant.opened_at || grant.opened_opening_id) {
-      const existing = await loadOpenResult(client, grant.id);
-      if (existing) return existing;
+      return await resolveOpenedGrantResult(client, grant.id);
     }
 
     const [pack] = await client<{ set_id: string }[]>`
@@ -307,8 +320,8 @@ export async function openPackGrant(opts: {
          )
     `;
 
-    const rolled = rollRarity(random);
-    const picked = pickCardTemplate(templates, rolled, random);
+    const rolled = rollRarity(opts.random);
+    const picked = pickCardTemplate(templates, rolled, opts.random);
 
     if (!picked) {
       const [opening] = await client<{ id: string }[]>`
@@ -325,7 +338,7 @@ export async function openPackGrant(opts: {
            where id = ${grant.id}
         `;
       }
-      return { grantId: grant.id, card: null, collectionComplete: true };
+      return await resolveOpenedGrantResult(client, grant.id);
     }
 
     const [instance] = await client<{ id: string; created_at: string | Date }[]>`
@@ -338,31 +351,48 @@ export async function openPackGrant(opts: {
     const [opening] = await client<{ id: string }[]>`
       insert into pack_openings (pack_id, profile_id, season_id, card_instance_id, rolled_rarity, idempotency_key, pack_grant_id)
       values (${grant.pack_id}, ${opts.profileId}, ${opts.seasonId}, ${instance.id}, ${picked.rarity}, ${grant.id}::uuid, ${grant.id})
+      on conflict (pack_grant_id) where pack_grant_id is not null
+      do nothing
       returning id
     `;
-    if (!opening) throw new AppError('CONFLICT_RETRY', 'Failed to create pack opening');
+    if (!opening) {
+      // Another concurrent opener won for this grant; return its committed result if available.
+      return await resolveOpenedGrantResult(client, grant.id);
+    }
 
     await client`
       update pack_grants
-         set opened_at = now(), opened_opening_id = ${opening.id}
+         set opened_at = coalesce(opened_at, now()), opened_opening_id = coalesce(opened_opening_id, ${opening.id}::uuid)
        where id = ${grant.id}
     `;
 
-    const card = mapOwnedCard({
-      instance_id: instance.id,
-      obtained_at: instance.created_at,
-      card_id: picked.id,
-      player_name: picked.player_name,
-      nationality: picked.nationality,
-      role_group: picked.role_group,
-      rating: picked.rating,
-      photo_url: picked.photo_url,
-      rarity: picked.rarity,
-      national_team_slug: picked.national_team_slug,
-    });
-
-    return { grantId: grant.id, card };
+    return await resolveOpenedGrantResult(client, grant.id);
   });
+}
+
+export async function openPackGrant(opts: {
+  grantId: string;
+  profileId: string;
+  seasonId: string;
+  random?: () => number;
+}, sql: DbClient = db()): Promise<PackOpenResultView> {
+  const random = opts.random ?? Math.random;
+  let lastConflict: unknown;
+
+  for (let attempt = 0; attempt < 3; attempt++) {
+    try {
+      return await openPackGrantOnce(
+        { grantId: opts.grantId, profileId: opts.profileId, seasonId: opts.seasonId, random },
+        sql,
+      );
+    } catch (error) {
+      if (!isUniqueViolation(error)) throw error;
+      lastConflict = error;
+    }
+  }
+
+  void lastConflict;
+  throw new AppError('CONFLICT_RETRY', 'Pack opening conflicted; please retry');
 }
 
 export async function listCollection(

@@ -1,5 +1,5 @@
 import { db } from '@/lib/db';
-import { AppError } from '@/lib/errors';
+import { AppError, isAppError } from '@/lib/errors';
 import { pickCardTemplate, rollRarity, type CardRarity } from '@/lib/game/cards';
 import type { OwnedCardView, PackGrantSource, PackGrantView, PackOpenResultView } from '@/lib/types';
 
@@ -356,8 +356,8 @@ async function openPackGrantOnce(opts: {
       returning id
     `;
     if (!opening) {
-      // Another concurrent opener won for this grant; return its committed result if available.
-      return await resolveOpenedGrantResult(client, grant.id);
+      // Another concurrent opener won for this grant; abort so the minted instance rolls back.
+      throw new AppError('CONFLICT_RETRY', 'Concurrent pack opening lost grant reservation');
     }
 
     await client`
@@ -370,6 +370,10 @@ async function openPackGrantOnce(opts: {
   });
 }
 
+function isRetryableOpenConflict(error: unknown): boolean {
+  return isUniqueViolation(error) || (isAppError(error) && error.code === 'CONFLICT_RETRY');
+}
+
 export async function openPackGrant(opts: {
   grantId: string;
   profileId: string;
@@ -377,7 +381,6 @@ export async function openPackGrant(opts: {
   random?: () => number;
 }, sql: DbClient = db()): Promise<PackOpenResultView> {
   const random = opts.random ?? Math.random;
-  let lastConflict: unknown;
 
   for (let attempt = 0; attempt < 3; attempt++) {
     try {
@@ -386,12 +389,12 @@ export async function openPackGrant(opts: {
         sql,
       );
     } catch (error) {
-      if (!isUniqueViolation(error)) throw error;
-      lastConflict = error;
+      if (!isRetryableOpenConflict(error)) throw error;
+      // Abort/rollback happened (for unique violations or lost reservation); retry to
+      // re-lock grant and return the committed idempotent result or re-attempt safely.
     }
   }
 
-  void lastConflict;
   throw new AppError('CONFLICT_RETRY', 'Pack opening conflicted; please retry');
 }
 

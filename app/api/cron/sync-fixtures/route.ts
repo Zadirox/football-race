@@ -23,9 +23,11 @@ async function run(request: Request): Promise<Response> {
     return NextResponse.json(report, { status: 503 });
   }
   if (report.reason === 'SYNC_QUOTA_EXCEEDED') {
+    console.warn('[sync-fixtures] quota exceeded', JSON.stringify(report));
     return NextResponse.json(report, { status: 429 });
   }
   if (!report.ok) {
+    console.error('[sync-fixtures] failed', JSON.stringify(report));
     return NextResponse.json(report, { status: 502 });
   }
 

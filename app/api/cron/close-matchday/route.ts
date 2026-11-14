@@ -22,6 +22,7 @@ async function run(request: Request): Promise<Response> {
     return NextResponse.json(report, { status: 503 });
   }
   if (!report.ok) {
+    console.error('[close-matchday] failed', JSON.stringify(report));
     return NextResponse.json(report, { status: 500 });
   }
 

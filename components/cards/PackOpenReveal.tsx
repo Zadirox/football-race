@@ -400,9 +400,11 @@ export function PackOpenReveal({ card, collectionComplete, variant = 'fut', pale
                   })()}
                 </div>
 
-                <div className={`pack-reveal__portrait${revealed ? ' pack-reveal__portrait--show' : ''}`}>
-                  <FutCard card={card} variant={variant} palette={palette} size="lg" interactive={revealed} />
-                </div>
+                {revealed ? (
+                  <div className="pack-reveal__portrait pack-reveal__portrait--show">
+                    <FutCard card={card} variant={variant} palette={palette} size="lg" interactive />
+                  </div>
+                ) : null}
               </>
             )}
 

@@ -2,12 +2,23 @@ import Link from 'next/link';
 import { Panel, Notice } from '@/components/ui/Panel';
 import { getViewer } from '@/lib/auth/session';
 import { teamDisplay } from '@/lib/data/team-names';
+import { db } from '@/lib/db';
 import { hasDatabase, serverEnv } from '@/lib/env';
 import { listCollection } from '@/lib/repo/cards';
 import { getMyLineup, listLineupMatches } from '@/lib/repo/lineups';
-import { loadSeasonSnapshot } from '@/lib/repo/season';
 import type { MatchLineupView } from '@/lib/types';
 import { LineupsClient } from './LineupsClient';
+
+async function getActiveSeasonId(): Promise<string | null> {
+  const rows = await db()<{ id: string }[]>`
+    select id
+      from seasons
+     where status = 'active'
+     order by starts_on desc
+     limit 1
+  `;
+  return rows[0]?.id ?? null;
+}
 
 function normalize(s: string): string {
   return s
@@ -36,12 +47,7 @@ export default async function LineupsPage() {
     );
   }
 
-  const snapshot = await loadSeasonSnapshot();
-  const viewer = await getViewer();
-  const seasonId = snapshot.season?.id ?? null;
-  const profileId = viewer?.profileId ?? snapshot.me?.profileId ?? null;
-
-  if (!hasDatabase() || snapshot.demo) {
+  if (!hasDatabase()) {
     return (
       <Panel title="Составы" subtitle="Выставляйте карточки сборных на матчи дня." size="wide">
         <Notice>Демо-режим: база не подключена, составы недоступны.</Notice>
@@ -49,10 +55,14 @@ export default async function LineupsPage() {
     );
   }
 
+  const viewer = await getViewer();
+  const profileId = viewer?.profileId ?? null;
+  const seasonId = await getActiveSeasonId();
+
   if (!profileId || !seasonId) {
     return (
       <Panel title="Составы" subtitle="Выставляйте карточки сборных на матчи дня." size="wide">
-        <Notice tone="info">Войдите в аккаунт, чтобы выставлять составы.</Notice>
+        <Notice tone="info">Войдите в аккаунт и убедитесь, что сезон активен, чтобы выставлять составы.</Notice>
         <div style={{ marginTop: 12 }}>
           <Link href="/login" className="btn btn--primary">Войти</Link>
         </div>

@@ -1,10 +1,21 @@
 import Link from 'next/link';
 import { Panel, Notice } from '@/components/ui/Panel';
 import { getViewer } from '@/lib/auth/session';
+import { db } from '@/lib/db';
 import { hasDatabase, serverEnv } from '@/lib/env';
 import { getCollectionProgress, listCollection, listUnopenedPacks } from '@/lib/repo/cards';
-import { loadSeasonSnapshot } from '@/lib/repo/season';
 import { CollectionClient } from './CollectionClient';
+
+async function getActiveSeasonId(): Promise<string | null> {
+  const rows = await db()<{ id: string }[]>`
+    select id
+      from seasons
+     where status = 'active'
+     order by starts_on desc
+     limit 1
+  `;
+  return rows[0]?.id ?? null;
+}
 
 export default async function CollectionPage() {
   const { cardsEnabled } = serverEnv();
@@ -16,12 +27,7 @@ export default async function CollectionPage() {
     );
   }
 
-  const snapshot = await loadSeasonSnapshot();
-  const viewer = await getViewer();
-  const seasonId = snapshot.season?.id ?? null;
-  const profileId = viewer?.profileId ?? snapshot.me?.profileId ?? null;
-
-  if (!hasDatabase() || snapshot.demo) {
+  if (!hasDatabase()) {
     return (
       <Panel title="Коллекция" subtitle="Карточки игроков сборных и паки." size="wide">
         <Notice>Демо-режим: база не подключена, коллекция и паки недоступны.</Notice>
@@ -29,10 +35,14 @@ export default async function CollectionPage() {
     );
   }
 
+  const viewer = await getViewer();
+  const profileId = viewer?.profileId ?? null;
+  const seasonId = await getActiveSeasonId();
+
   if (!profileId || !seasonId) {
     return (
       <Panel title="Коллекция" subtitle="Карточки игроков сборных и паки." size="wide">
-        <Notice tone="info">Войдите в аккаунт, чтобы видеть свои паки и коллекцию.</Notice>
+        <Notice tone="info">Войдите в аккаунт и убедитесь, что сезон активен, чтобы видеть свои паки и коллекцию.</Notice>
         <div style={{ marginTop: 12 }}>
           <Link href="/login" className="btn btn--primary">Войти</Link>
         </div>

@@ -2,11 +2,22 @@
 
 import { revalidatePath } from 'next/cache';
 import { z } from 'zod';
+import { db } from '@/lib/db';
 import { getViewer } from '@/lib/auth/session';
 import { hasDatabase, serverEnv } from '@/lib/env';
 import { AppError, isAppError } from '@/lib/errors';
 import { removeLineupSlot, upsertLineupSlot } from '@/lib/repo/lineups';
-import { loadSeasonSnapshot } from '@/lib/repo/season';
+
+async function getActiveSeasonId(): Promise<string | null> {
+  const rows = await db()<{ id: string }[]>`
+    select id
+      from seasons
+     where status = 'active'
+     order by starts_on desc
+     limit 1
+  `;
+  return rows[0]?.id ?? null;
+}
 
 const lineupSlotSchema = z.object({
   matchId: z.string().uuid(),
@@ -39,8 +50,7 @@ export async function saveLineupSlotAction(input: unknown): Promise<LineupAction
     const parsed = lineupSlotSchema.safeParse(input);
     if (!parsed.success) return invalidInput(parsed.error) ?? { ok: false, message: 'Проверь данные' };
 
-    const snapshot = await loadSeasonSnapshot();
-    const seasonId = snapshot.season?.id;
+    const seasonId = await getActiveSeasonId();
     if (!seasonId) throw new AppError('CONFIG_MISSING', 'Нет активного сезона');
 
     await upsertLineupSlot({ ...parsed.data, profileId: viewer.profileId, seasonId });

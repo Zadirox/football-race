@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useMemo, useRef } from 'react';
+import { Suspense, useEffect, useMemo, useRef } from 'react';
 import { Canvas, useFrame } from '@react-three/fiber';
 import { Environment, Float, RoundedBox, Sparkles } from '@react-three/drei';
 import * as THREE from 'three';
@@ -94,6 +94,12 @@ function PackObject({ theme, step, progress }: { theme: (typeof RARITY_THEME)[Ca
   const innerGlow = useRef<THREE.Mesh>(null);
 
   const labelTex = useMemo(() => makeLabelTexture(theme.accent), [theme.accent]);
+
+  useEffect(() => {
+    return () => {
+      labelTex?.dispose();
+    };
+  }, [labelTex]);
 
   const suspense = clamp01(step / 3); // 0..1 over steps 0-3
   const openT = easeOutCubic(clamp01((progress - 0.62) / 0.28)); // tear/open
@@ -255,8 +261,8 @@ function PackObject({ theme, step, progress }: { theme: (typeof RARITY_THEME)[Ca
       <pointLight ref={burstLight} position={[0, 0.6, 0.4]} intensity={theme.intensity * 10} distance={6} color={theme.accent} />
       <pointLight position={[1.8, 1.2, 2.2]} intensity={5} distance={8} color="#ffffff" />
       <pointLight position={[-1.8, -0.8, 1.8]} intensity={3.5} distance={8} color={theme.color} />
-      <Sparkles count={theme.sparkCount} scale={[5.5, 5.5, 4]} size={2.4} speed={0.35 + suspense * 0.2} opacity={0.85} color={theme.spark} />
-      <Sparkles count={Math.floor(theme.sparkCount * 0.5)} scale={[3, 3.5, 3]} size={4} speed={0.25} opacity={0.55} color={theme.accent} />
+      <Sparkles count={theme.sparkCount} scale={[5.5, 5.5, 4]} size={2.2} speed={0.3 + suspense * 0.15} opacity={0.8} color={theme.spark} />
+      <Sparkles count={Math.floor(theme.sparkCount * 0.35)} scale={[3, 3.5, 3]} size={3.2} speed={0.22} opacity={0.5} color={theme.accent} />
     </group>
   );
 }
@@ -279,11 +285,11 @@ function CameraRig({ step, progress }: { step: number; progress: number }) {
 export function PackRevealScene({ rarity, step, progress, rarityRevealed = true }: Props) {
   const base = rarityRevealed ? RARITY_THEME[rarity] : MYSTERY_THEME;
   // when rarity becomes known, boost intensity for a more dramatic reveal
-  const boost = rarityRevealed ? (rarity === 'legend' ? 1.6 : rarity === 'epic' ? 1.35 : rarity === 'rare' ? 1.18 : 1.05) : 0.8;
+  const boost = rarityRevealed ? (rarity === 'legend' ? 1.35 : rarity === 'epic' ? 1.2 : rarity === 'rare' ? 1.1 : 1.0) : 0.8;
   const theme = {
     ...base,
     intensity: base.intensity * boost,
-    sparkCount: Math.floor(base.sparkCount * (rarityRevealed ? boost : 0.75)),
+    sparkCount: Math.min(220, Math.floor(base.sparkCount * (rarityRevealed ? boost : 0.7))),
   };
   const burst = clamp01((progress - 0.58) / 0.16) * (1 - clamp01((progress - 0.94) / 0.06));
   const charge = rarityRevealed ? 1 : 0.4;
@@ -292,9 +298,9 @@ export function PackRevealScene({ rarity, step, progress, rarityRevealed = true 
   return (
     <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }} aria-hidden="true">
       <Canvas
-        dpr={[1, 1.9]}
+        dpr={[1, 1.35]}
         camera={{ position: [0, 0.05, 5.0], fov: 40 }}
-        gl={{ antialias: true, alpha: true, powerPreference: 'high-performance' }}
+        gl={{ antialias: false, alpha: true, powerPreference: 'high-performance' }}
       >
         <color attach="background" args={['#03050a']} />
         <fog attach="fog" args={['#03050a', 6.0, 12.5]} />

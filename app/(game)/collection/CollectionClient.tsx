@@ -123,7 +123,6 @@ export function CollectionClient({ packs, cards, progress }: Props) {
         setPackList((prev) => prev.filter((p) => p.id !== grantId));
         setReveal(res.result);
         setPreopen(false);
-        router.refresh();
       } catch {
         setOpeningId(null);
         setPreopen(false);
@@ -366,7 +365,10 @@ export function CollectionClient({ packs, cards, progress }: Props) {
           collectionComplete={reveal.collectionComplete}
           variant={variant}
           palette={palette}
-          onClose={() => setReveal(null)}
+          onClose={() => {
+            setReveal(null);
+            router.refresh();
+          }}
         />
       )}
 

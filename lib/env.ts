@@ -13,6 +13,7 @@ export type ServerEnv = {
   rapidApiHost: string | null;
   cronSecret: string | null;
   sstatsApiKey: string | null;
+  sstatsEnabled: boolean;
   cardsEnabled: boolean;
 };
 
@@ -33,6 +34,7 @@ export function serverEnv(): ServerEnv {
     rapidApiHost: read('RAPIDAPI_HOST') ?? read('RAPIDAPI_FOOTBALL_HOST') ?? 'football-leagues1.p.rapidapi.com',
     cronSecret: read('CRON_SECRET'),
     sstatsApiKey: read('SSTATS_API_KEY'),
+    sstatsEnabled: read('SSTATS_ENABLED') !== 'false',
     // Re-enabled after perf fixes (0013 indexes, client-side badge). Default on; set CARDS_ENABLED=false to disable.
     cardsEnabled: cardsFlag === null ? true : cardsFlag === 'true',
   };

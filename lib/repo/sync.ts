@@ -177,29 +177,33 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
 
   // Лига наций: берём из запасного источника (основной тариф её не отдаёт).
   try {
-    const remainingMs = deadlineMs - Date.now();
-    if (remainingMs > 8_000) {
-      const unl = await fetchSstatsUnlFixtures({
-        from: window.from,
-        to: window.to,
-        apiKey: env.sstatsApiKey,
-        timeoutMs: Math.min(10_000, remainingMs - 3_000),
-      });
-      fetchedTotal += unl.fetched;
-      requestsUsed += unl.requestsUsed;
-      if (httpStatus === null) httpStatus = unl.httpStatus;
-
-      const enriched = await enrichSstatsMatchesWithStats({
-        matches: unl.matches,
-        apiKey: env.sstatsApiKey,
-        concurrency: 2,
-        maxDetails: 8,
-        deadlineMs,
-      });
-      requestsUsed += enriched.requestsUsed;
-      groups.push(enriched.matches);
+    if (!env.sstatsEnabled) {
+      errors.push('Лига наций: источник sstats отключён (SSTATS_ENABLED=false)');
     } else {
-      errors.push('Лига наций: пропущено из-за лимита времени');
+      const remainingMs = deadlineMs - Date.now();
+      if (remainingMs > 8_000) {
+        const unl = await fetchSstatsUnlFixtures({
+          from: window.from,
+          to: window.to,
+          apiKey: env.sstatsApiKey,
+          timeoutMs: Math.min(10_000, remainingMs - 3_000),
+        });
+        fetchedTotal += unl.fetched;
+        requestsUsed += unl.requestsUsed;
+        if (httpStatus === null) httpStatus = unl.httpStatus;
+
+        const enriched = await enrichSstatsMatchesWithStats({
+          matches: unl.matches,
+          apiKey: env.sstatsApiKey,
+          concurrency: 2,
+          maxDetails: 8,
+          deadlineMs,
+        });
+        requestsUsed += enriched.requestsUsed;
+        groups.push(enriched.matches);
+      } else {
+        errors.push('Лига наций: пропущено из-за лимита времени прогона');
+      }
     }
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Источник Лиги наций недоступен';

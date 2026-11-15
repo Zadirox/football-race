@@ -4,8 +4,7 @@ import { Snowfall } from '@/components/map/Snowfall';
 import { Onboarding } from '@/components/game/Onboarding';
 import { DayResultsSummary } from '@/components/game/DayResultsSummary';
 import { GameHud } from '@/components/map/GameHud';
-import { hasDatabase, serverEnv } from '@/lib/env';
-import { listUnopenedPacks } from '@/lib/repo/cards';
+import { serverEnv } from '@/lib/env';
 import { loadSeasonSnapshot } from '@/lib/repo/season';
 
 export const dynamic = 'force-dynamic';
@@ -19,20 +18,9 @@ export default async function GameLayout({ children }: { children: React.ReactNo
   const snapshot = await loadSeasonSnapshot();
   const { cardsEnabled } = serverEnv();
 
-  let unopenedPacks = 0;
-  if (cardsEnabled && !snapshot.demo && snapshot.me && snapshot.season?.id && hasDatabase()) {
-    try {
-      const packs = await Promise.race([
-        listUnopenedPacks(snapshot.me.profileId, snapshot.season.id),
-        new Promise<never>((_, reject) =>
-          setTimeout(() => reject(new Error('unopened_packs_timeout')), 1500),
-        ),
-      ]);
-      unopenedPacks = packs.length;
-    } catch {
-      unopenedPacks = 0;
-    }
-  }
+  // Badge count disabled in layout to avoid extra per-request DB load on prod.
+  // TODO(cards): fetch unopened packs count via a lightweight cached/client endpoint.
+  const unopenedPacks = 0;
 
   return (
     <div className="app-shell">

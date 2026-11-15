@@ -278,6 +278,26 @@ function MatchQuestions({
       .replaceAll(match.homeName, home.name)
       .replaceAll(match.awayName, away.name);
 
+  const stats = match.stats;
+  const statParts: string[] = [];
+  if (stats.cornersHome != null && stats.cornersAway != null) {
+    statParts.push(`угловые ${stats.cornersHome}:${stats.cornersAway} (${stats.cornersHome + stats.cornersAway})`);
+  }
+  const ycKnown = stats.yellowCardsHome != null && stats.yellowCardsAway != null;
+  const rcKnown = stats.redCardsHome != null && stats.redCardsAway != null;
+  if (ycKnown || rcKnown) {
+    const yc = ycKnown ? `${stats.yellowCardsHome}:${stats.yellowCardsAway}` : '—';
+    const rc = rcKnown ? `${stats.redCardsHome}:${stats.redCardsAway}` : '—';
+    statParts.push(`ЖК ${yc}${rcKnown ? `, КК ${rc}` : ''}`);
+  }
+  if (stats.shotsOnTargetHome != null && stats.shotsOnTargetAway != null) {
+    statParts.push(`УВ ${stats.shotsOnTargetHome}:${stats.shotsOnTargetAway} (${stats.shotsOnTargetHome + stats.shotsOnTargetAway})`);
+  }
+  if (stats.possessionHome != null && stats.possessionAway != null) {
+    statParts.push(`владение ${stats.possessionHome}%:${stats.possessionAway}%`);
+  }
+  const showStats = statParts.length > 0 && (match.status === 'LIVE' || match.status === 'HT' || match.status === 'FT');
+
   return (
     <section className="predictions-match">
       <div className="predictions-match__head">
@@ -301,6 +321,13 @@ function MatchQuestions({
           )}
           <span className="card__meta">отвечено {answered} из {regular.length}</span>
         </div>
+        {showStats && (
+          <div className="predictions-match__meta" style={{ marginTop: 6 }}>
+            <span className="chip chip--muted" title="Статистика матча (по последним данным)">
+              {statParts.join(' · ')}
+            </span>
+          </div>
+        )}
       </div>
 
       <div className="predictions-match__questions">

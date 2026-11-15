@@ -425,7 +425,10 @@ export function GameHud({ snapshot }: { snapshot: SeasonSnapshot }) {
       }
       rollKeyRef.current = newRollKey();
       setDice((prev) => ({ ...prev, [tier]: Math.max(0, prev[tier] - 1) }));
-      settleTumble();
+      // В серверном режиме итог броска приходит со снимком после refresh —
+      // не фиксируем случайную грань анимации как "результат".
+      clearTumbleTimers();
+      setTumble(null);
       router.refresh();
       setBusy(false);
       return;

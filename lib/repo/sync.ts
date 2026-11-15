@@ -207,7 +207,6 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
   const normalized = mergeMatches(groups);
 
   if (normalized.length === 0) {
-    // Если ошибок не было — просто в этом периоде нет подходящих матчей, это нормальный результат.
     if (errors.length === 0) {
       await logSyncRun({
         endpoint: 'sync-fixtures',
@@ -222,19 +221,44 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
     }
 
     const quota = errors.some((e) => e.toLowerCase().includes('quota') || e.includes('429'));
-    const reason: SyncReason = quota ? 'SYNC_QUOTA_EXCEEDED' : 'SYNC_PROVIDER_DOWN';
+    if (quota) {
+      const reason: SyncReason = 'SYNC_QUOTA_EXCEEDED';
+      await logSyncRun({
+        endpoint: 'sync-fixtures',
+        status: 'error',
+        httpStatus,
+        durationMs: Date.now() - startedAt,
+        requestsUsed,
+        error: errors.join('; ').slice(0, 500),
+        provider: 'multi',
+      });
+      return finish(reason, { fetched: fetchedTotal, kept: 0, httpStatus, error: errors.join('; ') || null });
+    }
 
+    // Источники могли частично отвалиться/вернуть пусто: не валим весь синк,
+    // фиксируем ошибку в отчёте и даём следующему прогону повторить попытку.
+    const errorText = errors.join('; ').slice(0, 500);
     await logSyncRun({
       endpoint: 'sync-fixtures',
-      status: 'error',
+      status: 'ok',
       httpStatus,
       durationMs: Date.now() - startedAt,
       requestsUsed,
-      error: errors.join('; ').slice(0, 500),
+      error: errorText,
       provider: 'multi',
     });
-
-    return finish(reason, { fetched: fetchedTotal, kept: 0, httpStatus, error: errors.join('; ') || null });
+    return {
+      ok: true,
+      reason: null,
+      fetched: fetchedTotal,
+      kept: 0,
+      matches: 0,
+      matchdays: 0,
+      questions: 0,
+      durationMs: Date.now() - startedAt,
+      httpStatus,
+      error: errorText,
+    };
   }
 
   const matchdayIds = new Map<string, string>();

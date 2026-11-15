@@ -22,7 +22,12 @@ export default async function GameLayout({ children }: { children: React.ReactNo
   let unopenedPacks = 0;
   if (cardsEnabled && !snapshot.demo && snapshot.me && snapshot.season?.id && hasDatabase()) {
     try {
-      const packs = await listUnopenedPacks(snapshot.me.profileId, snapshot.season.id);
+      const packs = await Promise.race([
+        listUnopenedPacks(snapshot.me.profileId, snapshot.season.id),
+        new Promise<never>((_, reject) =>
+          setTimeout(() => reject(new Error('unopened_packs_timeout')), 1500),
+        ),
+      ]);
       unopenedPacks = packs.length;
     } catch {
       unopenedPacks = 0;

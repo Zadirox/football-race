@@ -367,6 +367,7 @@ export function CollectionClient({ packs, cards, progress }: Props) {
           palette={palette}
           onClose={() => {
             setReveal(null);
+            window.dispatchEvent(new Event('cards:packs-changed'));
             router.refresh();
           }}
         />

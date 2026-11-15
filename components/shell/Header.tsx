@@ -5,6 +5,7 @@ import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useMemo, useState } from 'react';
 import { play } from '@/lib/audio';
 import { signOutAction } from '@/lib/auth/actions';
+import { getUnopenedPacksCountAction } from '@/lib/actions/cards';
 import type { MeView } from '@/lib/types';
 
 type HeaderProps = {
@@ -13,6 +14,7 @@ type HeaderProps = {
   closesAt: string | null;
   demo: boolean;
   cardsEnabled?: boolean;
+  /** Deprecated: badge count is fetched client-side to avoid layout DB load. */
   unopenedPacks?: number;
 };
 
@@ -51,10 +53,11 @@ function remainingLabel(closesAt: string | null): string {
   return `до конца игрового дня: ${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
 }
 
-export function Header({ me, closesAt, demo, cardsEnabled, unopenedPacks = 0 }: HeaderProps) {
+export function Header({ me, closesAt, demo, cardsEnabled }: HeaderProps) {
   const pathname = usePathname();
   const router = useRouter();
   const [now, setNow] = useState<string | null>(null);
+  const [packNoticeCount, setPackNoticeCount] = useState(0);
 
   useEffect(() => {
     const tick = () => setNow(remainingLabel(closesAt));
@@ -62,6 +65,54 @@ export function Header({ me, closesAt, demo, cardsEnabled, unopenedPacks = 0 }: 
     const timer = window.setInterval(tick, 1000);
     return () => window.clearInterval(timer);
   }, [closesAt]);
+
+  useEffect(() => {
+    if (!cardsEnabled || !me) {
+      setPackNoticeCount(0);
+      return;
+    }
+
+    let cancelled = false;
+    let inFlight = false;
+    let lastFetchAt = 0;
+    const minIntervalMs = 15000;
+
+    const refresh = async (force = false) => {
+      if (cancelled || inFlight) return;
+      const nowMs = Date.now();
+      if (!force && nowMs - lastFetchAt < minIntervalMs) return;
+      inFlight = true;
+      try {
+        const count = await getUnopenedPacksCountAction();
+        lastFetchAt = Date.now();
+        if (!cancelled) setPackNoticeCount(Math.max(0, Number(count) || 0));
+      } catch {
+        if (!cancelled) setPackNoticeCount(0);
+      } finally {
+        inFlight = false;
+      }
+    };
+
+    void refresh(true);
+    const onFocus = () => void refresh(false);
+    const onVisibility = () => {
+      if (document.visibilityState === 'visible') void refresh(false);
+    };
+    const onPacksChanged = () => void refresh(true);
+
+    window.addEventListener('focus', onFocus);
+    document.addEventListener('visibilitychange', onVisibility);
+    window.addEventListener('cards:packs-changed', onPacksChanged as EventListener);
+    const interval = window.setInterval(() => void refresh(false), 60000);
+
+    return () => {
+      cancelled = true;
+      window.removeEventListener('focus', onFocus);
+      document.removeEventListener('visibilitychange', onVisibility);
+      window.removeEventListener('cards:packs-changed', onPacksChanged as EventListener);
+      window.clearInterval(interval);
+    };
+  }, [cardsEnabled, me?.profileId]);
 
   const leftTabs = useMemo(
     () =>
@@ -92,6 +143,7 @@ export function Header({ me, closesAt, demo, cardsEnabled, unopenedPacks = 0 }: 
 
   const tab = (item: Tab) => {
     const active = pathname === item.href;
+    const unopenedPacks = packNoticeCount;
     const showPackNotice = item.href === '/collection' && cardsEnabled && unopenedPacks > 0;
     return (
       <Link

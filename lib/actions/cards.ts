@@ -4,12 +4,30 @@ import { revalidatePath } from 'next/cache';
 import { getViewer } from '@/lib/auth/session';
 import { hasDatabase, serverEnv } from '@/lib/env';
 import { AppError, isAppError } from '@/lib/errors';
-import { openPackGrant } from '@/lib/repo/cards';
+import { countUnopenedPacks, openPackGrant } from '@/lib/repo/cards';
 import { loadSeasonSnapshot } from '@/lib/repo/season';
 
 export type OpenPackActionResult =
   | { ok: true; result: Awaited<ReturnType<typeof openPackGrant>> }
   | { ok: false; message: string };
+
+export async function getUnopenedPacksCountAction(): Promise<number> {
+  if (!serverEnv().cardsEnabled) return 0;
+  if (!hasDatabase()) return 0;
+
+  try {
+    const viewer = await getViewer();
+    if (!viewer) return 0;
+
+    const snapshot = await loadSeasonSnapshot();
+    const seasonId = snapshot.season?.id;
+    if (!seasonId || snapshot.demo) return 0;
+
+    return await countUnopenedPacks(viewer.profileId, seasonId);
+  } catch {
+    return 0;
+  }
+}
 
 export async function openPackAction(grantId: string): Promise<OpenPackActionResult> {
   if (!serverEnv().cardsEnabled) {

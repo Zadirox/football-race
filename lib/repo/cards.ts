@@ -218,6 +218,21 @@ export async function listUnopenedPacks(
   return rows.map(mapGrantView);
 }
 
+export async function countUnopenedPacks(
+  profileId: string,
+  seasonId: string,
+  sql: DbClient = db(),
+): Promise<number> {
+  const rows = await sql<{ count: number | string }[]>`
+    select count(*)::int as count
+      from pack_grants g
+     where g.profile_id = ${profileId}
+       and g.season_id = ${seasonId}
+       and g.opened_at is null
+  `;
+  return toNumber(rows[0]?.count ?? 0);
+}
+
 async function loadOpenResult(tx: DbClient, grantId: string): Promise<PackOpenResultView | null> {
   const [row] = await tx<OpeningCardRow[]>`
     select g.id as grant_id,

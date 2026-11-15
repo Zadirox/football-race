@@ -1,15 +1,26 @@
 'use server';
 
 import { revalidatePath } from 'next/cache';
+import { db } from '@/lib/db';
 import { getViewer } from '@/lib/auth/session';
 import { hasDatabase, serverEnv } from '@/lib/env';
 import { AppError, isAppError } from '@/lib/errors';
 import { countUnopenedPacks, openPackGrant } from '@/lib/repo/cards';
-import { loadSeasonSnapshot } from '@/lib/repo/season';
 
 export type OpenPackActionResult =
   | { ok: true; result: Awaited<ReturnType<typeof openPackGrant>> }
   | { ok: false; message: string };
+
+async function getActiveSeasonId(): Promise<string | null> {
+  const rows = await db()<{ id: string }[]>`
+    select id
+      from seasons
+     where status = 'active'
+     order by starts_on desc
+     limit 1
+  `;
+  return rows[0]?.id ?? null;
+}
 
 export async function getUnopenedPacksCountAction(): Promise<number> {
   if (!serverEnv().cardsEnabled) return 0;
@@ -19,9 +30,8 @@ export async function getUnopenedPacksCountAction(): Promise<number> {
     const viewer = await getViewer();
     if (!viewer) return 0;
 
-    const snapshot = await loadSeasonSnapshot();
-    const seasonId = snapshot.season?.id;
-    if (!seasonId || snapshot.demo) return 0;
+    const seasonId = await getActiveSeasonId();
+    if (!seasonId) return 0;
 
     return await countUnopenedPacks(viewer.profileId, seasonId);
   } catch {
@@ -41,13 +51,13 @@ export async function openPackAction(grantId: string): Promise<OpenPackActionRes
     const viewer = await getViewer();
     if (!viewer) throw new AppError('AUTH_REQUIRED');
 
-    const snapshot = await loadSeasonSnapshot();
-    if (!snapshot.season?.id) throw new AppError('CONFIG_MISSING', 'Нет активного сезона');
+    const seasonId = await getActiveSeasonId();
+    if (!seasonId) throw new AppError('CONFIG_MISSING', 'Нет активного сезона');
 
     const result = await openPackGrant({
       grantId,
       profileId: viewer.profileId,
-      seasonId: snapshot.season.id,
+      seasonId,
     });
 
     revalidatePath('/collection');

@@ -22,7 +22,8 @@ function read(name: string): string | null {
 }
 
 export function serverEnv(): ServerEnv {
-  const cardsFlag = read('CARDS_ENABLED') ?? read('NEXT_PUBLIC_CARDS_ENABLED');
+  void read('CARDS_ENABLED');
+  void read('NEXT_PUBLIC_CARDS_ENABLED');
   return {
     databaseUrl: read('DATABASE_URL') ?? read('SUPABASE_DB_URL'),
     supabaseUrl: read('SUPABASE_URL') ?? read('NEXT_PUBLIC_SUPABASE_URL'),
@@ -33,8 +34,8 @@ export function serverEnv(): ServerEnv {
     rapidApiHost: read('RAPIDAPI_HOST') ?? read('RAPIDAPI_FOOTBALL_HOST') ?? 'football-leagues1.p.rapidapi.com',
     cronSecret: read('CRON_SECRET'),
     sstatsApiKey: read('SSTATS_API_KEY'),
-    // По умолчанию скрыто (в т.ч. на проде), пока фича не отполирована. Включить: CARDS_ENABLED=true
-    cardsEnabled: cardsFlag === 'true' || cardsFlag === '1',
+    // Emergency prod kill-switch: keep cards/packs disabled until DB/perf issues are resolved.
+    cardsEnabled: false,
   };
 }
 

@@ -103,7 +103,7 @@ function normalizeTeamString(value: string | null | undefined): string {
     .replace(/[\u0300-\u036f]/g, '')
     .replace(/[’'`´]/g, '')
     .replace(/&/g, ' and ')
-    .replace(/[^a-z0-9\s-]/g, ' ')
+    .replace(/[^\p{L}\p{N}\s-]/gu, ' ')
     .replace(/\s+/g, ' ')
     .trim();
 }

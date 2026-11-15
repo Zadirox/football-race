@@ -190,8 +190,8 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
       const enriched = await enrichSstatsMatchesWithStats({
         matches: unl.matches,
         apiKey: env.sstatsApiKey,
-        concurrency: 4,
-        maxDetails: 24,
+        concurrency: 2,
+        maxDetails: 8,
         deadlineMs,
       });
       requestsUsed += enriched.requestsUsed;
@@ -242,6 +242,20 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
   let createdQuestions = 0;
   let partial = false;
 
+  const maxMatchesPerRun = 50;
+  const finalStatuses = new Set(['FT', 'PST', 'CANC', 'ABD']);
+  const prioritized = [...normalized].sort((a, b) => {
+    const aLive = a.status === 'LIVE' || a.status === 'HT' ? 0 : finalStatuses.has(a.status) ? 2 : 1;
+    const bLive = b.status === 'LIVE' || b.status === 'HT' ? 0 : finalStatuses.has(b.status) ? 2 : 1;
+    if (aLive !== bLive) return aLive - bLive;
+    return a.kickoffUtc.getTime() - b.kickoffUtc.getTime();
+  });
+  const matchesToProcess = prioritized.slice(0, maxMatchesPerRun);
+  if (prioritized.length > maxMatchesPerRun) {
+    partial = true;
+    errors.push(`Обработано ${maxMatchesPerRun} из ${prioritized.length} матчей за прогон, остаток — в следующем запуске`);
+  }
+
   await sql.begin(async (tx) => {
     const hasQuestionsCache = new Map<string, boolean>();
     const questionExists = async (matchdayId: string, matchId: string): Promise<boolean> => {
@@ -258,10 +272,10 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
       return exists;
     };
 
-    for (const match of normalized) {
+    for (const match of matchesToProcess) {
       if (Date.now() >= deadlineMs - 5_000) {
         partial = true;
-        errors.push('Синк остановлен досрочно: достигнут лимит времени, остаток будет обработан в следующем запуске');
+        errors.push('Время прогона почти вышло: сохранён частичный прогресс, остаток будет обработан в следующем запуске');
         break;
       }
 
@@ -402,7 +416,7 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
   const errorText = errors.length ? errors.join('; ').slice(0, 500) : null;
   await logSyncRun({
     endpoint: 'sync-fixtures',
-    status: 'ok',
+    status: partial ? 'ok' : 'ok',
     httpStatus,
     durationMs: Date.now() - startedAt,
     requestsUsed,
@@ -414,7 +428,7 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
     ok: true,
     reason: null,
     fetched: fetchedTotal,
-    kept: normalized.length,
+    kept: matchesToProcess.length,
     matches: savedMatches,
     matchdays: matchdayIds.size,
     questions: createdQuestions,

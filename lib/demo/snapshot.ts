@@ -203,6 +203,7 @@ function buildQuestions(matches: DemoMatch[]): QuestionView[] {
         correctOption: null,
         myChoice: demoChoice(q, index),
         distribution: null,
+        rule: q.rule,
       });
       if (!q.isBonus) index += 1;
     });
@@ -210,6 +211,21 @@ function buildQuestions(matches: DemoMatch[]): QuestionView[] {
 
   return all;
 }
+
+const EMPTY_DEMO_STATS = {
+  htHomeScore: null,
+  htAwayScore: null,
+  cornersHome: null,
+  cornersAway: null,
+  yellowCardsHome: null,
+  yellowCardsAway: null,
+  redCardsHome: null,
+  redCardsAway: null,
+  possessionHome: null,
+  possessionAway: null,
+  shotsOnTargetHome: null,
+  shotsOnTargetAway: null,
+};
 
 function buildMatches(matches: DemoMatch[], questions: QuestionView[]): MatchView[] {
   return matches.map((m) => {
@@ -231,6 +247,7 @@ function buildMatches(matches: DemoMatch[], questions: QuestionView[]): MatchVie
       questionCount: regular.length,
       myAnswered: regular.filter((q) => q.myChoice !== null).length,
       inPredictions: true,
+      stats: { ...EMPTY_DEMO_STATS },
     };
   });
 }

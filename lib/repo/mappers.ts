@@ -95,6 +95,18 @@ export type MatchRow = {
   minute: number | string | null;
   home_score: number | string | null;
   away_score: number | string | null;
+  ht_home_score: number | string | null;
+  ht_away_score: number | string | null;
+  corners_home: number | string | null;
+  corners_away: number | string | null;
+  yellow_cards_home: number | string | null;
+  yellow_cards_away: number | string | null;
+  red_cards_home: number | string | null;
+  red_cards_away: number | string | null;
+  possession_home: number | string | null;
+  possession_away: number | string | null;
+  shots_on_target_home: number | string | null;
+  shots_on_target_away: number | string | null;
   in_scope: boolean;
   question_count: number | string | null;
   my_answered: number | string | null;
@@ -112,6 +124,7 @@ export type QuestionRow = {
   correct_option: string | null;
   my_choice: string | null;
   distribution: unknown;
+  rule: unknown;
 };
 
 export type ActivityRow = {
@@ -273,6 +286,12 @@ export function toCellViews(rows: CellRow[]): CellView[] {
   }));
 }
 
+function toNullableNumber(value: number | string | null | undefined): number | null {
+  if (value === null || value === undefined) return null;
+  const n = toNumber(value);
+  return Number.isFinite(n) ? n : null;
+}
+
 export function toMatchView(row: MatchRow): MatchView {
   return {
     id: row.id,
@@ -290,6 +309,20 @@ export function toMatchView(row: MatchRow): MatchView {
     questionCount: toNumber(row.question_count),
     myAnswered: toNumber(row.my_answered),
     inPredictions: row.in_scope,
+    stats: {
+      htHomeScore: toNullableNumber(row.ht_home_score),
+      htAwayScore: toNullableNumber(row.ht_away_score),
+      cornersHome: toNullableNumber(row.corners_home),
+      cornersAway: toNullableNumber(row.corners_away),
+      yellowCardsHome: toNullableNumber(row.yellow_cards_home),
+      yellowCardsAway: toNullableNumber(row.yellow_cards_away),
+      redCardsHome: toNullableNumber(row.red_cards_home),
+      redCardsAway: toNullableNumber(row.red_cards_away),
+      possessionHome: toNullableNumber(row.possession_home),
+      possessionAway: toNullableNumber(row.possession_away),
+      shotsOnTargetHome: toNullableNumber(row.shots_on_target_home),
+      shotsOnTargetAway: toNullableNumber(row.shots_on_target_away),
+    },
   };
 }
 
@@ -308,6 +341,7 @@ export function toQuestionView(row: QuestionRow): QuestionView {
     correctOption: resolved ? row.correct_option : null,
     myChoice: row.my_choice,
     distribution: row.status === 'open' ? null : parseDistribution(row.distribution),
+    rule: row.rule ?? null,
   };
 }
 

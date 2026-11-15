@@ -40,6 +40,21 @@ export type PlayerView = {
   favoritePlayer: FavoriteRef | null;
 };
 
+export type MatchStatsView = {
+  htHomeScore: number | null;
+  htAwayScore: number | null;
+  cornersHome: number | null;
+  cornersAway: number | null;
+  yellowCardsHome: number | null;
+  yellowCardsAway: number | null;
+  redCardsHome: number | null;
+  redCardsAway: number | null;
+  possessionHome: number | null;
+  possessionAway: number | null;
+  shotsOnTargetHome: number | null;
+  shotsOnTargetAway: number | null;
+};
+
 export type MatchView = {
   id: string;
   leagueCode: string;
@@ -56,6 +71,7 @@ export type MatchView = {
   questionCount: number;
   myAnswered: number;
   inPredictions: boolean;
+  stats: MatchStatsView;
 };
 
 export type QuestionView = {
@@ -71,6 +87,8 @@ export type QuestionView = {
   myChoice: string | null;
   /** Сколько игроков выбрали каждый вариант — после лока. */
   distribution: Record<string, number> | null;
+  /** Правило вопроса для live-индикации выполнения условия. */
+  rule: unknown;
 };
 
 export type CellView = {

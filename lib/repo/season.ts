@@ -230,6 +230,18 @@ async function loadFromDatabase(viewer: SeasonViewer): Promise<SeasonSnapshot> {
             m.minute,
             m.home_score,
             m.away_score,
+            m.ht_home_score,
+            m.ht_away_score,
+            m.corners_home,
+            m.corners_away,
+            m.yellow_cards_home,
+            m.yellow_cards_away,
+            m.red_cards_home,
+            m.red_cards_away,
+            m.possession_home,
+            m.possession_away,
+            m.shots_on_target_home,
+            m.shots_on_target_away,
             mm.in_scope,
             (
               select count(*)::int
@@ -261,6 +273,7 @@ async function loadFromDatabase(viewer: SeasonViewer): Promise<SeasonSnapshot> {
             q.locks_at,
             q.status,
             q.correct_option,
+            q.rule,
             my.choice as my_choice,
             case when q.status <> 'open' then dist.distribution else null end as distribution
           from questions q

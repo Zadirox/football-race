@@ -8,6 +8,7 @@ import { distributionPercent, distributionTotal } from '@/lib/game/distribution'
 import { dayResultDieLabel, formatDayAccuracy } from '@/lib/game/day-results';
 import { submitAnswerAction } from '@/lib/actions/game';
 import { teamDisplay } from '@/lib/data/team-names';
+import { answerFor, type QuestionRule } from '@/lib/data/questions';
 import type { MatchView, QuestionView, SeasonSnapshot } from '@/lib/types';
 
 const STATUS_LABEL: Record<MatchView['status'], string> = {
@@ -58,7 +59,7 @@ export function PredictionsClient({ snapshot }: { snapshot: SeasonSnapshot }) {
     if (!hasLiveMatches || demo) return;
     const id = setInterval(() => {
       router.refresh();
-    }, 60_000);
+    }, 30_000);
     return () => clearInterval(id);
   }, [hasLiveMatches, demo, router]);
 
@@ -177,7 +178,7 @@ export function PredictionsClient({ snapshot }: { snapshot: SeasonSnapshot }) {
 
       {hasLiveMatches && (
         <div style={{ marginBottom: 16 }}>
-          <Notice tone="info">Идут матчи: счёт на этой странице обновляется автоматически примерно раз в минуту (по мере того, как подтягиваются новые данные).</Notice>
+          <Notice tone="info">Идут матчи: счёт и статистика обновляются автоматически (примерно каждые 30 секунд при живых матчах) по мере поступления данных. В вопросах показывается текущее состояние условий (например, «сейчас: Да»), когда его можно определить по данным матча.</Notice>
         </div>
       )}
 
@@ -311,6 +312,44 @@ function MatchQuestions({
           const hit = resolved && selected !== undefined && selected === question.correctOption;
           const miss = resolved && selected !== undefined && selected !== question.correctOption;
 
+          const liveNow =
+            !resolved && question.rule
+              ? answerFor(
+                  question.rule as QuestionRule,
+                  {
+                    home: match.homeScore,
+                    away: match.awayScore,
+                    htHome: match.stats.htHomeScore,
+                    htAway: match.stats.htAwayScore,
+                  },
+                  {
+                    cornersHome: match.stats.cornersHome,
+                    cornersAway: match.stats.cornersAway,
+                    yellowCardsHome: match.stats.yellowCardsHome,
+                    yellowCardsAway: match.stats.yellowCardsAway,
+                    redCardsHome: match.stats.redCardsHome,
+                    redCardsAway: match.stats.redCardsAway,
+                    possessionHome: match.stats.possessionHome,
+                    possessionAway: match.stats.possessionAway,
+                    shotsOnTargetHome: match.stats.shotsOnTargetHome,
+                    shotsOnTargetAway: match.stats.shotsOnTargetAway,
+                  },
+                )
+              : null;
+          const liveNowOption = liveNow != null ? question.options.find((o) => o.key === liveNow) : null;
+          const liveNowLabel =
+            liveNow == null
+              ? null
+              : liveNowOption
+                ? localizeText(
+                    liveNow === 'home' ? home.name : liveNow === 'away' ? away.name : liveNowOption.label,
+                  )
+                : liveNow === 'yes'
+                  ? 'Да'
+                  : liveNow === 'no'
+                    ? 'Нет'
+                    : String(liveNow);
+
           const distTotal = distributionTotal(question.distribution);
           const options = question.options.map((option) => {
             let label = localizeText(option.label);
@@ -325,6 +364,7 @@ function MatchQuestions({
                 data-selected={selected === option.key}
                 data-correct={resolved && question.correctOption === option.key ? 'true' : undefined}
                 data-wrong={miss && selected === option.key ? 'true' : undefined}
+                data-live-now={!resolved && liveNow === option.key ? 'true' : undefined}
                 disabled={!open}
                 onClick={() => {
                   if (open) onPick(question.id, option.key);
@@ -345,6 +385,11 @@ function MatchQuestions({
                   {hit && <span className="chip chip--positive">верно</span>}
                   {miss && <span className="chip chip--negative">мимо</span>}
                   {closed && !resolved && <span className="chip chip--muted">закрыт</span>}
+                  {liveNowLabel && !resolved && (match.status === 'LIVE' || match.status === 'HT' || match.status === 'FT') && (
+                    <span className="chip chip--info" title="Текущее состояние по последним данным матча">
+                      сейчас: {liveNowLabel}
+                    </span>
+                  )}
                 </span>
               </div>
 

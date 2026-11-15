@@ -102,6 +102,7 @@ function mergeMatches(groups: NormalizedMatch[][]): NormalizedMatch[] {
 export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<SyncFixturesReport> {
   const now = options.now ?? new Date();
   const startedAt = Date.now();
+  const deadlineMs = startedAt + 55_000;
   const env = serverEnv();
   const window = options.window ?? syncWindow(now);
 
@@ -176,21 +177,28 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
 
   // Лига наций: берём из запасного источника (основной тариф её не отдаёт).
   try {
-    const unl = await fetchSstatsUnlFixtures({
-      from: window.from,
-      to: window.to,
-      apiKey: env.sstatsApiKey,
-    });
-    fetchedTotal += unl.fetched;
-    requestsUsed += unl.requestsUsed;
-    if (httpStatus === null) httpStatus = unl.httpStatus;
+    if (Date.now() < deadlineMs) {
+      const unl = await fetchSstatsUnlFixtures({
+        from: window.from,
+        to: window.to,
+        apiKey: env.sstatsApiKey,
+      });
+      fetchedTotal += unl.fetched;
+      requestsUsed += unl.requestsUsed;
+      if (httpStatus === null) httpStatus = unl.httpStatus;
 
-    const enriched = await enrichSstatsMatchesWithStats({
-      matches: unl.matches,
-      apiKey: env.sstatsApiKey,
-    });
-    requestsUsed += enriched.requestsUsed;
-    groups.push(enriched.matches);
+      const enriched = await enrichSstatsMatchesWithStats({
+        matches: unl.matches,
+        apiKey: env.sstatsApiKey,
+        concurrency: 4,
+        maxDetails: 24,
+        deadlineMs,
+      });
+      requestsUsed += enriched.requestsUsed;
+      groups.push(enriched.matches);
+    } else {
+      errors.push('Лига наций: пропущено из-за лимита времени');
+    }
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Источник Лиги наций недоступен';
     errors.push(`Лига наций: ${message}`);
@@ -232,9 +240,31 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
   const matchdayIds = new Map<string, string>();
   let savedMatches = 0;
   let createdQuestions = 0;
+  let partial = false;
 
   await sql.begin(async (tx) => {
+    const hasQuestionsCache = new Map<string, boolean>();
+    const questionExists = async (matchdayId: string, matchId: string): Promise<boolean> => {
+      const key = `${matchdayId}:${matchId}`;
+      const cached = hasQuestionsCache.get(key);
+      if (cached !== undefined) return cached;
+      const rows = await tx<{ exists: boolean }[]>`
+        select exists(
+          select 1 from questions where matchday_id = ${matchdayId} and match_id = ${matchId}
+        ) as exists
+      `;
+      const exists = rows[0]?.exists === true;
+      hasQuestionsCache.set(key, exists);
+      return exists;
+    };
+
     for (const match of normalized) {
+      if (Date.now() >= deadlineMs - 5_000) {
+        partial = true;
+        errors.push('Синк остановлен досрочно: достигнут лимит времени, остаток будет обработан в следующем запуске');
+        break;
+      }
+
       const gameDate = gameDateOf(match.kickoffUtc);
       const { opensAt, closesAt } = gameDayWindow(gameDate);
 
@@ -329,10 +359,7 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
       `;
 
       // Вопросы для прогнозов: создаём один раз на матч в этом игровом дне.
-      const existing = await tx<{ count: string }[]>`
-        select count(*)::text as count from questions where matchday_id = ${matchdayId} and match_id = ${saved.id}
-      `;
-      if (Number(existing[0]?.count ?? '0') === 0) {
+      if (!(await questionExists(matchdayId, saved.id))) {
         const seed = Math.abs(hashString(`${match.provider}:${match.externalId}`));
         const generated = generateMatchQuestions({ homeName: match.homeName, awayName: match.awayName }, seed, 4);
         for (const question of generated) {
@@ -348,6 +375,7 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
           `;
           createdQuestions += 1;
         }
+        hasQuestionsCache.set(`${matchdayId}:${saved.id}`, true);
       }
     }
 
@@ -371,24 +399,29 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
     }
   }
 
+  const errorText = errors.length ? errors.join('; ').slice(0, 500) : null;
   await logSyncRun({
     endpoint: 'sync-fixtures',
     status: 'ok',
     httpStatus,
     durationMs: Date.now() - startedAt,
     requestsUsed,
-    error: errors.length ? errors.join('; ').slice(0, 500) : null,
+    error: errorText,
     provider: 'multi',
   });
 
-  return finish(null, {
+  return {
+    ok: true,
+    reason: null,
     fetched: fetchedTotal,
     kept: normalized.length,
     matches: savedMatches,
     matchdays: matchdayIds.size,
     questions: createdQuestions,
+    durationMs: Date.now() - startedAt,
     httpStatus,
-  });
+    error: errorText,
+  };
 }
 
 function hashString(value: string): number {

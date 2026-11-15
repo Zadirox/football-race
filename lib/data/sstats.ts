@@ -302,12 +302,17 @@ export async function enrichSstatsMatchesWithStats(input: {
   apiKey?: string | null;
   fetchImpl?: typeof fetch;
   concurrency?: number;
+  /** Stop fetching details after this many matches (prioritised: live/ht, then recent). */
+  maxDetails?: number;
+  /** Abort enrichment when past this timestamp (ms). */
+  deadlineMs?: number;
 }): Promise<{ matches: NormalizedMatch[]; requestsUsed: number }> {
   const concurrency = Math.max(1, input.concurrency ?? 4);
+  const maxDetails = Math.max(0, input.maxDetails ?? 40);
   const results: NormalizedMatch[] = new Array(input.matches.length);
   let requestsUsed = 0;
 
-  const toEnrich: Array<{ index: number; match: NormalizedMatch }> = [];
+  const toEnrich: Array<{ index: number; match: NormalizedMatch; priority: number }> = [];
   for (let i = 0; i < input.matches.length; i += 1) {
     const match = input.matches[i]!;
     if (match.provider !== 'sstats') {
@@ -319,11 +324,24 @@ export async function enrichSstatsMatchesWithStats(input: {
       results[i] = match;
       continue;
     }
-    toEnrich.push({ index: i, match });
+    const livePriority = match.status === 'LIVE' || match.status === 'HT' ? 0 : 1;
+    toEnrich.push({ index: i, match, priority: livePriority });
   }
 
-  for (let i = 0; i < toEnrich.length; i += concurrency) {
-    const chunk = toEnrich.slice(i, i + concurrency);
+  // Prioritise live matches, then most recent kickoffs (stats more likely relevant/fresh).
+  toEnrich.sort((a, b) => a.priority - b.priority || b.match.kickoffUtc.getTime() - a.match.kickoffUtc.getTime());
+  const selected = new Set(toEnrich.slice(0, maxDetails).map((x) => x.index));
+  for (const item of toEnrich) {
+    if (!selected.has(item.index)) results[item.index] = item.match;
+  }
+
+  const queue = toEnrich.filter((x) => selected.has(x.index));
+  for (let i = 0; i < queue.length; i += concurrency) {
+    if (input.deadlineMs && Date.now() >= input.deadlineMs) {
+      for (let j = i; j < queue.length; j += 1) results[queue[j]!.index] = queue[j]!.match;
+      break;
+    }
+    const chunk = queue.slice(i, i + concurrency);
     const chunkResults = await Promise.all(
       chunk.map(async ({ index, match }) => {
         try {

@@ -26,6 +26,7 @@ const QUESTION: QuestionView = {
   correctOption: null,
   myChoice: null,
   distribution: null,
+  rule: { type: 'winner' },
 };
 
 const at = (iso: string) => Date.parse(iso);

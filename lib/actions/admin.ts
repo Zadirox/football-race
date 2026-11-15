@@ -65,6 +65,10 @@ function invalidInput(error: unknown): AdminRunResult | null {
 }
 
 function revalidateAdmin(): void {
+  revalidatePath('/admin');
+}
+
+function revalidateAdminGlobal(): void {
   revalidatePath('/', 'layout');
   revalidatePath('/admin');
 }
@@ -81,7 +85,7 @@ export async function runSyncAction(input?: unknown): Promise<AdminRunResult> {
     const window =
       parsed.data?.from && parsed.data?.to ? { from: parsed.data.from, to: parsed.data.to } : undefined;
     const report = await syncFixtures(window ? { window } : undefined);
-    revalidateAdmin();
+    revalidateAdminGlobal();
 
     if (report.reason) {
       return {
@@ -107,7 +111,7 @@ export async function runAdvanceAction(): Promise<AdminRunResult> {
   try {
     await requireAdmin();
     const report = await advanceMatchdays();
-    revalidateAdmin();
+    revalidateAdminGlobal();
 
     const message = `Дни: проверено ${report.checked}, изменено ${report.changed}, закрыто ${report.resolved}`;
     return report.ok
@@ -125,7 +129,7 @@ export async function runExpireAction(): Promise<AdminRunResult> {
   try {
     await requireAdmin();
     const report = await expirePending();
-    revalidateAdmin();
+    revalidateAdminGlobal();
 
     const message = `Ожидания: проверено ${report.checked}, закрыто ${report.expired}, пропущено ${report.skipped}`;
     return report.ok
@@ -146,7 +150,7 @@ export async function updateMatchAction(input: unknown): Promise<AdminRunResult>
     if (!parsed.success) return invalidInput(parsed.error) ?? { ok: false, message: 'Проверь поля' };
 
     await updateMatch(viewer.profileId, parsed.data);
-    revalidateAdmin();
+    revalidateAdminGlobal();
     return { ok: true, message: `Матч обновлён: ${parsed.data.status}` };
   } catch (error) {
     return toResult(error);
@@ -164,6 +168,8 @@ export async function grantDiceAction(input: unknown): Promise<AdminRunResult> {
 
     await grantDice(viewer.profileId, parsed.data);
     revalidateAdmin();
+    revalidatePath('/participants');
+    revalidatePath('/ratings');
     return { ok: true, message: `Выдано кубиков: ${parsed.data.count} (${parsed.data.tier})` };
   } catch (error) {
     return toResult(error);
@@ -180,7 +186,7 @@ export async function forceClosePendingAction(input: unknown): Promise<AdminRunR
     if (!parsed.success) return invalidInput(parsed.error) ?? { ok: false, message: 'Проверь поля' };
 
     await forceClosePending(viewer.profileId, parsed.data);
-    revalidateAdmin();
+    revalidateAdminGlobal();
     return { ok: true, message: 'Ожидание закрыто безопасной веткой' };
   } catch (error) {
     return toResult(error);
@@ -198,6 +204,8 @@ export async function changeRoleAction(input: unknown): Promise<AdminRunResult> 
 
     await setRole(viewer.profileId, parsed.data);
     revalidateAdmin();
+    revalidatePath('/participants');
+    revalidatePath('/ratings');
     return { ok: true, message: `Роль изменена: ${parsed.data.role}` };
   } catch (error) {
     return toResult(error);
@@ -216,6 +224,8 @@ export async function grantPackAction(input: unknown): Promise<AdminRunResult> {
 
     await grantPackToProfile(viewer.profileId, parsed.data);
     revalidateAdmin();
+    revalidatePath('/collection');
+    revalidatePath('/lineups');
     const n = parsed.data.count;
     return { ok: true, message: `Выдано паков сборных: ${n}` };
   } catch (error) {
@@ -235,6 +245,8 @@ export async function awardLineupBonusAction(input: unknown): Promise<AdminRunRe
 
     await awardManualLineupBonus(viewer.profileId, parsed.data);
     revalidateAdmin();
+    revalidatePath('/lineups');
+    revalidatePath('/ratings');
     return {
       ok: true,
       message: parsed.data.triggered ? 'Бонус состава засчитан' : 'Бонус состава снят',

@@ -2,7 +2,7 @@ import Link from 'next/link';
 import { Panel, Notice } from '@/components/ui/Panel';
 import { getViewer } from '@/lib/auth/session';
 import { hasDatabase, serverEnv } from '@/lib/env';
-import { listCollection, listUnopenedPacks } from '@/lib/repo/cards';
+import { getCollectionProgress, listCollection, listUnopenedPacks } from '@/lib/repo/cards';
 import { loadSeasonSnapshot } from '@/lib/repo/season';
 import { CollectionClient } from './CollectionClient';
 
@@ -40,9 +40,10 @@ export default async function CollectionPage() {
     );
   }
 
-  const [packs, cards] = await Promise.all([
+  const [packs, cards, progress] = await Promise.all([
     listUnopenedPacks(profileId, seasonId),
     listCollection(profileId, seasonId),
+    getCollectionProgress(profileId, seasonId),
   ]);
 
   return (
@@ -51,7 +52,7 @@ export default async function CollectionPage() {
       subtitle="Национальные карточки: открывайте паки и собирайте состав сборных."
       size="wide"
     >
-      <CollectionClient packs={packs} cards={cards} />
+      <CollectionClient packs={packs} cards={cards} progress={progress} />
     </Panel>
   );
 }

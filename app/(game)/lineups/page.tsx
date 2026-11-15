@@ -1,12 +1,30 @@
 import Link from 'next/link';
 import { Panel, Notice } from '@/components/ui/Panel';
 import { getViewer } from '@/lib/auth/session';
+import { teamDisplay } from '@/lib/data/team-names';
 import { hasDatabase, serverEnv } from '@/lib/env';
 import { listCollection } from '@/lib/repo/cards';
 import { getMyLineup, listLineupMatches } from '@/lib/repo/lineups';
 import { loadSeasonSnapshot } from '@/lib/repo/season';
 import type { MatchLineupView } from '@/lib/types';
 import { LineupsClient } from './LineupsClient';
+
+function normalize(s: string): string {
+  return s
+    .trim()
+    .toLowerCase()
+    .normalize('NFKD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .replace(/\s+/g, ' ');
+}
+
+function canCardPlayMatch(cardTeam: string, homeName: string, awayName: string): boolean {
+  const cardCanon = normalize(teamDisplay(cardTeam).name) || normalize(cardTeam);
+  const homeCanon = normalize(teamDisplay(homeName).name) || normalize(homeName);
+  const awayCanon = normalize(teamDisplay(awayName).name) || normalize(awayName);
+  if (!cardCanon) return false;
+  return cardCanon === homeCanon || cardCanon === awayCanon;
+}
 
 export default async function LineupsPage() {
   const { cardsEnabled } = serverEnv();
@@ -54,13 +72,24 @@ export default async function LineupsPage() {
     }),
   );
 
+  const eligibleMatches = matchesWithSlots.filter((match) =>
+    ownedCards.some((card) => canCardPlayMatch(card.nationalTeam, match.homeName, match.awayName)),
+  );
+
   return (
     <Panel
       title="Составы"
       subtitle="До 3 карточек на матч своей сборной: 1 вратарь + 2 полевых. Состав можно менять до кик-оффа."
       size="wide"
     >
-      <LineupsClient matches={matchesWithSlots} ownedCards={ownedCards} />
+      {eligibleMatches.length === 0 ? (
+        <Notice tone="info">
+          Нет матчей, где у вас есть хотя бы одна карточка игрока из участвующей сборной. Получите карточки команд
+          сегодняшних матчей, чтобы выставить состав.
+        </Notice>
+      ) : (
+        <LineupsClient matches={eligibleMatches} ownedCards={ownedCards} />
+      )}
     </Panel>
   );
 }

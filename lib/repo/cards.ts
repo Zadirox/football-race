@@ -89,6 +89,7 @@ function mapOwnedCard(row: {
   card_id: string;
   player_name: string;
   nationality: string | null;
+  national_team_name?: string | null;
   role_group: string | null;
   rating: number | string | null;
   photo_url: string | null;
@@ -100,8 +101,8 @@ function mapOwnedCard(row: {
     instanceId: row.instance_id,
     obtainedAt: toIso(row.obtained_at),
     playerName: row.player_name,
-    nationalTeam: row.nationality ?? '',
-    nationalTeamSlug: row.national_team_slug,
+    nationalTeam: row.national_team_name ?? row.nationality ?? '',
+    nationalTeamSlug: row.national_team_slug ?? null,
     roleGroup: asRoleGroup(row.role_group),
     rating: toNumber(row.rating),
     photoUrl: row.photo_url,
@@ -409,6 +410,7 @@ export async function listCollection(
     card_id: string;
     player_name: string;
     nationality: string | null;
+    national_team_name: string | null;
     role_group: string | null;
     rating: number | string | null;
     photo_url: string | null;
@@ -420,6 +422,7 @@ export async function listCollection(
            c.id as card_id,
            c.player_name,
            c.nationality,
+           nt.name as national_team_name,
            c.role_group,
            c.rating,
            c.photo_url,
@@ -433,4 +436,47 @@ export async function listCollection(
      order by ci.created_at desc, ci.id desc
   `;
   return rows.map(mapOwnedCard);
+}
+
+export type CollectionProgressView = {
+  owned: number;
+  total: number;
+  byRarity: Record<CardRarity, { owned: number; total: number }>;
+};
+
+export async function getCollectionProgress(
+  profileId: string,
+  seasonId: string,
+  setId: string = NATIONAL_CARD_SET_ID,
+  sql: DbClient = db(),
+): Promise<CollectionProgressView> {
+  const totals = await sql<{ rarity: CardRarity; total: number | string }[]>`
+    select c.rarity, count(*)::int as total
+      from cards c
+     where c.set_id = ${setId}
+     group by c.rarity
+  `;
+  const ownedRows = await sql<{ rarity: CardRarity; owned: number | string }[]>`
+    select c.rarity, count(*)::int as owned
+      from card_instances ci
+      join cards c on c.id = ci.card_id
+     where ci.owner_id = ${profileId}
+       and ci.season_id = ${seasonId}
+       and c.set_id = ${setId}
+     group by c.rarity
+  `;
+
+  const rarities: CardRarity[] = ['common', 'rare', 'epic', 'legend'];
+  const byRarity = {} as CollectionProgressView['byRarity'];
+  let owned = 0;
+  let total = 0;
+  for (const rarity of rarities) {
+    const t = toNumber(totals.find((r) => r.rarity === rarity)?.total ?? 0);
+    const o = toNumber(ownedRows.find((r) => r.rarity === rarity)?.owned ?? 0);
+    byRarity[rarity] = { owned: o, total: t };
+    owned += o;
+    total += t;
+  }
+
+  return { owned, total, byRarity };
 }

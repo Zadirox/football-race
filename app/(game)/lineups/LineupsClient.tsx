@@ -3,8 +3,11 @@
 import { useEffect, useMemo, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { removeLineupSlotAction, saveLineupSlotAction } from '@/lib/actions/lineups';
+import { CardTile } from '@/components/cards/CardTile';
 import { Notice } from '@/components/ui/Panel';
 import { teamDisplay } from '@/lib/data/team-names';
+import { LINEUP_POINTS } from '@/lib/game/cards';
+import { RARITY_LABEL_RU, ROLE_LABEL_RU, teamFlag } from '@/lib/game/cards-ui';
 import type { LineupSlotKind, MatchLineupView, OwnedCardView } from '@/lib/types';
 
 type Props = {
@@ -12,17 +15,18 @@ type Props = {
   ownedCards: OwnedCardView[];
 };
 
-const SLOT_LABEL: Record<LineupSlotKind, string> = {
-  GK: 'Вратарь (GK)',
-  OF1: 'Полевой 1',
-  OF2: 'Полевой 2',
+const SLOTS: LineupSlotKind[] = ['OF1', 'OF2', 'GK'];
+
+const SLOT_META: Record<LineupSlotKind, { title: string; short: string; hint: string }> = {
+  GK: { title: 'Вратарь', short: 'GK', hint: 'Только GK своей сборной' },
+  OF1: { title: 'Полевой 1', short: 'OF', hint: 'DEF / MID / FWD своей сборной' },
+  OF2: { title: 'Полевой 2', short: 'OF', hint: 'DEF / MID / FWD своей сборной' },
 };
 
-const ROLE_LABEL: Record<OwnedCardView['roleGroup'], string> = {
-  GK: 'GK',
-  DEF: 'DEF',
-  MID: 'MID',
-  FWD: 'FWD',
+const PITCH_SLOT_CLASS: Record<LineupSlotKind, string> = {
+  GK: 'slot slot--gk',
+  OF1: 'slot slot--of1',
+  OF2: 'slot slot--of2',
 };
 
 function normalize(s: string): string {
@@ -35,18 +39,11 @@ function normalize(s: string): string {
 }
 
 function canCardPlayMatch(cardTeam: string, homeName: string, awayName: string): boolean {
-  const candidates = new Set([
-    normalize(cardTeam),
-    normalize(teamDisplay(cardTeam).name),
-    normalize(teamDisplay(homeName).name),
-    normalize(teamDisplay(awayName).name),
-  ]);
-  // heuristic: compare card team canonical/display against home/away canonical names
   const cardCanon = normalize(teamDisplay(cardTeam).name) || normalize(cardTeam);
   const homeCanon = normalize(teamDisplay(homeName).name) || normalize(homeName);
   const awayCanon = normalize(teamDisplay(awayName).name) || normalize(awayName);
   if (!cardCanon) return false;
-  return cardCanon === homeCanon || cardCanon === awayCanon || candidates.has(cardCanon);
+  return cardCanon === homeCanon || cardCanon === awayCanon;
 }
 
 function kickoffLabel(iso: string): string {
@@ -57,6 +54,10 @@ function kickoffLabel(iso: string): string {
     minute: '2-digit',
     timeZone: 'Europe/Moscow',
   });
+}
+
+function cardShort(card: OwnedCardView): string {
+  return `${card.playerName} · ${ROLE_LABEL_RU[card.roleGroup]} · ${card.rating}`;
 }
 
 export function LineupsClient({ matches, ownedCards }: Props) {
@@ -77,7 +78,6 @@ export function LineupsClient({ matches, ownedCards }: Props) {
 
   const [selections, setSelections] = useState(byMatchSelection);
 
-  // keep local state in sync when server data refreshes
   useEffect(() => {
     setSelections(byMatchSelection);
   }, [byMatchSelection]);
@@ -86,7 +86,8 @@ export function LineupsClient({ matches, ownedCards }: Props) {
     setSelections((prev) => {
       const next = new Map(prev);
       const m = new Map(next.get(matchId) ?? []);
-      m.set(slot, cardInstanceId);
+      if (cardInstanceId) m.set(slot, cardInstanceId);
+      else m.delete(slot);
       next.set(matchId, m);
       return next;
     });
@@ -137,7 +138,12 @@ export function LineupsClient({ matches, ownedCards }: Props) {
   };
 
   if (matches.length === 0) {
-    return <Notice>На сегодня матчей для составов нет. Загляните позже, когда появится игровой день.</Notice>;
+    return (
+      <Notice tone="info">
+        Нет матчей, где у вас есть хотя бы одна карточка игрока из участвующей сборной. Получите карточки команд
+        сегодняшних матчей, чтобы выставить состав.
+      </Notice>
+    );
   }
 
   return (
@@ -148,87 +154,141 @@ export function LineupsClient({ matches, ownedCards }: Props) {
         </div>
       )}
 
-      <div className="grid" style={{ gap: 16 }}>
+      <div className="card" style={{ marginBottom: 16, padding: 12 }}>
+        <p className="card__text" style={{ margin: 0 }}>
+          Состав на матч: <strong>1 вратарь + 2 полевых</strong> своей сборной. Менять можно до кик-оффа.
+          Потенциальный бонус: <strong>10/20/30/40</strong> за Common/Rare/Epic/Legend (если условие бонуса выполнено).
+        </p>
+      </div>
+
+      <div className="grid" style={{ gap: 18 }}>
         {matches.map((match) => {
           const home = teamDisplay(match.homeName);
           const away = teamDisplay(match.awayName);
           const locked = match.locked || new Date(match.kickoffUtc).getTime() <= Date.now();
+          const homeFlag = teamFlag(home.name, null);
+          const awayFlag = teamFlag(away.name, null);
+
           return (
-            <section key={match.matchId} className="card">
-              <div className="card__head" style={{ marginBottom: 10 }}>
-                <div style={{ minWidth: 0 }}>
-                  <h2 className="card__title" style={{ marginBottom: 4 }}>
-                    {home.name} — {away.name}
-                  </h2>
-                  <p className="card__meta">
-                    {kickoffLabel(match.kickoffUtc)} МСК · {match.status}
-                    {locked ? ' · состав заблокирован' : ' · можно менять до кик-оффа'}
-                  </p>
+            <section key={match.matchId} className="match-card-wrap card">
+              <div className="match-head">
+                <div className="match-head__teams">
+                  <span className="team-pill"><span aria-hidden="true">{homeFlag}</span> {home.name}</span>
+                  <span className="vs">vs</span>
+                  <span className="team-pill"><span aria-hidden="true">{awayFlag}</span> {away.name}</span>
+                </div>
+                <div className="match-head__meta">
+                  <span>{kickoffLabel(match.kickoffUtc)} МСК</span>
+                  <span className={`status-chip ${locked ? 'status-chip--locked' : 'status-chip--open'}`}>
+                    {locked ? 'Состав заблокирован' : 'Можно менять'}
+                  </span>
+                  <span className="card__meta">{match.status}</span>
                 </div>
               </div>
 
-              <div className="list">
-                {(['GK', 'OF1', 'OF2'] as LineupSlotKind[]).map((slot) => {
-                  const current = match.slots.find((s) => s.slot === slot) ?? { matchId: match.matchId, slot, card: null };
-                  const currentCard = current.card;
+              <div className="pitch" aria-label="Мини-поле состава">
+                <div className="pitch__lines" aria-hidden="true" />
+                {SLOTS.map((slot) => {
+                  const slotState = match.slots.find((s) => s.slot === slot) ?? { matchId: match.matchId, slot, card: null };
+                  const currentCard = slotState.card ?? null;
                   const chosen = selections.get(match.matchId)?.get(slot) ?? '';
                   const options = eligibleCards(match, slot);
                   const key = `${match.matchId}:${slot}`;
-                  const bonusText = current.bonusAwarded
-                    ? `Бонус: +${current.bonusPoints ?? 0} (${current.bonusMethod === 'auto' ? 'авто' : 'вручную'})`
-                    : current.bonusMethod
-                      ? 'Бонус не засчитан'
-                      : null;
+                  const meta = SLOT_META[slot];
+                  const selectedCard = chosen ? (ownedCards.find((c) => c.instanceId === chosen) ?? currentCard) : currentCard;
+                  const potential = selectedCard ? LINEUP_POINTS[selectedCard.rarity] : null;
+
+                  let bonusLine = 'Бонус пока не начислен';
+                  let bonusTone: 'muted' | 'good' | 'bad' = 'muted';
+                  if (slotState.bonusAwarded) {
+                    bonusLine = `Бонус начислен: +${slotState.bonusPoints ?? 0} (${slotState.bonusMethod === 'auto' ? 'авто' : 'вручную'})`;
+                    bonusTone = 'good';
+                  } else if (slotState.bonusMethod) {
+                    bonusLine = 'Бонус не засчитан';
+                    bonusTone = 'bad';
+                  } else if (potential != null) {
+                    bonusLine = `Потенциал: +${potential} (${RARITY_LABEL_RU[selectedCard!.rarity]})`;
+                  }
+
                   return (
-                    <div key={slot} className="card" style={{ padding: 12 }}>
-                      <div className="card__meta" style={{ marginBottom: 6 }}>{SLOT_LABEL[slot]}</div>
-                      {currentCard && (
-                        <div className="card__text" style={{ marginBottom: 8 }}>
-                          Сейчас: <strong>{currentCard.playerName}</strong> ({currentCard.nationalTeam}, {ROLE_LABEL[currentCard.roleGroup]}, {currentCard.rating}, {currentCard.rarity})
-                          {bonusText ? <span> · {bonusText}</span> : null}
+                    <div key={slot} className={PITCH_SLOT_CLASS[slot]}>
+                      <div className="slot__head">
+                        <span className="slot__badge">{meta.short}</span>
+                        <span className="slot__title">{meta.title}</span>
+                      </div>
+
+                      <div className="slot__body">
+                        {selectedCard ? (
+                          <div className="slot__card">
+                            <CardTile card={selectedCard} size="sm" interactive={false} />
+                            {chosen && chosen !== (currentCard?.instanceId ?? '') && (
+                              <div className="slot__preview-note">Превью (не сохранено)</div>
+                            )}
+                          </div>
+                        ) : (
+                          <div className="slot__empty">
+                            <div className="slot__empty-icon" aria-hidden="true">{slot === 'GK' ? '🧤' : '⚽'}</div>
+                            <div className="slot__empty-text">Слот пуст</div>
+                            <div className="slot__empty-hint">{meta.hint}</div>
+                          </div>
+                        )}
+
+                        <div className="slot__controls">
+                          <div className={`bonus-line bonus-line--${bonusTone}`}>{bonusLine}</div>
+
+                          <label className="field" style={{ marginBottom: 8 }}>
+                            <span className="filter__label">Карточка</span>
+                            <select
+                              className="select"
+                              value={chosen}
+                              disabled={locked || pending}
+                              onChange={(e) => setSlot(match.matchId, slot, e.target.value)}
+                              aria-label={`${meta.title}: выбрать карточку`}
+                            >
+                              <option value="">— не выбрано —</option>
+                              {options.map((c) => (
+                                <option key={c.instanceId} value={c.instanceId}>
+                                  {cardShort(c)} · {c.nationalTeam} · {RARITY_LABEL_RU[c.rarity]} (+{LINEUP_POINTS[c.rarity]})
+                                </option>
+                              ))}
+                              {currentCard && !options.some((o) => o.instanceId === currentCard.instanceId) && (
+                                <option value={currentCard.instanceId}>
+                                  {cardShort(currentCard)} · {currentCard.nationalTeam} · {RARITY_LABEL_RU[currentCard.rarity]} (+{LINEUP_POINTS[currentCard.rarity]})
+                                </option>
+                              )}
+                            </select>
+                          </label>
+
+                          <div className="slot__actions">
+                            <button
+                              type="button"
+                              className="btn btn--sm btn--primary"
+                              disabled={locked || pending || !chosen}
+                              onClick={() => save(match.matchId, slot)}
+                            >
+                              {busyKey === key ? 'Сохраняем…' : 'Сохранить'}
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn--sm"
+                              disabled={locked || pending || (!currentCard && !chosen)}
+                              onClick={() => clear(match.matchId, slot)}
+                            >
+                              {busyKey === `${key}:clear` ? '…' : 'Очистить'}
+                            </button>
+                          </div>
+
+                          <div className="slot__hint">
+                            {locked ? (
+                              <span>Редактирование закрыто: матч начался.</span>
+                            ) : options.length > 0 ? (
+                              <span>Доступно подходящих: {options.length}. {meta.hint}.</span>
+                            ) : (
+                              <span>Нет подходящих карточек. Нужна {slot === 'GK' ? 'карточка GK' : 'полевой игрок (DEF/MID/FWD)'} сборной этого матча.</span>
+                            )}
+                          </div>
                         </div>
-                      )}
-                      <div className="field" style={{ marginBottom: 8 }}>
-                        <label htmlFor={`slot-${key}`}>Карточка</label>
-                        <select
-                          id={`slot-${key}`}
-                          className="select"
-                          value={chosen}
-                          disabled={locked || pending}
-                          onChange={(e) => setSlot(match.matchId, slot, e.target.value)}
-                        >
-                          <option value="">— не выбрано —</option>
-                          {options.map((c) => (
-                            <option key={c.instanceId} value={c.instanceId}>
-                              {c.playerName} · {c.nationalTeam} · {ROLE_LABEL[c.roleGroup]} · {c.rating} · {c.rarity}
-                            </option>
-                          ))}
-                          {currentCard && !options.some((o) => o.instanceId === currentCard.instanceId) && (
-                            <option value={currentCard.instanceId}>
-                              {currentCard.playerName} · {currentCard.nationalTeam} · {ROLE_LABEL[currentCard.roleGroup]} · {currentCard.rating} · {currentCard.rarity}
-                            </option>
-                          )}
-                        </select>
                       </div>
-                      <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-                        <button
-                          type="button"
-                          className="btn btn--sm btn--primary"
-                          disabled={locked || pending || !chosen}
-                          onClick={() => save(match.matchId, slot)}
-                        >
-                          {busyKey === key ? 'Сохраняем…' : 'Сохранить'}
-                        </button>
-                        <button
-                          type="button"
-                          className="btn btn--sm"
-                          disabled={locked || pending || (!current.card && !chosen)}
-                          onClick={() => clear(match.matchId, slot)}
-                        >
-                          {busyKey === `${key}:clear` ? '…' : 'Очистить'}
-                        </button>
-                      </div>
-                      {locked && <p className="card__meta" style={{ marginTop: 8 }}>Редактирование закрыто: матч начался.</p>}
                     </div>
                   );
                 })}
@@ -237,6 +297,186 @@ export function LineupsClient({ matches, ownedCards }: Props) {
           );
         })}
       </div>
+
+      <style jsx>{`
+        .match-card-wrap { padding: 14px; }
+        .match-head {
+          display: flex;
+          flex-wrap: wrap;
+          align-items: flex-start;
+          justify-content: space-between;
+          gap: 10px;
+          margin-bottom: 12px;
+        }
+        .match-head__teams {
+          display: flex;
+          flex-wrap: wrap;
+          align-items: center;
+          gap: 8px;
+          font-family: var(--font-display);
+          font-size: 18px;
+          font-weight: 800;
+          color: #fff;
+        }
+        .team-pill {
+          display: inline-flex;
+          align-items: center;
+          gap: 6px;
+          padding: 4px 10px;
+          border-radius: 999px;
+          background: rgba(255,255,255,0.06);
+          border: 1px solid rgba(255,255,255,0.14);
+        }
+        .vs { color: var(--text-faint, #cfc6b8); font-size: 13px; text-transform: uppercase; letter-spacing: .08em; }
+        .match-head__meta {
+          display: flex;
+          flex-wrap: wrap;
+          align-items: center;
+          gap: 8px;
+          font-size: 12px;
+          font-weight: 700;
+          color: var(--text-dim, #e8e2d8);
+        }
+        .status-chip {
+          padding: 3px 8px;
+          border-radius: 999px;
+          font-size: 11px;
+          font-weight: 800;
+          letter-spacing: .06em;
+          text-transform: uppercase;
+          border: 1px solid rgba(255,255,255,0.18);
+        }
+        .status-chip--open { color: var(--lime, #c8f25a); border-color: rgba(200,242,90,.35); background: rgba(200,242,90,.08); }
+        .status-chip--locked { color: #ffcc80; border-color: rgba(255,204,128,.35); background: rgba(255,204,128,.08); }
+
+        .pitch {
+          position: relative;
+          border-radius: 16px;
+          padding: 14px;
+          border: 2px solid rgba(255,255,255,0.16);
+          background:
+            radial-gradient(120% 80% at 50% 0%, rgba(255,255,255,0.06), transparent 45%),
+            linear-gradient(180deg, rgba(63, 107, 74, 0.42), rgba(24, 54, 38, 0.55)),
+            rgba(10, 18, 16, 0.6);
+          overflow: hidden;
+          display: grid;
+          grid-template-columns: 1fr 1fr;
+          grid-template-areas:
+            "of1 of2"
+            "gk gk";
+          gap: 12px;
+        }
+        .pitch__lines {
+          position: absolute;
+          inset: 10px;
+          border: 1.5px solid rgba(255,255,255,0.16);
+          border-radius: 12px;
+          pointer-events: none;
+        }
+        .pitch__lines::before {
+          content: '';
+          position: absolute;
+          left: 50%; top: 0; bottom: 0;
+          width: 1.5px;
+          transform: translateX(-50%);
+          background: rgba(255,255,255,0.12);
+        }
+        .pitch__lines::after {
+          content: '';
+          position: absolute;
+          left: 50%; top: 50%;
+          width: 120px; height: 120px;
+          transform: translate(-50%, -50%);
+          border: 1.5px solid rgba(255,255,255,0.12);
+          border-radius: 50%;
+        }
+
+        .slot {
+          position: relative;
+          z-index: 1;
+          border-radius: 12px;
+          border: 1px solid rgba(255,255,255,0.16);
+          background: rgba(6, 10, 14, 0.55);
+          backdrop-filter: blur(2px);
+          padding: 10px;
+          min-width: 0;
+        }
+        .slot--of1 { grid-area: of1; }
+        .slot--of2 { grid-area: of2; }
+        .slot--gk { grid-area: gk; max-width: 520px; justify-self: center; width: 100%; }
+
+        .slot__head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+        .slot__badge {
+          display: inline-flex; align-items: center; justify-content: center;
+          min-width: 34px; height: 24px; padding: 0 8px;
+          border-radius: 999px;
+          background: rgba(200,242,90,0.12);
+          border: 1px solid rgba(200,242,90,0.35);
+          color: var(--lime, #c8f25a);
+          font-size: 11px; font-weight: 800; letter-spacing: .08em;
+        }
+        .slot__title { font-family: var(--font-display); font-size: 14px; font-weight: 800; color: #fff; }
+
+        .slot__body {
+          display: grid;
+          grid-template-columns: auto 1fr;
+          gap: 10px;
+          align-items: start;
+        }
+        .slot__card { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+        .slot__preview-note {
+          font-size: 11px; font-weight: 700; color: #ffcc80;
+          padding: 2px 8px; border-radius: 999px;
+          background: rgba(255,204,128,0.1); border: 1px solid rgba(255,204,128,0.25);
+        }
+        .slot__empty {
+          width: 170px;
+          min-height: 220px;
+          border-radius: 12px;
+          border: 1.5px dashed rgba(255,255,255,0.22);
+          background: rgba(255,255,255,0.03);
+          display: flex;
+          flex-direction: column;
+          align-items: center;
+          justify-content: center;
+          text-align: center;
+          padding: 10px;
+          gap: 6px;
+        }
+        .slot__empty-icon { font-size: 22px; }
+        .slot__empty-text { font-weight: 800; color: #fff; }
+        .slot__empty-hint { font-size: 11px; color: var(--text-faint, #cfc6b8); line-height: 1.35; }
+
+        .slot__controls { min-width: 0; }
+        .bonus-line { font-size: 12px; font-weight: 700; margin-bottom: 8px; }
+        .bonus-line--muted { color: var(--text-dim, #e8e2d8); }
+        .bonus-line--good { color: var(--lime, #c8f25a); }
+        .bonus-line--bad { color: #ff9c88; }
+        .slot__actions { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 6px; }
+        .slot__hint { font-size: 12px; color: var(--text-faint, #cfc6b8); line-height: 1.4; }
+        .filter__label {
+          display: block;
+          font-size: 11px; font-weight: 700; letter-spacing: .08em; text-transform: uppercase;
+          color: var(--text-faint, #cfc6b8); margin-bottom: 4px;
+        }
+
+        @media (max-width: 860px) {
+          .slot__body { grid-template-columns: 1fr; justify-items: center; }
+          .slot__controls { width: 100%; }
+          .slot__empty { width: 100%; max-width: 220px; min-height: 140px; }
+        }
+        @media (max-width: 640px) {
+          .pitch {
+            grid-template-columns: 1fr;
+            grid-template-areas:
+              "of1"
+              "of2"
+              "gk";
+          }
+          .slot--gk { max-width: none; }
+          .match-head__teams { font-size: 16px; }
+        }
+      `}</style>
     </div>
   );
 }

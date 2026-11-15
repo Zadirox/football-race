@@ -276,6 +276,52 @@ a {
   padding: 8px;
 }
 
+.tab__pack-notice {
+  position: absolute;
+  left: 50%;
+  bottom: -9px;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 6px 2px 5px;
+  border-radius: 999px;
+  background: rgba(12, 10, 8, 0.92);
+  border: 1px solid rgba(216, 154, 90, 0.55);
+  box-shadow: 0 4px 10px rgba(0, 0, 0, 0.35), 0 0 0 1px rgba(0, 0, 0, 0.2) inset;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.tab__pack-notice-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: linear-gradient(180deg, #ffdcb8, #c9823f);
+  box-shadow: 0 0 8px rgba(201, 130, 63, 0.8);
+  animation: tab-pack-pulse 1.8s ease-in-out infinite;
+}
+
+.tab__pack-notice-count {
+  font-size: 9px;
+  font-weight: 800;
+  line-height: 1;
+  letter-spacing: 0.04em;
+  color: #ffe8c9;
+  text-shadow: 0 1px 4px rgba(0, 0, 0, 0.4);
+}
+
+@keyframes tab-pack-pulse {
+  0%, 100% { transform: scale(1); opacity: 0.9; box-shadow: 0 0 6px rgba(201, 130, 63, 0.6); }
+  50% { transform: scale(1.25); opacity: 1; box-shadow: 0 0 10px rgba(201, 130, 63, 0.95); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .tab__pack-notice-dot {
+    animation: none;
+  }
+}
+
 .icon-btn {
   display: inline-flex;
   align-items: center;
@@ -3255,4 +3301,169 @@ a {
   flex-wrap: wrap;
   gap: 6px;
   justify-content: flex-end;
+}
+
+/* Pack opening: hide shell chrome for immersive reveal */
+html[data-pack-opening='true'] .topbar,
+html[data-pack-opening='true'] .game-hud {
+  opacity: 0 !important;
+  visibility: hidden;
+  pointer-events: none;
+  transform: translateY(-12px) scale(0.995);
+  filter: blur(6px);
+  transition: opacity 450ms ease, transform 550ms cubic-bezier(0.2, 0.8, 0.2, 1), filter 450ms ease, visibility 0s linear 450ms;
+}
+html:not([data-pack-opening='true']) .topbar,
+html:not([data-pack-opening='true']) .game-hud {
+  transition: opacity 400ms ease, transform 450ms cubic-bezier(0.2, 0.8, 0.2, 1), filter 400ms ease, visibility 0s linear 0s;
+}
+
+/* Premium pre-open cinematic */
+.pack-preopen {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  pointer-events: none;
+}
+.pack-preopen__bg {
+  position: absolute;
+  inset: 0;
+  background:
+    radial-gradient(60% 45% at 50% 45%, rgba(80, 180, 255, 0.18), transparent 60%),
+    radial-gradient(40% 35% at 50% 55%, rgba(255, 214, 120, 0.12), transparent 65%),
+    radial-gradient(120% 100% at 50% 50%, rgba(5, 8, 14, 0.75), rgba(2, 3, 6, 0.96));
+  backdrop-filter: blur(10px) saturate(1.1);
+  animation: preopen-fade 450ms ease both;
+}
+.pack-preopen__stage {
+  position: relative;
+  z-index: 1;
+  width: min(420px, 86vw);
+  aspect-ratio: 0.72;
+  display: grid;
+  place-items: center;
+}
+.pack-preopen__halo {
+  position: absolute;
+  inset: -20%;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(120,210,255,0.22), rgba(255,220,140,0.08) 35%, transparent 65%);
+  filter: blur(18px);
+  animation: preopen-halo 2.2s ease-in-out infinite;
+}
+.pack-preopen__ring {
+  position: absolute;
+  border-radius: 50%;
+  border: 1px solid rgba(255,255,255,0.18);
+  box-shadow: 0 0 30px -8px rgba(140,220,255,0.35), inset 0 0 30px -12px rgba(255,255,255,0.12);
+}
+.pack-preopen__ring--a {
+  inset: 8%;
+  border-color: rgba(140,220,255,0.28);
+  animation: preopen-ring 3.6s linear infinite;
+}
+.pack-preopen__ring--b {
+  inset: -2%;
+  border-style: dashed;
+  border-color: rgba(255,220,150,0.22);
+  opacity: 0.7;
+  animation: preopen-ring-rev 5.2s linear infinite;
+}
+.pack-preopen__pack {
+  position: relative;
+  width: 58%;
+  aspect-ratio: 0.7;
+  border-radius: 18px;
+  transform-style: preserve-3d;
+  background:
+    linear-gradient(160deg, rgba(255,255,255,0.22), rgba(255,255,255,0.04) 30%, rgba(0,0,0,0.25) 70%, rgba(255,255,255,0.1)),
+    linear-gradient(180deg, #1a2a3d, #0a111b 55%, #0e1824);
+  box-shadow:
+    0 1px 0 rgba(255,255,255,0.22) inset,
+    0 -1px 0 rgba(0,0,0,0.6) inset,
+    0 30px 70px rgba(0,0,0,0.65),
+    0 0 0 1px rgba(255,255,255,0.06),
+    0 0 60px -10px rgba(120,210,255,0.45);
+  animation: preopen-pack 1.8s cubic-bezier(0.2, 0.9, 0.2, 1) both;
+  overflow: hidden;
+}
+.pack-preopen__pack::before {
+  content: '';
+  position: absolute; inset: 8px; border-radius: 12px;
+  border: 1px solid rgba(255,255,255,0.14);
+  box-shadow: inset 0 0 0 1px rgba(120,210,255,0.18);
+}
+.pack-preopen__pack-face {
+  position: absolute; inset: 0;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 6px;
+  text-align: center; padding: 18px;
+}
+.pack-preopen__kicker {
+  font-size: 10px; font-weight: 800; letter-spacing: 0.24em; color: #dff4ff;
+  padding: 4px 10px; border-radius: 999px;
+  border: 1px solid rgba(180,230,255,0.35);
+  background: rgba(255,255,255,0.05);
+}
+.pack-preopen__title {
+  font-family: var(--font-display, system-ui);
+  font-size: 26px; font-weight: 900; color: #fff; letter-spacing: 0.02em;
+  text-shadow: 0 4px 24px rgba(0,0,0,0.5);
+}
+.pack-preopen__sub {
+  font-size: 12px; font-weight: 700; letter-spacing: 0.14em; text-transform: uppercase;
+  color: rgba(230,242,255,0.75);
+}
+.pack-preopen__sheen {
+  position: absolute; inset: -30% -60%;
+  background: linear-gradient(110deg, transparent 35%, rgba(255,255,255,0.18) 48%, rgba(180,230,255,0.22) 52%, transparent 65%);
+  transform: translateX(-40%) rotate(8deg);
+  animation: preopen-sheen 1.8s ease-in-out infinite;
+  mix-blend-mode: screen;
+}
+.pack-preopen__sparks { position: absolute; inset: 0; }
+.pack-preopen__sparks span {
+  position: absolute; width: 6px; height: 6px; border-radius: 50%;
+  background: radial-gradient(circle, #fff, rgba(160,230,255,0.9) 40%, transparent 70%);
+  box-shadow: 0 0 16px 2px rgba(140,220,255,0.5);
+  opacity: 0; animation: preopen-spark 1.6s ease-out infinite;
+}
+.pack-preopen__sparks span:nth-child(1) { top: 18%; left: 22%; animation-delay: 0.1s; }
+.pack-preopen__sparks span:nth-child(2) { top: 28%; right: 18%; animation-delay: 0.35s; }
+.pack-preopen__sparks span:nth-child(3) { bottom: 30%; left: 16%; animation-delay: 0.55s; }
+.pack-preopen__sparks span:nth-child(4) { bottom: 22%; right: 20%; animation-delay: 0.2s; }
+.pack-preopen__sparks span:nth-child(5) { top: 42%; left: 8%; animation-delay: 0.7s; }
+.pack-preopen__sparks span:nth-child(6) { top: 46%; right: 10%; animation-delay: 0.9s; }
+.pack-preopen__sparks span:nth-child(7) { top: 12%; left: 46%; animation-delay: 0.5s; }
+.pack-preopen__sparks span:nth-child(8) { bottom: 14%; left: 48%; animation-delay: 1.0s; }
+.pack-preopen__caption {
+  position: absolute; bottom: -18%;
+  font-family: var(--font-display, system-ui);
+  font-size: 14px; font-weight: 800; letter-spacing: 0.18em; text-transform: uppercase;
+  color: rgba(235,247,255,0.9);
+  text-shadow: 0 0 24px rgba(140,220,255,0.35);
+  animation: preopen-caption 1.2s ease-in-out infinite alternate;
+}
+@keyframes preopen-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes preopen-halo { 0%,100% { transform: scale(0.96); opacity: 0.7; } 50% { transform: scale(1.04); opacity: 1; } }
+@keyframes preopen-ring { to { transform: rotate(360deg); } }
+@keyframes preopen-ring-rev { to { transform: rotate(-360deg); } }
+@keyframes preopen-pack {
+  0% { opacity: 0; transform: translateY(40px) scale(0.82) rotateX(18deg); filter: blur(4px); }
+  55% { opacity: 1; transform: translateY(-6px) scale(1.03) rotateX(-2deg); filter: blur(0); }
+  75% { transform: translateY(0) scale(1) rotateX(2deg); }
+  100% { opacity: 1; transform: translateY(0) scale(1) rotateX(0deg); filter: blur(0); }
+}
+@keyframes preopen-sheen { 0% { transform: translateX(-50%) rotate(8deg); } 100% { transform: translateX(50%) rotate(8deg); } }
+@keyframes preopen-spark {
+  0% { opacity: 0; transform: translateY(6px) scale(0.6); }
+  20% { opacity: 1; }
+  100% { opacity: 0; transform: translateY(-18px) scale(1.2); }
+}
+@keyframes preopen-caption { from { opacity: 0.6; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) {
+  .pack-preopen__bg, .pack-preopen__halo, .pack-preopen__ring, .pack-preopen__pack,
+  .pack-preopen__sheen, .pack-preopen__sparks span, .pack-preopen__caption { animation: none !important; }
 }

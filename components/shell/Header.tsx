@@ -13,6 +13,7 @@ type HeaderProps = {
   closesAt: string | null;
   demo: boolean;
   cardsEnabled?: boolean;
+  unopenedPacks?: number;
 };
 
 type Tab = { href: string; label: string; icon: string; adminOnly?: boolean };
@@ -20,13 +21,13 @@ type Tab = { href: string; label: string; icon: string; adminOnly?: boolean };
 const LEFT_TABS: Tab[] = [
   { href: '/effects', label: 'Эффекты', icon: '◈' },
   { href: '/rules', label: 'Правила', icon: '☰' },
+  { href: '/collection', label: 'Коллекция', icon: '🃏' },
+  { href: '/lineups', label: 'Составы', icon: '▦' },
 ];
 
 const RIGHT_TABS: Tab[] = [
   { href: '/matches', label: 'Матчи', icon: '⚽' },
   { href: '/predictions', label: 'Предикты', icon: '✎' },
-  { href: '/collection', label: 'Коллекция', icon: '🃏' },
-  { href: '/lineups', label: 'Составы', icon: '▦' },
   { href: '/ratings', label: 'Рейтинги', icon: '▲' },
   { href: '/participants', label: 'Участники', icon: '☺' },
   { href: '/admin', label: 'Админка', icon: '⚙', adminOnly: true },
@@ -50,7 +51,7 @@ function remainingLabel(closesAt: string | null): string {
   return `до конца игрового дня: ${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
 }
 
-export function Header({ me, closesAt, demo, cardsEnabled }: HeaderProps) {
+export function Header({ me, closesAt, demo, cardsEnabled, unopenedPacks = 0 }: HeaderProps) {
   const pathname = usePathname();
   const router = useRouter();
   const [now, setNow] = useState<string | null>(null);
@@ -62,14 +63,22 @@ export function Header({ me, closesAt, demo, cardsEnabled }: HeaderProps) {
     return () => window.clearInterval(timer);
   }, [closesAt]);
 
+  const leftTabs = useMemo(
+    () =>
+      LEFT_TABS.filter((tab) => {
+        if (!cardsEnabled && (tab.href === '/collection' || tab.href === '/lineups')) return false;
+        return true;
+      }),
+    [cardsEnabled],
+  );
+
   const tabs = useMemo(
     () =>
       RIGHT_TABS.filter((tab) => {
         if (tab.adminOnly && me?.role !== 'admin') return false;
-        if (!cardsEnabled && (tab.href === '/collection' || tab.href === '/lineups')) return false;
         return true;
       }),
-    [me?.role, cardsEnabled],
+    [me?.role],
   );
 
   const closePanel = () => {
@@ -83,6 +92,7 @@ export function Header({ me, closesAt, demo, cardsEnabled }: HeaderProps) {
 
   const tab = (item: Tab) => {
     const active = pathname === item.href;
+    const showPackNotice = item.href === '/collection' && cardsEnabled && unopenedPacks > 0;
     return (
       <Link
         key={item.href}
@@ -91,8 +101,14 @@ export function Header({ me, closesAt, demo, cardsEnabled }: HeaderProps) {
         className="tab"
         data-active={active}
         aria-current={active ? 'page' : undefined}
-        aria-label={active ? `${item.label}: закрыть` : item.label}
-        title={active ? 'Закрыть' : item.label}
+        aria-label={
+          active
+            ? `${item.label}: закрыть`
+            : showPackNotice
+              ? `${item.label}: ${unopenedPacks} неоткрытых паков`
+              : item.label
+        }
+        title={active ? 'Закрыть' : showPackNotice ? `${item.label} · есть неоткрытые паки` : item.label}
         onClick={(event) => {
           play('click');
           if (!active) return;
@@ -113,14 +129,20 @@ export function Header({ me, closesAt, demo, cardsEnabled }: HeaderProps) {
       >
         <span className="tab__icon" aria-hidden="true">{item.icon}</span>
         <span className="tab__label">{item.label}</span>
+        {showPackNotice ? (
+          <span className="tab__pack-notice" aria-hidden="true">
+            <span className="tab__pack-notice-dot" />
+            <span className="tab__pack-notice-count">{unopenedPacks > 9 ? '9+' : unopenedPacks}</span>
+          </span>
+        ) : null}
       </Link>
     );
   };
 
   return (
     <header className="topbar">
-      <nav className="topbar__left" aria-label="Справка">
-        <div className="tabs">{LEFT_TABS.map(tab)}</div>
+      <nav className="topbar__left" aria-label="Навигация">
+        <div className="tabs">{leftTabs.map(tab)}</div>
       </nav>
 
       <div className="topbar__center">

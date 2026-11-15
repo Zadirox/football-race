@@ -17,14 +17,19 @@
     "load:reference-data": "tsx scripts/load-reference-data.ts"
   },
   "dependencies": {
+    "@react-three/drei": "^10.7.9",
+    "@react-three/fiber": "^9.8.2",
     "@supabase/ssr": "^0.5.2",
     "@supabase/supabase-js": "^2.45.4",
+    "@types/howler": "^2.2.13",
+    "@types/three": "^0.187.0",
     "howler": "^2.2.4",
     "motion": "^12.0.0",
     "next": "^15.5.0",
     "postgres": "^3.4.5",
     "react": "^19.0.0",
     "react-dom": "^19.0.0",
+    "three": "^0.187.0",
     "zod": "^4.6.7"
   },
   "devDependencies": {

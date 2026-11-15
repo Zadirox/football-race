@@ -1,0 +1,823 @@
+.card {
+  --card-w: 204px;
+  --card-h: 304px;
+  --cut: 20px;
+  --radius: 15px;
+  --bg-1: #2d313a;
+  --bg-2: #191d25;
+  --bg-3: #0c1016;
+  --metal-1: #f4f7fb;
+  --metal-2: #9fb0c4;
+  --metal-3: #4a5666;
+  --accent: #dce6f2;
+  --accent-soft: rgba(220, 230, 242, 0.18);
+  --glow: rgba(220, 230, 242, 0.16);
+  --text: #f6f8fc;
+  --muted: rgba(246, 248, 252, 0.72);
+  --frame: rgba(255, 255, 255, 0.18);
+  --frame-strong: rgba(255, 255, 255, 0.38);
+  --inner-line: rgba(255, 255, 255, 0.14);
+  --plate: rgba(5, 8, 12, 0.42);
+  --shine: rgba(255, 255, 255, 0.55);
+  --shine-warm: rgba(255, 240, 210, 0.35);
+  --pattern-a: rgba(255,255,255,0.06);
+  --pattern-b: rgba(255,255,255,0.03);
+  position: relative;
+  width: var(--card-w);
+  height: var(--card-h);
+  perspective: 1400px;
+  color: var(--text);
+  font-family: var(--font-display, 'Segoe UI', system-ui, sans-serif);
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+}
+
+.flipWrap {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  transform-style: preserve-3d;
+  transition: transform 800ms cubic-bezier(0.2, 0.85, 0.2, 1);
+}
+.flipped .flipWrap {
+  transform: rotateY(180deg);
+}
+.interactive {
+  cursor: pointer;
+}
+
+.inner,
+.back {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  border-radius: var(--radius);
+  clip-path: polygon(
+    var(--cut) 0,
+    calc(100% - var(--cut)) 0,
+    100% var(--cut),
+    100% 100%,
+    0 100%,
+    0 var(--cut)
+  );
+  overflow: hidden;
+  backface-visibility: hidden;
+  -webkit-backface-visibility: hidden;
+  transform-style: preserve-3d;
+}
+
+.inner {
+  transform: rotateY(0deg) translateZ(1px);
+  transition:
+    transform 240ms ease,
+    box-shadow 240ms ease,
+    filter 240ms ease;
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.16), transparent 26%),
+    radial-gradient(120% 75% at 50% -8%, var(--accent-soft), transparent 58%),
+    radial-gradient(90% 55% at 18% 18%, rgba(255, 255, 255, 0.08), transparent 55%),
+    linear-gradient(160deg, var(--bg-1) 0%, var(--bg-2) 46%, var(--bg-3) 100%);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.08) inset,
+    0 0 0 2px var(--frame-strong),
+    0 0 0 4px rgba(0, 0, 0, 0.35),
+    0 16px 34px rgba(0, 0, 0, 0.5),
+    0 0 40px -10px var(--glow);
+  isolation: isolate;
+}
+
+.back {
+  transform: rotateY(180deg) translateZ(1px);
+  background:
+    radial-gradient(120% 80% at 50% 0%, var(--accent-soft), transparent 55%),
+    linear-gradient(160deg, color-mix(in srgb, var(--bg-1) 85%, #000) 0%, var(--bg-2) 45%, var(--bg-3) 100%);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.08) inset,
+    0 0 0 2px var(--frame-strong),
+    0 0 0 4px rgba(0, 0, 0, 0.35),
+    0 16px 34px rgba(0, 0, 0, 0.5),
+    0 0 40px -10px var(--glow);
+  isolation: isolate;
+}
+
+/* front ornamental pattern (rarity-specific) */
+.ornament {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 2;
+  opacity: 0.22;
+  mix-blend-mode: screen;
+}
+.rarityCommon .ornament {
+  background:
+    repeating-linear-gradient(135deg, var(--pattern-a) 0 1px, transparent 1px 14px),
+    repeating-linear-gradient(45deg, var(--pattern-b) 0 1px, transparent 1px 14px);
+}
+.rarityRare .ornament {
+  background:
+    linear-gradient(135deg, transparent 0 46%, var(--pattern-a) 49%, transparent 52%) 0 0 / 22px 22px,
+    linear-gradient(45deg, transparent 0 46%, var(--pattern-b) 49%, transparent 52%) 0 0 / 22px 22px,
+    radial-gradient(circle at 50% 20%, rgba(255,255,255,0.08), transparent 35%);
+  opacity: 0.26;
+}
+.rarityEpic .ornament {
+  background:
+    radial-gradient(circle at 50% 30%, rgba(255,255,255,0.08) 0 1px, transparent 1px) 0 0 / 18px 18px,
+    radial-gradient(circle at 50% 30%, rgba(255,255,255,0.05) 0 1px, transparent 1px) 9px 9px / 18px 18px,
+    conic-gradient(from 0deg at 85% 18%, transparent 0 70deg, var(--pattern-a) 80deg, transparent 90deg 360deg);
+  opacity: 0.3;
+}
+.rarityLegend .ornament {
+  background:
+    conic-gradient(from 0deg at 50% 18%, transparent 0 20deg, var(--pattern-a) 24deg, transparent 28deg 65deg, var(--pattern-a) 69deg, transparent 73deg 110deg, var(--pattern-a) 114deg, transparent 118deg 155deg, var(--pattern-a) 159deg, transparent 163deg 200deg, var(--pattern-a) 204deg, transparent 208deg 245deg, var(--pattern-a) 249deg, transparent 253deg 290deg, var(--pattern-a) 294deg, transparent 298deg 335deg, var(--pattern-a) 339deg, transparent 343deg 360deg),
+    radial-gradient(circle at 50% 18%, rgba(255,255,255,0.12), transparent 18%),
+    repeating-linear-gradient(90deg, transparent 0 18px, rgba(255,255,255,0.03) 18px 19px);
+  opacity: 0.34;
+}
+
+/* metallic edge */
+.frame {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 7;
+}
+.frame::before {
+  content: '';
+  position: absolute;
+  inset: 6px;
+  clip-path: polygon(
+    calc(var(--cut) - 4px) 0,
+    calc(100% - (var(--cut) - 4px)) 0,
+    100% calc(var(--cut) - 4px),
+    100% 100%,
+    0 100%,
+    0 calc(var(--cut) - 4px)
+  );
+  border: 1px solid var(--inner-line);
+  box-shadow:
+    0 0 0 1px rgba(0, 0, 0, 0.35) inset,
+    0 1px 0 rgba(255, 255, 255, 0.08) inset;
+}
+.frame::after {
+  content: '';
+  position: absolute;
+  top: 5px;
+  left: 50%;
+  width: 46%;
+  height: 3px;
+  transform: translateX(-50%);
+  border-radius: 999px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  opacity: 0.55;
+  filter: blur(0.2px);
+}
+
+/* soft texture / foil feel */
+.texture {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 1;
+  opacity: 0.28;
+  background:
+    radial-gradient(120% 90% at 60% 10%, rgba(255, 255, 255, 0.18), transparent 45%),
+    linear-gradient(120deg, transparent 0 35%, rgba(255, 255, 255, 0.08) 45%, transparent 55% 100%),
+    repeating-linear-gradient(115deg, rgba(255,255,255,0.03) 0 2px, transparent 2px 6px);
+  mix-blend-mode: screen;
+}
+.texture::before {
+  content: '';
+  position: absolute;
+  inset: -30% -20%;
+  background:
+    conic-gradient(from 180deg at 50% 50%, transparent 0deg, rgba(255,255,255,0.06) 40deg, color-mix(in srgb, var(--accent) 18%, transparent) 80deg, transparent 120deg, rgba(255,255,255,0.05) 170deg, color-mix(in srgb, var(--accent) 14%, transparent) 220deg, transparent 260deg, rgba(255,255,255,0.04) 320deg, transparent 360deg);
+  mix-blend-mode: screen;
+  opacity: 0.5;
+  filter: blur(10px);
+  animation: card-holo 8s linear infinite;
+}
+.texture::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(105deg, transparent 20%, rgba(255,255,255,0.08) 35%, transparent 50%, rgba(255,255,255,0.05) 65%, transparent 80%);
+  background-size: 220% 220%;
+  animation: card-foil 6.5s ease-in-out infinite;
+  opacity: 0.35;
+}
+@keyframes card-holo {
+  0% { transform: translateX(-6%) rotate(0deg); }
+  50% { transform: translateX(6%) rotate(180deg); }
+  100% { transform: translateX(-6%) rotate(360deg); }
+}
+@keyframes card-foil {
+  0%, 100% { background-position: 0% 50%; opacity: 0.18; }
+  50% { background-position: 100% 50%; opacity: 0.38; }
+}
+
+.glowOrb {
+  position: absolute;
+  right: -18%;
+  bottom: 18%;
+  width: 70%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: radial-gradient(circle, var(--accent-soft), transparent 65%);
+  filter: blur(12px);
+  z-index: 1;
+  opacity: 0.95;
+  pointer-events: none;
+  animation: card-orb 4.8s ease-in-out infinite;
+}
+.glowOrb::after {
+  content: '';
+  position: absolute;
+  left: -30%;
+  top: -40%;
+  width: 80%;
+  aspect-ratio: 1;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(255,255,255,0.12), transparent 70%);
+  filter: blur(8px);
+  animation: card-orb-2 5.6s ease-in-out infinite reverse;
+}
+@keyframes card-orb {
+  0%, 100% { transform: translate(0, 0) scale(1); opacity: 0.75; }
+  50% { transform: translate(-4%, -3%) scale(1.08); opacity: 1; }
+}
+@keyframes card-orb-2 {
+  0%, 100% { transform: translate(0, 0) scale(1); opacity: 0.4; }
+  50% { transform: translate(6%, 4%) scale(1.12); opacity: 0.7; }
+}
+
+.interactive:hover .inner,
+.interactive:focus-within .inner {
+  transform: rotateY(0deg) translateY(-6px) rotateX(8deg) rotateY(-8deg) translateZ(1px);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.1) inset,
+    0 0 0 2px var(--frame-strong),
+    0 0 0 4px rgba(0, 0, 0, 0.35),
+    0 30px 54px rgba(0, 0, 0, 0.6),
+    0 0 64px -6px var(--glow);
+  filter: saturate(1.08) contrast(1.03);
+}
+.interactive:hover .back,
+.interactive:focus-within .back {
+  filter: saturate(1.05);
+}
+.interactive:hover .flipWrap {
+  transform: translateY(-4px);
+}
+.flipped.interactive:hover .flipWrap,
+.flipped.interactive:focus-within .flipWrap {
+  transform: rotateY(180deg) translateY(-4px);
+}
+
+.shine {
+  position: absolute;
+  inset: -45% -70%;
+  background:
+    linear-gradient(
+      112deg,
+      transparent 30%,
+      rgba(255, 255, 255, 0.04) 40%,
+      var(--shine) 48%,
+      var(--shine-warm) 52%,
+      rgba(255,255,255,0.06) 58%,
+      transparent 68%
+    );
+  transform: translateX(-55%) rotate(10deg);
+  opacity: 0.18;
+  transition:
+    transform 700ms ease,
+    opacity 350ms ease;
+  pointer-events: none;
+  z-index: 8;
+  mix-blend-mode: screen;
+  animation: card-shine-sweep 5.8s ease-in-out infinite;
+}
+.interactive:hover .shine,
+.interactive:focus-within .shine {
+  opacity: 0.8;
+  transform: translateX(24%) rotate(10deg);
+  animation-duration: 2.8s;
+}
+@keyframes card-shine-sweep {
+  0%, 100% { transform: translateX(-55%) rotate(10deg); opacity: 0.1; }
+  45% { opacity: 0.22; }
+  50% { transform: translateX(35%) rotate(10deg); opacity: 0.28; }
+  55% { opacity: 0.22; }
+}
+
+.top {
+  position: absolute;
+  top: 14px;
+  left: 12px;
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1px;
+  min-width: 38px;
+  padding: 5px 4px 6px;
+  border-radius: 10px 10px 12px 12px;
+  background: linear-gradient(180deg, rgba(0, 0, 0, 0.28), rgba(0, 0, 0, 0.08));
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.08) inset,
+    0 6px 14px rgba(0, 0, 0, 0.18);
+}
+
+.rating {
+  font-family: var(--font-display, 'Segoe UI', system-ui, sans-serif);
+  font-size: 30px;
+  line-height: 0.9;
+  font-weight: 900;
+  letter-spacing: -0.03em;
+  font-variant-numeric: tabular-nums;
+  background: linear-gradient(180deg, var(--metal-1) 0%, var(--accent) 45%, var(--metal-2) 100%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 2px 0 rgba(0, 0, 0, 0.35));
+}
+
+.pos {
+  font-size: 10px;
+  line-height: 1;
+  font-weight: 800;
+  letter-spacing: 0.1em;
+  color: var(--text);
+  text-shadow: 0 1px 0 rgba(0, 0, 0, 0.35);
+}
+
+.divider {
+  width: 22px;
+  height: 2px;
+  border-radius: 999px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  margin: 4px 0 3px;
+  opacity: 0.85;
+}
+
+.flag {
+  font-size: 16px;
+  line-height: 1;
+  filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.35));
+}
+
+.portraitWrap {
+  position: absolute;
+  inset: 6px 4px 76px 34px;
+  z-index: 3;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  pointer-events: none;
+}
+.portraitWrap::after {
+  content: '';
+  position: absolute;
+  left: 6%;
+  right: 6%;
+  bottom: -2px;
+  height: 34%;
+  background: radial-gradient(60% 100% at 50% 100%, rgba(0, 0, 0, 0.55), transparent 70%);
+  filter: blur(2px);
+  z-index: 0;
+}
+
+.portrait {
+  position: relative;
+  z-index: 1;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: bottom center;
+  filter:
+    drop-shadow(0 14px 18px rgba(0, 0, 0, 0.45))
+    drop-shadow(0 2px 0 rgba(0, 0, 0, 0.12));
+  transform: translateZ(14px);
+}
+
+.portraitPlaceholder {
+  width: 68%;
+  height: 70%;
+  border-radius: 14px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.1), rgba(255, 255, 255, 0.02)),
+    rgba(0, 0, 0, 0.18);
+  border: 1px dashed rgba(255, 255, 255, 0.22);
+  align-self: center;
+  z-index: 1;
+}
+
+.bottom {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 8px;
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  text-align: center;
+  gap: 3px;
+  padding: 9px 8px 8px;
+  border-radius: 10px 10px 12px 12px;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.06), transparent 40%),
+    linear-gradient(180deg, rgba(10, 14, 20, 0.2), rgba(6, 9, 14, 0.72));
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.06) inset,
+    0 -10px 24px rgba(0, 0, 0, 0.18) inset;
+}
+.bottom::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  left: 12%;
+  right: 12%;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, var(--accent), transparent);
+  opacity: 0.7;
+}
+
+.name {
+  font-family: var(--font-display, 'Segoe UI', system-ui, sans-serif);
+  font-size: 15px;
+  line-height: 1.05;
+  font-weight: 800;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+  text-wrap: balance;
+  text-shadow:
+    0 2px 4px rgba(0, 0, 0, 0.55),
+    0 0 18px rgba(0, 0, 0, 0.2);
+  max-width: 100%;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.meta {
+  font-size: 9.5px;
+  line-height: 1.2;
+  font-weight: 700;
+  color: var(--muted);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  max-width: 100%;
+  white-space: normal;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  text-wrap: balance;
+}
+
+.teamName {
+  color: var(--text);
+}
+.metaSep {
+  opacity: 0.7;
+}
+.rarityText {
+  color: var(--accent);
+}
+
+/* ====== Variants ====== */
+.variantFut .inner {
+  /* classic collectible: warmer plate, stronger top light */
+  background:
+    linear-gradient(135deg, rgba(255, 255, 255, 0.18), transparent 24%),
+    radial-gradient(120% 70% at 50% -10%, var(--accent-soft), transparent 56%),
+    radial-gradient(60% 40% at 50% 0%, rgba(255, 255, 255, 0.12), transparent 60%),
+    linear-gradient(160deg, var(--bg-1) 0%, var(--bg-2) 44%, var(--bg-3) 100%);
+}
+
+.variantPremium .inner {
+  background:
+    linear-gradient(160deg, rgba(255, 255, 255, 0.08), transparent 30%),
+    radial-gradient(100% 60% at 80% 0%, var(--accent-soft), transparent 55%),
+    radial-gradient(90% 80% at 10% 100%, rgba(255, 255, 255, 0.04), transparent 55%),
+    linear-gradient(165deg, #1a1f2a 0%, #10151d 48%, #090c12 100%);
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.06) inset,
+    0 0 0 2px var(--frame-strong),
+    0 0 0 4px rgba(0, 0, 0, 0.45),
+    0 18px 38px rgba(0, 0, 0, 0.58),
+    0 0 44px -10px var(--glow);
+}
+.variantPremium .frame::after {
+  width: 34%;
+  opacity: 0.4;
+}
+.variantPremium .rating {
+  font-size: 32px;
+}
+.variantPremium .bottom {
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.04), transparent 45%),
+    linear-gradient(180deg, rgba(8, 11, 16, 0.15), rgba(5, 7, 10, 0.82));
+}
+
+/* ====== Palettes: FUT-like (rich collectible foils) ====== */
+.palFut.rarityCommon {
+  --bg-1: #9a5526; --bg-2: #603415; --bg-3: #2b160a;
+  --metal-1: #ffecd8; --metal-2: #cf8a4a; --metal-3: #633510;
+  --accent: #d88945; --accent-soft: rgba(216, 137, 69, 0.3); --glow: rgba(184, 104, 36, 0.32);
+  --text: #fff6ed; --muted: rgba(255, 246, 237, 0.82);
+  --frame-strong: rgba(224, 156, 92, 0.48);
+  --inner-line: rgba(235, 190, 140, 0.18);
+}
+.palFut.rarityRare {
+  --bg-1: #3f83b8; --bg-2: #24547a; --bg-3: #10273c;
+  --metal-1: #eef9ff; --metal-2: #bfe6ff; --metal-3: #2f6d96;
+  --accent: #dff3ff; --accent-soft: rgba(223, 243, 255, 0.3); --glow: rgba(120, 210, 255, 0.34);
+  --text: #f4fbff; --muted: rgba(244, 251, 255, 0.8);
+  --frame-strong: rgba(210, 240, 255, 0.5);
+  --inner-line: rgba(210, 240, 255, 0.18);
+}
+.palFut.rarityEpic {
+  --bg-1: #7b43c6; --bg-2: #482378; --bg-3: #22113a;
+  --metal-1: #fbf2ff; --metal-2: #e4c0ff; --metal-3: #6a35a8;
+  --accent: #efd9ff; --accent-soft: rgba(239, 217, 255, 0.32); --glow: rgba(196, 132, 255, 0.38);
+  --text: #fcf7ff; --muted: rgba(252, 247, 255, 0.8);
+  --frame-strong: rgba(236, 206, 255, 0.52);
+  --inner-line: rgba(236, 206, 255, 0.18);
+}
+.palFut.rarityLegend {
+  --bg-1: #e0b23f; --bg-2: #9b6b17; --bg-3: #4a3008;
+  --metal-1: #fff9e3; --metal-2: #ffe29a; --metal-3: #9a6a0d;
+  --accent: #fff1bf; --accent-soft: rgba(255, 241, 191, 0.36); --glow: rgba(255, 216, 120, 0.5);
+  --text: #fffdf4; --muted: rgba(255, 253, 244, 0.84);
+  --frame-strong: rgba(255, 236, 170, 0.62);
+  --inner-line: rgba(255, 242, 196, 0.22);
+  --shine: rgba(255, 255, 255, 0.7);
+  --shine-warm: rgba(255, 232, 170, 0.55);
+}
+
+/* ====== Palettes: Lux dark (premium dark metals) ====== */
+.palLux.rarityCommon {
+  --bg-1: #523019; --bg-2: #301b0e; --bg-3: #160c06;
+  --metal-1: #f7e4cc; --metal-2: #bf7838; --metal-3: #5e3012;
+  --accent: #c9823f; --accent-soft: rgba(201, 130, 63, 0.22); --glow: rgba(168, 93, 32, 0.26);
+  --text: #fff5eb; --muted: rgba(255, 245, 235, 0.75);
+  --frame-strong: rgba(204, 140, 84, 0.4);
+}
+.palLux.rarityRare {
+  --bg-1: #1f4358; --bg-2: #152a38; --bg-3: #0b1720;
+  --metal-1: #eaf8ff; --metal-2: #9fdcff; --metal-3: #2f7598;
+  --accent: #86d6ff; --accent-soft: rgba(134, 214, 255, 0.22); --glow: rgba(134, 214, 255, 0.26);
+  --text: #f2fbff; --muted: rgba(242, 251, 255, 0.74);
+  --frame-strong: rgba(150, 220, 255, 0.42);
+}
+.palLux.rarityEpic {
+  --bg-1: #3b2452; --bg-2: #261635; --bg-3: #140c1e;
+  --metal-1: #faf1ff; --metal-2: #ddb2ff; --metal-3: #7542a8;
+  --accent: #dbaeff; --accent-soft: rgba(219, 174, 255, 0.22); --glow: rgba(219, 174, 255, 0.28);
+  --text: #fcf7ff; --muted: rgba(252, 247, 255, 0.74);
+  --frame-strong: rgba(224, 186, 255, 0.44);
+}
+.palLux.rarityLegend {
+  --bg-1: #5a3d12; --bg-2: #35240b; --bg-3: #1a1206;
+  --metal-1: #fff8de; --metal-2: #ffd978; --metal-3: #9d6b10;
+  --accent: #ffd978; --accent-soft: rgba(255, 217, 120, 0.24); --glow: rgba(255, 217, 120, 0.34);
+  --text: #fffaf0; --muted: rgba(255, 250, 240, 0.76);
+  --frame-strong: rgba(255, 224, 140, 0.5);
+  --shine-warm: rgba(255, 228, 160, 0.5);
+}
+
+/* Sizes */
+.sizeSm {
+  --card-w: 170px;
+  --card-h: 252px;
+  --cut: 16px;
+  --radius: 12px;
+}
+.sizeSm .top { top: 11px; left: 10px; min-width: 34px; padding: 5px 3px 6px; }
+.sizeSm .rating { font-size: 25px; }
+.sizeSm .pos { font-size: 9.5px; letter-spacing: 0.1em; }
+.sizeSm .flag { font-size: 14px; }
+.sizeSm .portraitWrap { inset: 6px 4px 64px 30px; }
+.sizeSm .bottom { left: 7px; right: 7px; bottom: 7px; padding: 7px 6px 6px; gap: 2px; }
+.sizeSm .name { font-size: 12.5px; letter-spacing: 0.02em; }
+.sizeSm .meta { font-size: 8.5px; letter-spacing: 0.06em; }
+
+.sizeLg {
+  --card-w: 252px;
+  --card-h: 374px;
+  --cut: 24px;
+  --radius: 16px;
+}
+.sizeLg .top { top: 16px; left: 14px; min-width: 46px; padding: 7px 6px 8px; }
+.sizeLg .rating { font-size: 38px; }
+.sizeLg .pos { font-size: 11px; }
+.sizeLg .flag { font-size: 20px; }
+.sizeLg .portraitWrap { inset: 8px 6px 94px 40px; }
+.sizeLg .bottom { left: 10px; right: 10px; bottom: 10px; padding: 11px 10px 10px; gap: 4px; }
+.sizeLg .name { font-size: 18px; }
+.sizeLg .meta { font-size: 10.5px; letter-spacing: 0.08em; }
+
+/* ===== Back of card (rarity-specific patterns) ===== */
+.backPattern,
+.backGlow,
+.backFrame {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+.backPattern {
+  z-index: 1;
+  opacity: 0.9;
+}
+.backGlow {
+  z-index: 2;
+  background: radial-gradient(60% 40% at 50% 45%, var(--accent-soft), transparent 70%);
+  filter: blur(10px);
+  opacity: 0.8;
+}
+.backFrame {
+  z-index: 4;
+}
+.backFrame::before {
+  content: '';
+  position: absolute;
+  inset: 10px;
+  border-radius: 10px;
+  border: 1px solid var(--inner-line);
+  box-shadow: 0 0 0 1px rgba(0,0,0,0.35) inset;
+}
+.backFrame::after {
+  content: '';
+  position: absolute;
+  inset: 16px;
+  border-radius: 8px;
+  border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
+  opacity: 0.8;
+}
+.backCenter {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 18px;
+  gap: 4px;
+}
+.backEmblem {
+  width: 64px;
+  height: 64px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-family: var(--font-display, system-ui);
+  font-size: 22px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  color: var(--accent);
+  background:
+    radial-gradient(circle at 35% 30%, rgba(255,255,255,0.22), transparent 35%),
+    linear-gradient(180deg, rgba(255,255,255,0.08), rgba(0,0,0,0.25));
+  border: 1px solid color-mix(in srgb, var(--accent) 45%, rgba(255,255,255,0.15));
+  box-shadow: 0 0 0 6px rgba(255,255,255,0.03), 0 0 30px -6px var(--glow), inset 0 1px 0 rgba(255,255,255,0.12);
+  margin-bottom: 6px;
+}
+.backTitle {
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.22em;
+  color: rgba(255,255,255,0.88);
+}
+.backSub {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--accent);
+  margin-top: 2px;
+  text-shadow: 0 0 18px var(--glow);
+}
+.backTeam {
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.backOvr {
+  margin-top: 8px;
+  font-family: var(--font-display, system-ui);
+  font-size: 34px;
+  line-height: 1;
+  font-weight: 900;
+  letter-spacing: -0.03em;
+  background: linear-gradient(180deg, var(--metal-1), var(--accent) 55%, var(--metal-2));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  filter: drop-shadow(0 6px 14px rgba(0,0,0,0.35));
+}
+
+.rarityCommon .backPattern {
+  background:
+    repeating-linear-gradient(135deg, rgba(255,255,255,0.06) 0 1px, transparent 1px 16px),
+    repeating-linear-gradient(45deg, rgba(255,255,255,0.04) 0 1px, transparent 1px 16px),
+    radial-gradient(80% 60% at 50% 40%, rgba(255,255,255,0.05), transparent 70%);
+}
+.rarityRare .backPattern {
+  background:
+    linear-gradient(135deg, transparent 0 46%, rgba(255,255,255,0.09) 49%, transparent 52%) 0 0 / 26px 26px,
+    linear-gradient(45deg, transparent 0 46%, rgba(255,255,255,0.06) 49%, transparent 52%) 0 0 / 26px 26px,
+    radial-gradient(circle at 50% 45%, color-mix(in srgb, var(--accent) 22%, transparent), transparent 35%),
+    radial-gradient(circle at 50% 45%, transparent 22%, rgba(255,255,255,0.06) 23%, transparent 24%) 0 0 / 100% 100%;
+}
+.rarityEpic .backPattern {
+  background:
+    radial-gradient(circle at 50% 45%, rgba(255,255,255,0.08) 0 1px, transparent 1px) 0 0 / 20px 20px,
+    radial-gradient(circle at 50% 45%, rgba(255,255,255,0.05) 0 1px, transparent 1px) 10px 10px / 20px 20px,
+    repeating-conic-gradient(from 0deg at 50% 45%, transparent 0 14deg, rgba(255,255,255,0.05) 14deg 16deg),
+    radial-gradient(circle at 50% 45%, color-mix(in srgb, var(--accent) 18%, transparent), transparent 38%);
+}
+.rarityLegend .backPattern {
+  background:
+    repeating-conic-gradient(from 0deg at 50% 45%, transparent 0 8deg, rgba(255,255,255,0.08) 8deg 10deg),
+    repeating-conic-gradient(from 4deg at 50% 45%, transparent 0 18deg, color-mix(in srgb, var(--accent) 18%, transparent) 18deg 20deg),
+    radial-gradient(circle at 50% 45%, rgba(255,255,255,0.14), transparent 16%),
+    radial-gradient(circle at 50% 45%, transparent 28%, rgba(255,255,255,0.06) 29%, transparent 30%, transparent 40%, rgba(255,255,255,0.05) 41%, transparent 42%);
+  filter: saturate(1.1);
+}
+.sizeSm .backEmblem { width: 52px; height: 52px; font-size: 18px; }
+.sizeSm .backOvr { font-size: 28px; }
+.sizeSm .backTitle { font-size: 9px; }
+.sizeLg .backEmblem { width: 78px; height: 78px; font-size: 26px; }
+.sizeLg .backOvr { font-size: 42px; }
+.sizeLg .backTitle { font-size: 12px; }
+
+/* Rarity-reactive intensity */
+.rarityRare .texture::before { opacity: 0.6; }
+.rarityEpic .texture::before { opacity: 0.75; filter: blur(8px) saturate(1.2); animation-duration: 6.5s; }
+.rarityLegend .texture::before { opacity: 0.9; filter: blur(7px) saturate(1.3); animation-duration: 5.5s; }
+.rarityEpic .inner,
+.rarityLegend .inner,
+.rarityEpic .back,
+.rarityLegend .back {
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.1) inset,
+    0 0 0 2px var(--frame-strong),
+    0 0 0 4px rgba(0, 0, 0, 0.35),
+    0 18px 36px rgba(0, 0, 0, 0.52),
+    0 0 50px -8px var(--glow),
+    0 0 90px -20px var(--glow);
+}
+.rarityLegend .inner,
+.rarityLegend .back {
+  box-shadow:
+    0 1px 0 rgba(255, 255, 255, 0.12) inset,
+    0 0 0 2px var(--frame-strong),
+    0 0 0 4px rgba(0, 0, 0, 0.35),
+    0 20px 40px rgba(0, 0, 0, 0.55),
+    0 0 60px -6px var(--glow),
+    0 0 110px -18px var(--glow);
+}
+.rarityLegend .frame::after {
+  opacity: 0.75;
+  height: 4px;
+  filter: blur(0.4px);
+  box-shadow: 0 0 12px var(--glow);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .inner,
+  .back,
+  .shine,
+  .texture::before,
+  .texture::after,
+  .glowOrb,
+  .glowOrb::after,
+  .flipWrap {
+    transition: none;
+    animation: none !important;
+  }
+  .interactive:hover .inner,
+  .interactive:focus-within .inner,
+  .interactive:hover .flipWrap,
+  .flipped .flipWrap {
+    transform: none;
+  }
+  .flipped .back { display: block; }
+  .flipped .inner { display: none; }
+}

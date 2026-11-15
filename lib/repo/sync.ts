@@ -177,11 +177,13 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
 
   // Лига наций: берём из запасного источника (основной тариф её не отдаёт).
   try {
-    if (Date.now() < deadlineMs) {
+    const remainingMs = deadlineMs - Date.now();
+    if (remainingMs > 8_000) {
       const unl = await fetchSstatsUnlFixtures({
         from: window.from,
         to: window.to,
         apiKey: env.sstatsApiKey,
+        timeoutMs: Math.min(10_000, remainingMs - 3_000),
       });
       fetchedTotal += unl.fetched;
       requestsUsed += unl.requestsUsed;

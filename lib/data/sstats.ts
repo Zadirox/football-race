@@ -155,6 +155,7 @@ export async function fetchSstatsUnlFixtures(input: {
   leagueId?: number;
   year?: number;
   fetchImpl?: typeof fetch;
+  timeoutMs?: number;
 }): Promise<SstatsFixtureFetch> {
   const leagueId = input.leagueId ?? 5;
   const year = input.year ?? 2026;
@@ -178,7 +179,7 @@ export async function fetchSstatsUnlFixtures(input: {
     response = await doFetch(url, {
       headers,
       cache: 'no-store',
-      signal: AbortSignal.timeout(TIMEOUT_MS),
+      signal: AbortSignal.timeout(Math.max(1000, input.timeoutMs ?? TIMEOUT_MS)),
     });
   } catch (error) {
     throw new AppError('SYNC_PROVIDER_DOWN', `Источник матчей не ответил: ${(error as Error).message}`);

@@ -21,14 +21,16 @@ export function db(): Db {
   if (!client) {
     client = postgres(url, {
       // В serverless держим мало соединений, чтобы не упираться в лимиты pooler/Supabase.
-      max: 2,
+      max: 1,
       prepare: false,
       idle_timeout: 10,
-      max_lifetime: 60 * 5,
+      max_lifetime: 60 * 2,
       connect_timeout: 10,
-      // Не даём запросам зависать бесконечно (иначе страницы/функции упираются в лимит платформы).
+      keep_alive: 30,
+      // Не даём запросам зависать бесконечно; keepalive помогает быстрее обнаружить мёртвого клиента.
       connection: {
         statement_timeout: 30000,
+        idle_in_transaction_session_timeout: 30000,
       },
       onnotice: () => {},
     });

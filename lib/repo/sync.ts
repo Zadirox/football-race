@@ -49,6 +49,8 @@ export type SyncFixturesOptions = {
   now?: Date;
   /** Разовый прогон за выбранные игровые даты (ГГГГ-ММ-ДД), вместо обычного окна. */
   window?: { from: GameDate; to: GameDate };
+  /** Лимит времени прогона в мс (для cron/частичных прогонов). По умолчанию 80с. */
+  budgetMs?: number;
 };
 
 export type AdvanceReport = {
@@ -102,7 +104,8 @@ function mergeMatches(groups: NormalizedMatch[][]): NormalizedMatch[] {
 export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<SyncFixturesReport> {
   const now = options.now ?? new Date();
   const startedAt = Date.now();
-  const deadlineMs = startedAt + 80_000;
+  const budgetMs = Math.max(10_000, Math.min(options.budgetMs ?? 80_000, 120_000));
+  const deadlineMs = startedAt + budgetMs;
   const env = serverEnv();
   const window = options.window ?? syncWindow(now);
 

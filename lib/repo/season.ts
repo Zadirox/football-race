@@ -15,7 +15,7 @@ import { db } from '@/lib/db';
 import { getViewer } from '@/lib/auth/session';
 import { buildDemoSnapshot } from '@/lib/demo/snapshot';
 import { hasDatabase } from '@/lib/env';
-import { loadLatestClosedMatchdayResultForViewer } from '@/lib/repo/matchday-results';
+import { loadClosedMatchdays, loadLatestClosedMatchdayResultForViewer } from '@/lib/repo/matchday-results';
 import {
   toActivityViews,
   toCellViews,
@@ -324,6 +324,8 @@ async function loadFromDatabase(viewer: SeasonViewer): Promise<SeasonSnapshot> {
     }
   }
 
+  const closedMatchdays = await loadClosedMatchdays(season.id, 12);
+
   return {
     season: toSeasonView(season),
     players,
@@ -337,6 +339,7 @@ async function loadFromDatabase(viewer: SeasonViewer): Promise<SeasonSnapshot> {
     pending: toPendingChoice(pendingRows[0] ?? null),
     myLastClosedDayResult,
     lastClosedDayTop,
+    closedMatchdays,
     serverNow: new Date().toISOString(),
     demo: false,
   };
@@ -344,4 +347,112 @@ async function loadFromDatabase(viewer: SeasonViewer): Promise<SeasonSnapshot> {
 
 export function seasonClosesAt(snapshot: SeasonSnapshot): string | null {
   return snapshot.matchday?.closesAt ?? null;
+}
+
+export type MatchdayPredictionsData = {
+  matchday: NonNullable<ReturnType<typeof toMatchdayView>>;
+  matches: ReturnType<typeof toMatchView>[];
+  questions: ReturnType<typeof toQuestionView>[];
+};
+
+export async function loadMatchdayPredictions(matchdayId: string): Promise<MatchdayPredictionsData | null> {
+  if (!hasDatabase()) return null;
+  const viewer = await getCachedViewer();
+  const viewerId = viewer?.profileId ?? null;
+  const sql = db();
+
+  const mdRows = await sql<MatchdayRow[]>`
+    select md.id, md.game_date::text as game_date, md.opens_at, md.closes_at, md.status, md.q_total
+    from matchdays md
+    join seasons s on s.id = md.season_id and s.status = 'active'
+    where md.id = ${matchdayId}
+    limit 1
+  `;
+  const matchdayRow = mdRows[0];
+  if (!matchdayRow) return null;
+  const matchday = toMatchdayView(matchdayRow);
+  if (!matchday) return null;
+
+  const [matchRows, questionRows] = await Promise.all([
+    sql<MatchRow[]>`
+      select
+        m.id,
+        m.league_code,
+        m.league_title,
+        m.home_name,
+        m.home_logo,
+        m.away_name,
+        m.away_logo,
+        m.kickoff_utc,
+        m.status,
+        m.minute,
+        m.home_score,
+        m.away_score,
+        m.ht_home_score,
+        m.ht_away_score,
+        m.corners_home,
+        m.corners_away,
+        m.yellow_cards_home,
+        m.yellow_cards_away,
+        m.red_cards_home,
+        m.red_cards_away,
+        m.possession_home,
+        m.possession_away,
+        m.shots_on_target_home,
+        m.shots_on_target_away,
+        mm.in_scope,
+        (
+          select count(*)::int
+          from questions q
+          where q.match_id = m.id and q.matchday_id = ${matchday.id} and q.is_bonus = false
+        ) as question_count,
+        (
+          select count(*)::int
+          from answers a
+          join questions q on q.id = a.question_id
+          where q.match_id = m.id
+            and q.matchday_id = ${matchday.id}
+            and q.is_bonus = false
+            and a.profile_id = ${viewerId}::uuid
+        ) as my_answered
+      from matchday_matches mm
+      join matches m on m.id = mm.match_id
+      where mm.matchday_id = ${matchday.id}
+      order by m.kickoff_utc
+    `,
+    sql<QuestionRow[]>`
+      select
+        q.id,
+        q.match_id,
+        q.kind,
+        q.prompt,
+        q.options,
+        q.is_bonus,
+        q.locks_at,
+        q.status,
+        q.correct_option,
+        q.rule,
+        my.choice as my_choice,
+        case when q.status <> 'open' then dist.distribution else null end as distribution
+      from questions q
+      left join answers my on my.question_id = q.id and my.profile_id = ${viewerId}::uuid
+      left join lateral (
+        select jsonb_object_agg(t.choice, t.n) as distribution
+        from (
+          select a2.choice, count(*)::int as n
+          from answers a2
+          where a2.question_id = q.id
+          group by a2.choice
+        ) t
+      ) dist on true
+      where q.matchday_id = ${matchday.id}
+      order by q.locks_at, q.is_bonus, q.id
+    `,
+  ]);
+
+  return {
+    matchday,
+    matches: matchRows.map(toMatchView),
+    questions: questionRows.map(toQuestionView),
+  };
 }

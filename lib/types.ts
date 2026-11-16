@@ -113,6 +113,10 @@ export type MatchdayView = {
   qTotal: number | null;
 };
 
+export type ClosedMatchdayOption = Pick<MatchdayView, 'id' | 'gameDate' | 'status' | 'qTotal'> & {
+  closesAt: string;
+};
+
 export type SeasonView = {
   id: string;
   slug: string;
@@ -178,6 +182,8 @@ export type SeasonSnapshot = {
   myLastClosedDayResult: MyLastClosedDayResult | null;
   /** Топ участников последнего закрытого дня (для контекста сводки). */
   lastClosedDayTop: MatchdayResultView[];
+  /** Недавние закрытые дни (для просмотра результатов предиктов). */
+  closedMatchdays: ClosedMatchdayOption[];
   serverNow: string;
   /** Демо-режим: БД не подключена, играем локально. */
   demo: boolean;

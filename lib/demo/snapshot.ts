@@ -13,6 +13,7 @@ import { gameDateOf, gameDayWindow, shiftGameDate } from '@/lib/time';
 import { generateMatchQuestions, type GeneratedQuestion } from '@/lib/data/questions';
 import type {
   ActivityView,
+  ClosedMatchdayOption,
   MatchView,
   PlayerView,
   QuestionView,
@@ -333,6 +334,15 @@ export function buildDemoSnapshot(now = new Date()): SeasonSnapshot {
       qTotal: 10,
     },
   };
+  const closedMatchdays: ClosedMatchdayOption[] = [
+    {
+      id: lastClosedMatchdayId,
+      gameDate: lastClosedGameDate,
+      status: 'closed',
+      qTotal: 10,
+      closesAt: myLastClosedDayResult.matchday.closesAt,
+    },
+  ];
 
   return {
     season: {
@@ -374,6 +384,7 @@ export function buildDemoSnapshot(now = new Date()): SeasonSnapshot {
     pending: null,
     myLastClosedDayResult,
     lastClosedDayTop: lastClosedTop,
+    closedMatchdays,
     serverNow: now.toISOString(),
     demo: true,
   };

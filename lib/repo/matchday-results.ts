@@ -1,6 +1,8 @@
 import { db } from '@/lib/db';
 import { hasDatabase } from '@/lib/env';
-import type { MatchdayResultView, MatchdayView, SeasonSnapshot } from '@/lib/types';
+import type { ClosedMatchdayOption, MatchdayResultView, MatchdayView, SeasonSnapshot } from '@/lib/types';
+
+export type { ClosedMatchdayOption };
 
 type MatchdayResultRow = {
   matchday_id: string;
@@ -179,10 +181,6 @@ export async function loadLatestClosedMatchdayResultForViewer(
     top: ranked.slice(0, 3),
   };
 }
-
-export type ClosedMatchdayOption = Pick<MatchdayView, 'id' | 'gameDate' | 'status' | 'qTotal'> & {
-  closesAt: string;
-};
 
 export async function loadClosedMatchdays(seasonId: string, limit = 12): Promise<ClosedMatchdayOption[]> {
   if (!hasDatabase()) return [];

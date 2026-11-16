@@ -38,6 +38,7 @@ import {
   type PlayerContext,
 } from '@/lib/repo/game-tx';
 import { parseOptions } from '@/lib/repo/mappers';
+import { loadMatchdayPredictions } from '@/lib/repo/season';
 
 export type ActionResult =
   | { ok: true; redirectTo?: string }
@@ -456,6 +457,25 @@ export async function submitAnswerAction(input: {
     return { ok: true };
   } catch (error) {
     return toResult(error);
+  }
+}
+
+export type MatchdayPredictionsActionResult =
+  | { ok: true; data: NonNullable<Awaited<ReturnType<typeof loadMatchdayPredictions>>> }
+  | { ok: false; message: string };
+
+export async function loadMatchdayPredictionsAction(matchdayId: string): Promise<MatchdayPredictionsActionResult> {
+  if (!matchdayId) return { ok: false, message: 'Не указан игровой день' };
+  if (!hasDatabase()) {
+    return { ok: false, message: 'Просмотр прошлых дней доступен после подключения базы данных.' };
+  }
+  try {
+    const data = await loadMatchdayPredictions(matchdayId);
+    if (!data) return { ok: false, message: 'Игровой день не найден.' };
+    return { ok: true, data };
+  } catch (error) {
+    console.error('loadMatchdayPredictionsAction:', error);
+    return { ok: false, message: 'Не удалось загрузить данные дня.' };
   }
 }
 

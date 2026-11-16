@@ -6,7 +6,7 @@ import { Panel, EmptyState, Notice } from '@/components/ui/Panel';
 import { canAnswer, dayState, type MatchdayView } from '@/lib/game/day-state';
 import { distributionPercent, distributionTotal } from '@/lib/game/distribution';
 import { dayResultDieLabel, formatDayAccuracy } from '@/lib/game/day-results';
-import { submitAnswerAction } from '@/lib/actions/game';
+import { loadMatchdayPredictionsAction, submitAnswerAction } from '@/lib/actions/game';
 import { teamDisplay } from '@/lib/data/team-names';
 import { answerFor, type QuestionRule } from '@/lib/data/questions';
 import type { MatchView, QuestionView, SeasonSnapshot } from '@/lib/types';
@@ -32,18 +32,33 @@ function kickoffMsk(iso: string): string {
 }
 
 export function PredictionsClient({ snapshot }: { snapshot: SeasonSnapshot }) {
-  const { matches, questions, demo } = snapshot;
   const router = useRouter();
   const nowMs = Date.parse(snapshot.serverNow);
-  const phase = dayState(snapshot.matchday, nowMs);
-  const dayClosed = phase === 'closed';
-  /** Отвечать может только участник сезона: зритель и гость смотрят. */
-  const canPlay = snapshot.me?.isPlayer === true;
-  const lastClosed = canPlay ? snapshot.myLastClosedDayResult : null;
+
+  const [view, setView] = useState<'current' | string>('current');
+  const [pastLoading, setPastLoading] = useState(false);
+  const [pastError, setPastError] = useState<string | null>(null);
+  const [pastData, setPastData] = useState<{
+    id: string;
+    matchday: MatchdayView;
+    matches: MatchView[];
+    questions: QuestionView[];
+  } | null>(null);
+
+  const viewingPast = view !== 'current';
+  const activeMatchday = viewingPast ? pastData?.matchday ?? null : snapshot.matchday;
+  const matches = viewingPast ? (pastData?.matches ?? []) : snapshot.matches;
+  const questions = viewingPast ? (pastData?.questions ?? []) : snapshot.questions;
+  const demo = snapshot.demo;
+  const phase = viewingPast ? 'closed' : dayState(snapshot.matchday, nowMs);
+  const dayClosed = phase === 'closed' || viewingPast;
+  /** Отвечать может только участник сезона и только в текущем дне. */
+  const canPlay = !viewingPast && snapshot.me?.isPlayer === true;
+  const lastClosed = !viewingPast && snapshot.me?.isPlayer ? snapshot.myLastClosedDayResult : null;
 
   const [choices, setChoices] = useState<Record<string, string>>(() => {
     const initial: Record<string, string> = {};
-    for (const question of questions) {
+    for (const question of snapshot.questions) {
       if (question.myChoice) initial[question.id] = question.myChoice;
     }
     return initial;
@@ -53,7 +68,19 @@ export function PredictionsClient({ snapshot }: { snapshot: SeasonSnapshot }) {
   const [, startTransition] = useTransition();
   const [league, setLeague] = useState<string | null>(null);
 
-  const hasLiveMatches = matches.some((m) => m.status === 'LIVE' || m.status === 'HT');
+  // При обновлении текущего дня (polling/router.refresh) подхватываем новые выборы/данные.
+  useEffect(() => {
+    if (viewingPast) return;
+    setChoices((state) => {
+      const next = { ...state };
+      for (const question of snapshot.questions) {
+        if (question.myChoice) next[question.id] = question.myChoice;
+      }
+      return next;
+    });
+  }, [snapshot.questions, viewingPast]);
+
+  const hasLiveMatches = !viewingPast && snapshot.matches.some((m) => m.status === 'LIVE' || m.status === 'HT');
 
   useEffect(() => {
     if (!hasLiveMatches || demo) return;
@@ -63,7 +90,46 @@ export function PredictionsClient({ snapshot }: { snapshot: SeasonSnapshot }) {
     return () => clearInterval(id);
   }, [hasLiveMatches, demo, router]);
 
-  const matchesById = useMemo(() => new Map(matches.map((m) => [m.id, m])), [matches]);
+  useEffect(() => {
+    setLeague(null);
+  }, [view]);
+
+  const pastOptions = useMemo(() => {
+    const opts = snapshot.closedMatchdays.filter((d) => d.id !== snapshot.matchday?.id);
+    // если текущий день закрыт, всё равно дадим выбрать его явно как архив из списка
+    if (snapshot.matchday?.status === 'closed' && !opts.find((d) => d.id === snapshot.matchday?.id)) {
+      const cur = snapshot.matchday;
+      opts.unshift({ id: cur.id, gameDate: cur.gameDate, status: cur.status, qTotal: cur.qTotal, closesAt: cur.closesAt });
+    }
+    return opts;
+  }, [snapshot.closedMatchdays, snapshot.matchday]);
+
+  const openPastDay = async (id: string) => {
+    if (id === 'current') {
+      setView('current');
+      setPastError(null);
+      return;
+    }
+    setView(id);
+    if (pastData?.id === id) return;
+    setPastLoading(true);
+    setPastError(null);
+    try {
+      const res = await loadMatchdayPredictionsAction(id);
+      if (!res.ok) {
+        setPastError(res.message);
+        setPastData(null);
+      } else {
+        setPastData({ id, matchday: res.data.matchday, matches: res.data.matches, questions: res.data.questions });
+      }
+    } catch {
+      setPastError('Не удалось загрузить данные дня.');
+      setPastData(null);
+    } finally {
+      setPastLoading(false);
+    }
+  };
+
   const leagues = useMemo(() => {
     const map = new Map<string, string>();
     for (const match of matches) map.set(match.leagueCode, match.leagueTitle);
@@ -72,7 +138,12 @@ export function PredictionsClient({ snapshot }: { snapshot: SeasonSnapshot }) {
 
   const visibleMatches = league ? matches.filter((m) => m.leagueCode === league) : matches;
   const regular = questions.filter((q) => !q.isBonus);
-  const answered = regular.filter((q) => choices[q.id]).length;
+  const answered = viewingPast
+    ? regular.filter((q) => q.myChoice).length
+    : regular.filter((q) => choices[q.id]).length;
+  const correctCount = viewingPast
+    ? regular.filter((q) => q.status === 'resolved' && q.myChoice && q.myChoice === q.correctOption).length
+    : 0;
   const participation = regular.length ? answered / regular.length : 0;
 
   const pick = (questionId: string, key: string) => {
@@ -101,7 +172,13 @@ export function PredictionsClient({ snapshot }: { snapshot: SeasonSnapshot }) {
     });
   };
 
-  const answersChip = !canPlay ? (
+  const effectiveChoices = viewingPast
+    ? Object.fromEntries(questions.flatMap((q) => (q.myChoice ? [[q.id, q.myChoice] as const] : [])))
+    : choices;
+
+  const answersChip = viewingPast ? (
+    <span className="chip chip--muted">архив дня</span>
+  ) : !snapshot.me?.isPlayer ? (
     <span className="chip chip--muted">только просмотр</span>
   ) : dayClosed ? (
     <span className="chip chip--trap">приём закрыт</span>
@@ -115,14 +192,63 @@ export function PredictionsClient({ snapshot }: { snapshot: SeasonSnapshot }) {
     </span>
   );
 
+  const currentLabel = snapshot.matchday ? `Текущий день (${snapshot.matchday.gameDate})` : 'Текущий день';
+  const selectedPast = viewingPast ? pastOptions.find((d) => d.id === view) ?? snapshot.closedMatchdays.find((d) => d.id === view) : null;
+
   return (
     <Panel
       title="Прогнозы"
-      subtitle="Отвечай на вопросы по матчам дня. Ответы проверяются автоматически по итогам игр. Кубик за день получат все: даже без угаданных ответов — деревянный, а за точные прогнозы — лучше."
+      subtitle={viewingPast
+        ? 'Архив: матчи, проценты ответов и твои результаты за выбранный игровой день.'
+        : 'Отвечай на вопросы по матчам дня. Ответы проверяются автоматически по итогам игр. Кубик за день получат все: даже без угаданных ответов — деревянный, а за точные прогнозы — лучше.'}
       size="wide"
       actions={answersChip}
     >
-      {!canPlay && (
+      {(pastOptions.length > 0 || viewingPast) && (
+        <div style={{ marginBottom: 16, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+          <button
+            type="button"
+            className="filter"
+            data-active={!viewingPast}
+            onClick={() => void openPastDay('current')}
+          >
+            {currentLabel}
+          </button>
+          <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+            <span className="card__meta">Прошлый день:</span>
+            <select
+              value={viewingPast ? view : ''}
+              onChange={(e) => { const id = e.target.value; if (id) void openPastDay(id); }}
+              disabled={pastLoading}
+            >
+              <option value="">{viewingPast ? selectedPast?.gameDate ?? 'выбран' : 'выбрать…'}</option>
+              {pastOptions.map((d) => (
+                <option key={d.id} value={d.id}>
+                  {d.gameDate}{d.qTotal != null ? ` · ${d.qTotal} вопр.` : ''}
+                </option>
+              ))}
+            </select>
+          </label>
+          {pastLoading && <span className="chip chip--info">загружаем…</span>}
+        </div>
+      )}
+
+      {viewingPast && pastError && (
+        <div style={{ marginBottom: 16 }}>
+          <Notice>{pastError}</Notice>
+        </div>
+      )}
+
+      {viewingPast && !pastError && pastData && (
+        <div style={{ marginBottom: 16 }}>
+          <Notice tone="info">
+            Просмотр прошедшего дня ({pastData.matchday.gameDate}): приём ответов закрыт. Показаны проценты ответов и итог (верно/мимо) по твоим прогнозам.
+            {regular.length > 0 ? ` Угадано ${correctCount} из ${regular.length} (${formatDayAccuracy(correctCount, regular.length)}).` : ''}
+          </Notice>
+        </div>
+      )}
+
+      {!viewingPast && !snapshot.me?.isPlayer && (
         <div style={{ marginBottom: 16 }}>
           <Notice>
             {snapshot.me
@@ -132,46 +258,41 @@ export function PredictionsClient({ snapshot }: { snapshot: SeasonSnapshot }) {
         </div>
       )}
 
-      {saveError && (
+      {!viewingPast && saveError && (
         <div style={{ marginBottom: 16 }}>
           <Notice>{saveError}</Notice>
         </div>
       )}
 
-      {dayClosed && (
+      {!viewingPast && dayClosed && snapshot.matchday?.status === 'closed' && (
         <div style={{ marginBottom: 16 }}>
           <Notice>
-            Приём ответов закрыт: игровой день завершён. Ответы зафиксированы и уходят на подсчёт — менять их уже
-            нельзя.
+            Приём ответов закрыт: игровой день завершён. Ответы зафиксированы и уходят на подсчёт — менять их уже нельзя.
           </Notice>
         </div>
       )}
 
-      {lastClosed && (
+      {!viewingPast && lastClosed && (
         <div style={{ marginBottom: 16 }}>
           <Notice tone="info">
-            Итоги прошедшего дня ({lastClosed.gameDate}): угадано {lastClosed.correct} из {lastClosed.total} (
-            {formatDayAccuracy(lastClosed.correct, lastClosed.total)}), кубик за день —{' '}
-            {dayResultDieLabel(lastClosed.dieTier) ?? 'не выдан'}
-            {lastClosed.bonusHit ? ', бонус за точный счёт получен.' : '.'}
+            Итоги прошедшего дня ({lastClosed.gameDate}): угадано {lastClosed.correct} из {lastClosed.total} ({formatDayAccuracy(lastClosed.correct, lastClosed.total)}), кубик за день — {dayResultDieLabel(lastClosed.dieTier) ?? 'не выдан'}{lastClosed.bonusHit ? ', бонус за точный счёт получен.' : '.'}
+            {pastOptions.length > 0 ? ' Ниже можно открыть прошлый день и посмотреть проценты и свои ответы.' : ''}
           </Notice>
         </div>
       )}
 
-      {!dayClosed && phase === 'upcoming' && (
+      {!viewingPast && !dayClosed && phase === 'upcoming' && (
         <div style={{ marginBottom: 16 }}>
           <Notice tone="info">
-            Игровой день ещё не открыт: ответы принимаются до старта каждого матча — вопрос закрывается в момент
-            начала игры.
+            Игровой день ещё не открыт: ответы принимаются до старта каждого матча — вопрос закрывается в момент начала игры.
           </Notice>
         </div>
       )}
 
-      {demo && (
+      {demo && !viewingPast && (
         <div style={{ marginBottom: 16 }}>
           <Notice tone="info">
-            Демо-режим: ответы сохраняются на время сессии в браузере. После подключения базы они уйдут на сервер и
-            закроются со стартом матча.
+            Демо-режим: ответы сохраняются на время сессии в браузере. После подключения базы они уйдут на сервер и закроются со стартом матча.
           </Notice>
         </div>
       )}
@@ -182,65 +303,73 @@ export function PredictionsClient({ snapshot }: { snapshot: SeasonSnapshot }) {
         </div>
       )}
 
-      <div className="stats" style={{ marginBottom: 18 }}>
-        <div className="stat">
-          <div className="stat__label">Твой прогресс</div>
-          <div className="stat__value stat__value--lime">{Math.round(participation * 100)}%</div>
-          <div className="card__meta">отвечено {answered} из {regular.length} основных</div>
-        </div>
-        <div className="stat">
-          <div className="stat__label">Основных вопросов</div>
-          <div className="stat__value">{regular.length}</div>
-        </div>
-        <div className="stat">
-          <div className="stat__label">Бонусных вопросов</div>
-          <div className="stat__value">{questions.filter((q) => q.isBonus).length}</div>
-        </div>
-        <div className="stat">
-          <div className="stat__label">Кубик за день</div>
-          <div className="stat__value" style={{ fontSize: 15 }}>
-            {!canPlay ? 'недоступен' : dayClosed ? 'день завершён' : 'деревянный или лучше'}
-          </div>
-          {canPlay && !dayClosed && (
-            <div className="card__meta">кубик дадут всем участникам, даже без угаданных ответов</div>
-          )}
-        </div>
-      </div>
-
-      <div className="filters" role="group" aria-label="Фильтр по турниру">
-        <button type="button" className="filter" data-active={league === null} onClick={() => setLeague(null)}>
-          Все матчи
-        </button>
-        {leagues.map(([code, title]) => (
-          <button
-            key={code}
-            type="button"
-            className="filter"
-            data-active={league === code}
-            onClick={() => setLeague(code)}
-          >
-            {title}
-          </button>
-        ))}
-      </div>
-
-      {visibleMatches.length === 0 ? (
-        <EmptyState title="Вопросов нет" text="Как только день будет собран, здесь появятся матчи и вопросы к ним." />
+      {viewingPast && pastLoading ? (
+        <EmptyState title="Загрузка…" text="Подтягиваем матчи, статистику и проценты ответов за выбранный день." />
+      ) : viewingPast && (!pastData || pastError) ? (
+        !pastError ? <EmptyState title="Выберите день" text="Выберите прошлый игровой день, чтобы посмотреть статистику и результаты." /> : null
       ) : (
-        <div className="predictions-matches">
-          {visibleMatches.map((match) => (
-            <MatchQuestions
-              key={match.id}
-              match={match}
-              questions={questions.filter((q) => q.matchId === match.id)}
-              choices={choices}
-              onPick={pick}
-              matchday={snapshot.matchday}
-              nowMs={nowMs}
-              canPlay={canPlay}
-            />
-          ))}
-        </div>
+        <>
+          <div className="stats" style={{ marginBottom: 18 }}>
+            <div className="stat">
+              <div className="stat__label">{viewingPast ? 'Твой результат' : 'Твой прогресс'}</div>
+              <div className="stat__value stat__value--lime">{viewingPast ? correctCount : Math.round(participation * 100) + '%'}</div>
+              <div className="card__meta">{viewingPast ? `угадано ${correctCount} из ${regular.length} (${formatDayAccuracy(correctCount, regular.length)})` : `отвечено ${answered} из ${regular.length} основных`}</div>
+            </div>
+            <div className="stat">
+              <div className="stat__label">Основных вопросов</div>
+              <div className="stat__value">{regular.length}</div>
+            </div>
+            <div className="stat">
+              <div className="stat__label">Бонусных вопросов</div>
+              <div className="stat__value">{questions.filter((q) => q.isBonus).length}</div>
+            </div>
+            <div className="stat">
+              <div className="stat__label">{viewingPast ? 'Ответов дано' : 'Кубик за день'}</div>
+              <div className="stat__value" style={{ fontSize: viewingPast ? 28 : 15 }}>
+                {viewingPast ? answered : (!canPlay ? 'недоступен' : dayClosed ? 'день завершён' : 'деревянный или лучше')}
+              </div>
+              {!viewingPast && canPlay && !dayClosed && (
+                <div className="card__meta">кубик дадут всем участникам, даже без угаданных ответов</div>
+              )}
+            </div>
+          </div>
+
+          <div className="filters" role="group" aria-label="Фильтр по турниру">
+            <button type="button" className="filter" data-active={league === null} onClick={() => setLeague(null)}>
+              Все матчи
+            </button>
+            {leagues.map(([code, title]) => (
+              <button
+                key={code}
+                type="button"
+                className="filter"
+                data-active={league === code}
+                onClick={() => setLeague(code)}
+              >
+                {title}
+              </button>
+            ))}
+          </div>
+
+          {visibleMatches.length === 0 ? (
+            <EmptyState title="Вопросов нет" text={viewingPast ? 'В этом дне нет матчей для отображения.' : 'Как только день будет собран, здесь появятся матчи и вопросы к ним.'} />
+          ) : (
+            <div className="predictions-matches">
+              {visibleMatches.map((match) => (
+                <MatchQuestions
+                  key={match.id}
+                  match={match}
+                  questions={questions.filter((q) => q.matchId === match.id)}
+                  choices={effectiveChoices}
+                  onPick={pick}
+                  matchday={activeMatchday}
+                  nowMs={nowMs}
+                  canPlay={canPlay}
+                />
+              ))}
+            </div>
+          )}
+        </>
       )}
     </Panel>
   );

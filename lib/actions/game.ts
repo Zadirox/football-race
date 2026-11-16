@@ -40,8 +40,16 @@ import {
 import { parseOptions } from '@/lib/repo/mappers';
 import { loadMatchdayPredictions } from '@/lib/repo/season';
 
+export type RollResult = {
+  base: number;
+  value: number;
+  tier: DiceTier;
+  from: number;
+  needsTactics: boolean;
+};
+
 export type ActionResult =
-  | { ok: true; redirectTo?: string }
+  | { ok: true; redirectTo?: string; roll?: RollResult }
   | { ok: false; message: string; code?: string };
 
 const TIER_LABEL: Record<DiceTier, string> = {
@@ -109,7 +117,7 @@ export async function submitRollAction(input: {
     const key =
       input.idempotencyKey && UUID_RE.test(input.idempotencyKey) ? input.idempotencyKey : crypto.randomUUID();
 
-    await db().begin(async (tx) => {
+    const rollResult = await db().begin(async (tx): Promise<RollResult | null> => {
       const [matchday] = await tx<{ id: string; season_id: string }[]>`
         select id, season_id from matchdays where id = ${input.matchdayId}
       `;
@@ -133,7 +141,7 @@ export async function submitRollAction(input: {
       const [repeated] = await tx<{ id: string }[]>`
         select id from rolls where idempotency_key = ${key} limit 1
       `;
-      if (repeated) return;
+      if (repeated) return null;
 
       const [die] = await tx<{ id: string }[]>`
         select id
@@ -175,12 +183,20 @@ export async function submitRollAction(input: {
         matchday.season_id,
         viewer.profileId,
         'roll',
-        `${ctx.nickname} бросает ${TIER_LABEL[tier]} кубик: ${plan.value}`,
+        `${ctx.nickname} бросил ${TIER_LABEL[tier]} кубик: ${plan.value}`,
       );
 
+      const info: RollResult = {
+        base: plan.base,
+        value: plan.value,
+        tier,
+        from: ctx.position,
+        needsTactics: plan.needsTactics,
+      };
+
       if (plan.needsTactics) {
-        // Тактика решается на этом же броске: позицию не трогаем,
-        // сохраняем только списанные Трибуны/Газон.
+        // Тактику нужно решать на стороне клиента: сохраняем в транзакции,
+        // показываем выбор бросок/вперёд-назад.
         await persistState(tx, ctx, plan.state);
         await tx`
           insert into pending_actions (season_id, profile_id, kind, payload)
@@ -191,17 +207,17 @@ export async function submitRollAction(input: {
             ${tx.json({ rollId: roll.id, value: plan.value, base: plan.base, tier, from: ctx.position })}
           )
         `;
-        return;
+        return info;
       }
 
       await moveAndResolve(tx, ctx, plan.state, plan.value, roll.id);
+      return info;
     });
 
     revalidateGame();
-    return { ok: true };
+    return rollResult ? { ok: true, roll: rollResult } : { ok: true };
   } catch (error) {
-    // Здесь единственный unique-конфликт — повторный ключ идемпотентности:
-    // бросок уже учтён, второй раз двигать нельзя, но и ошибку показывать не надо.
+    // Защита от повторного unique-конфликта - идемпотентный повтор: бросок уже принят.
     if ((error as { code?: string } | null)?.code === '23505') {
       return { ok: true };
     }

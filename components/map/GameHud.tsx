@@ -425,8 +425,31 @@ export function GameHud({ snapshot }: { snapshot: SeasonSnapshot }) {
       }
       rollKeyRef.current = newRollKey();
       setDice((prev) => ({ ...prev, [tier]: Math.max(0, prev[tier] - 1) }));
-      // В серверном режиме итог броска приходит со снимком после refresh —
-      // не фиксируем случайную грань анимации как "результат".
+
+      // Показываем выпавшее число перед обновлением данных с сервера.
+      if (result.roll) {
+        settleTumble(result.roll.base);
+        setLastRoll({
+          base: result.roll.base,
+          value: result.roll.value,
+          tier: result.roll.tier,
+          from: result.roll.from,
+          to: result.roll.from,
+          eventText: result.roll.needsTactics
+            ? 'Тактическая схема: выбери, оставить бросок или изменить его на ±1.'
+            : 'Бросок принят. Обновляем ход...',
+          awaiting: result.roll.needsTactics ? 'tactics' : null,
+        });
+        clearTumbleTimers();
+        setTumble({ tier: result.roll.tier, face: result.roll.base, settled: true });
+        window.setTimeout(() => {
+          setTumble(null);
+          setBusy(false);
+          router.refresh();
+        }, 1400);
+        return;
+      }
+
       clearTumbleTimers();
       setTumble(null);
       router.refresh();

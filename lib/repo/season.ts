@@ -103,14 +103,21 @@ export const loadSeasonSnapshot = cache(async (): Promise<SeasonSnapshot> => {
   const hit = snapshotCache.get(key);
   if (hit && now - hit.at < SNAPSHOT_TTL_MS) return hit.value;
 
-  const loadPromise = loadSeasonSnapshotUncachedForViewer(viewer).catch((err) => {
-    if (hit) {
-      console.error('Не удалось обновить снапшот, отдаём устаревший кэш:', err);
-      return hit.value;
-    }
-    snapshotCache.delete(key);
-    throw err;
-  });
+  const loadPromise = loadSeasonSnapshotUncachedForViewer(viewer)
+    .then((value) => {
+      snapshotCache.set(key, { at: Date.now(), value: Promise.resolve(value) });
+      return value;
+    })
+    .catch((err) => {
+      if (hit) {
+        console.error('Не удалось обновить снапшот, отдаём устаревший кэш:', err);
+        // оставляем старый кэш, не затираем его неудачной попыткой
+        return hit.value;
+      }
+      snapshotCache.delete(key);
+      throw err;
+    });
+  // храним in-flight, чтобы дедуплицировать параллельные запросы
   snapshotCache.set(key, { at: now, value: loadPromise });
   return loadPromise;
 });
@@ -307,7 +314,7 @@ async function loadFromDatabase(viewer: SeasonViewer): Promise<SeasonSnapshot> {
               where a2.question_id = q.id
               group by a2.choice
             ) t
-          ) dist on true
+          ) dist on q.status <> 'open'
           where q.matchday_id = ${matchday.id}
           order by q.locks_at, q.is_bonus, q.id
         `,

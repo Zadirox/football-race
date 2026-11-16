@@ -193,8 +193,47 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
         requestsUsed += unl.requestsUsed;
         if (httpStatus === null) httpStatus = unl.httpStatus;
 
+        // Если в БД уже есть статистика для этих матчей (любой провайдер по тому же external_id
+        // или по совпадению команды/времени в окне), не тратим бюджет на повторную детализацию.
+        try {
+          const extIds = unl.matches.map((m) => m.externalId);
+          const existing = extIds.length
+            ? await sql<{ provider: string; external_id: string; home_name: string; away_name: string; kickoff_utc: Date; stats: any }[]>`
+                select provider, external_id, home_name, away_name, kickoff_utc,
+                  jsonb_build_object(
+                    'cornersHome', corners_home, 'cornersAway', corners_away,
+                    'yellowCardsHome', yellow_cards_home, 'yellowCardsAway', yellow_cards_away,
+                    'redCardsHome', red_cards_home, 'redCardsAway', red_cards_away,
+                    'possessionHome', possession_home, 'possessionAway', possession_away,
+                    'shotsOnTargetHome', shots_on_target_home, 'shotsOnTargetAway', shots_on_target_away
+                  ) as stats
+                from matches
+                where (provider = 'sstats' and external_id = any(${sql(extIds)}))
+                   or (kickoff_utc >= (${window.from}::date - interval '1 day') and kickoff_utc <= (${window.to}::date + interval '2 day'))
+              `
+            : [];
+          const hasAny = (s: any) => s && Object.values(s).some((v) => v !== null && v !== undefined);
+          const norm = (s: string) => s.toLowerCase().replace(/ё/g, 'е').replace(/[^a-zа-я0-9]+/gi, ' ').trim();
+          for (let i = 0; i < unl.matches.length; i++) {
+            const m = unl.matches[i]!;
+            const byId = existing.find((e) => e.provider === 'sstats' && e.external_id === m.externalId);
+            const byMatch = existing.find((e) => {
+              const dt = Math.abs(new Date(e.kickoff_utc).getTime() - m.kickoffUtc.getTime());
+              if (dt > 6 * 60 * 60 * 1000) return false;
+              const hn = norm(e.home_name), an = norm(e.away_name), ih = norm(m.homeName), ia = norm(m.awayName);
+              return (hn === ih && an === ia) || ((hn.includes(ih) || ih.includes(hn)) && (an.includes(ia) || ia.includes(an)));
+            });
+            const found = (byId && hasAny(byId.stats)) ? byId : (byMatch && hasAny(byMatch.stats)) ? byMatch : null;
+            if (found) {
+              unl.matches[i] = { ...m, stats: { ...m.stats, ...(found.stats as any) } };
+            }
+          }
+        } catch {
+          // не критично — просто попробуем обогатить как обычно
+        }
+
         const enrichable = unl.matches.filter(
-          (m) => m.status !== 'NS' && m.status !== 'PST' && m.status !== 'CANC',
+          (m) => m.status !== 'NS' && m.status !== 'PST' && m.status !== 'CANC' && !Object.values(m.stats).some((v) => v !== null),
         ).length;
         const enriched = await enrichSstatsMatchesWithStats({
           matches: unl.matches,

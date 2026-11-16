@@ -106,6 +106,10 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
   const startedAt = Date.now();
   const budgetMs = Math.max(10_000, Math.min(options.budgetMs ?? 80_000, 120_000));
   const deadlineMs = startedAt + budgetMs;
+  // Резерв под запись в БД/advance, чтобы sync не тратил весь бюджет на fetch/enrich
+  // и не выходил до сохранения обновлений.
+  const dbReserveMs = 7_000;
+  const processingDeadlineMs = deadlineMs - dbReserveMs;
   const env = serverEnv();
   const window = options.window ?? syncWindow(now);
 
@@ -167,9 +171,9 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
     if (!env.sstatsEnabled) {
       errors.push('Лига наций: источник sstats отключён (SSTATS_ENABLED=false)');
     } else {
-      const remainingMs = deadlineMs - Date.now();
-      if (remainingMs > 8_000) {
-        const listTimeoutMs = Math.min(12_000, Math.max(4_000, remainingMs - 4_000));
+      const remainingMs = processingDeadlineMs - Date.now();
+      if (remainingMs > 6_000) {
+        const listTimeoutMs = Math.min(10_000, Math.max(3_000, remainingMs - 2_000));
         const unl = await fetchSstatsUnlFixtures({
           from: window.from,
           to: window.to,
@@ -225,9 +229,9 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
         const enriched = await enrichSstatsMatchesWithStats({
           matches: unl.matches,
           apiKey: env.sstatsApiKey,
-          concurrency: 3,
-          maxDetails: Math.max(8, enrichable),
-          deadlineMs,
+          concurrency: 2,
+          maxDetails: Math.min(8, Math.max(2, enrichable)),
+          deadlineMs: processingDeadlineMs,
         });
         requestsUsed += enriched.requestsUsed;
         groups.push(enriched.matches);
@@ -240,7 +244,7 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
     errors.push(`Лига наций: ${message}`);
   }
 
-  if (hasFootballData && Date.now() < deadlineMs - 5_000) {
+  if (hasFootballData && Date.now() < processingDeadlineMs - 4_000) {
     try {
       const fixtures = await fetchFixtures({ token: env.footballDataToken!, from: window.from, to: window.to });
       fetchedTotal += fixtures.matches.length;
@@ -357,7 +361,7 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
       s.toLowerCase().replace(/ё/g, 'е').replace(/[^a-zа-я0-9]+/gi, ' ').trim();
 
     for (const match of matchesToProcess) {
-      if (Date.now() >= deadlineMs - 5_000) {
+      if (Date.now() >= deadlineMs - 2_000) {
         partial = true;
         errors.push('Время прогона почти вышло: сохранён частичный прогресс, остаток будет обработан в следующем запуске');
         break;

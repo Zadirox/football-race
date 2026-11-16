@@ -68,10 +68,22 @@ export function invalidateSeasonSnapshotCache(profileId?: string | null): void {
 }
 const snapshotCache = new Map<string, { at: number; value: Promise<SeasonSnapshot> }>();
 
+function withHardTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  return Promise.race([
+    promise.finally(() => {
+      if (timer) clearTimeout(timer);
+    }),
+    new Promise<T>((_, reject) => {
+      timer = setTimeout(() => reject(new Error('season_snapshot_timeout')), ms);
+    }),
+  ]);
+}
+
 async function loadSeasonSnapshotUncachedForViewer(viewer: SeasonViewer): Promise<SeasonSnapshot> {
   if (!hasDatabase()) return buildDemoSnapshot();
   try {
-    return await loadFromDatabase(viewer);
+    return await withHardTimeout(loadFromDatabase(viewer), 12000);
   } catch (error) {
     console.error('Не удалось собрать снимок сезона из БД:', error);
     return buildDemoSnapshot();

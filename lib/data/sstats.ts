@@ -310,6 +310,7 @@ export async function fetchSstatsGameDetail(input: {
   id: string | number;
   apiKey?: string | null;
   fetchImpl?: typeof fetch;
+  timeoutMs?: number;
 }): Promise<{ stats: MatchStats; requestsUsed: number }> {
   const url = new URL(`${BASE_URL}/games/${encodeURIComponent(String(input.id))}`);
   if (input.apiKey) url.searchParams.set('apikey', input.apiKey);
@@ -320,10 +321,11 @@ export async function fetchSstatsGameDetail(input: {
     headers['apikey'] = input.apiKey;
   }
 
+  const timeoutMs = Math.max(1_000, input.timeoutMs ?? TIMEOUT_MS);
   const response = await doFetch(url, {
     headers,
     cache: 'no-store',
-    signal: AbortSignal.timeout(TIMEOUT_MS),
+    signal: AbortSignal.timeout(timeoutMs),
   });
   if (!response.ok) {
     throw new AppError('SYNC_PROVIDER_DOWN', `Детали матча вернули ${response.status}`);
@@ -337,7 +339,7 @@ export async function enrichSstatsMatchesWithStats(input: {
   apiKey?: string | null;
   fetchImpl?: typeof fetch;
   concurrency?: number;
-  /** Stop fetching details after this many matches (prioritised: live/ht, then recent). */
+  /** Stop fetching details after this many matches (prioritised: live/ht, then recent FT needing stats). */
   maxDetails?: number;
   /** Abort enrichment when past this timestamp (ms). */
   deadlineMs?: number;
@@ -347,6 +349,11 @@ export async function enrichSstatsMatchesWithStats(input: {
   const results: NormalizedMatch[] = new Array(input.matches.length);
   let requestsUsed = 0;
 
+  const hasAnyStat = (m: NormalizedMatch): boolean => {
+    const s = m.stats;
+    return Object.values(s).some((v) => v !== null);
+  };
+
   const toEnrich: Array<{ index: number; match: NormalizedMatch; priority: number }> = [];
   for (let i = 0; i < input.matches.length; i += 1) {
     const match = input.matches[i]!;
@@ -354,8 +361,13 @@ export async function enrichSstatsMatchesWithStats(input: {
       results[i] = match;
       continue;
     }
-    // Для ещё не начавшихся матчей статистики обычно нет — пропускаем лишние запросы.
+    // Для ещё не начавшихся/отменённых матчей статистики обычно нет — пропускаем лишние запросы.
     if (match.status === 'NS' || match.status === 'PST' || match.status === 'CANC') {
+      results[i] = match;
+      continue;
+    }
+    // Для завершённых матчей повторно тянем детали, пока нет статистики (нужно для резолва предиктов).
+    if (match.status === 'FT' && hasAnyStat(match)) {
       results[i] = match;
       continue;
     }
@@ -363,7 +375,7 @@ export async function enrichSstatsMatchesWithStats(input: {
     toEnrich.push({ index: i, match, priority: livePriority });
   }
 
-  // Prioritise live matches, then most recent kickoffs (stats more likely relevant/fresh).
+  // Приоритет: live/ht, затем более свежие матчи.
   toEnrich.sort((a, b) => a.priority - b.priority || b.match.kickoffUtc.getTime() - a.match.kickoffUtc.getTime());
   const selected = new Set(toEnrich.slice(0, maxDetails).map((x) => x.index));
   for (const item of toEnrich) {
@@ -372,18 +384,27 @@ export async function enrichSstatsMatchesWithStats(input: {
 
   const queue = toEnrich.filter((x) => selected.has(x.index));
   for (let i = 0; i < queue.length; i += concurrency) {
-    if (input.deadlineMs && Date.now() >= input.deadlineMs) {
-      for (let j = i; j < queue.length; j += 1) results[queue[j]!.index] = queue[j]!.match;
-      break;
+    if (input.deadlineMs) {
+      const remainingMs = input.deadlineMs - Date.now();
+      if (remainingMs <= 1_000) {
+        for (let j = i; j < queue.length; j += 1) results[queue[j]!.index] = queue[j]!.match;
+        break;
+      }
     }
     const chunk = queue.slice(i, i + concurrency);
     const chunkResults = await Promise.all(
       chunk.map(async ({ index, match }) => {
         try {
+          const remainingMs = input.deadlineMs ? input.deadlineMs - Date.now() : TIMEOUT_MS;
+          if (input.deadlineMs && remainingMs <= 800) {
+            return { index, match, requestsUsed: 0 };
+          }
+          const timeoutMs = input.deadlineMs ? Math.min(TIMEOUT_MS, Math.max(1_000, remainingMs - 200)) : TIMEOUT_MS;
           const detail = await fetchSstatsGameDetail({
             id: match.externalId,
             apiKey: input.apiKey,
             fetchImpl: input.fetchImpl,
+            timeoutMs,
           });
           return { index, match: { ...match, stats: detail.stats }, requestsUsed: detail.requestsUsed };
         } catch {

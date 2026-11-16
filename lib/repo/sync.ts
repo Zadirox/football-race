@@ -182,21 +182,25 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
     } else {
       const remainingMs = deadlineMs - Date.now();
       if (remainingMs > 8_000) {
+        const listTimeoutMs = Math.min(12_000, Math.max(4_000, remainingMs - 4_000));
         const unl = await fetchSstatsUnlFixtures({
           from: window.from,
           to: window.to,
           apiKey: env.sstatsApiKey,
-          timeoutMs: Math.min(10_000, remainingMs - 3_000),
+          timeoutMs: listTimeoutMs,
         });
         fetchedTotal += unl.fetched;
         requestsUsed += unl.requestsUsed;
         if (httpStatus === null) httpStatus = unl.httpStatus;
 
+        const enrichable = unl.matches.filter(
+          (m) => m.status !== 'NS' && m.status !== 'PST' && m.status !== 'CANC',
+        ).length;
         const enriched = await enrichSstatsMatchesWithStats({
           matches: unl.matches,
           apiKey: env.sstatsApiKey,
-          concurrency: 2,
-          maxDetails: 8,
+          concurrency: 3,
+          maxDetails: Math.max(8, enrichable),
           deadlineMs,
         });
         requestsUsed += enriched.requestsUsed;
@@ -275,9 +279,11 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
   const maxMatchesPerRun = 50;
   const finalStatuses = new Set(['FT', 'PST', 'CANC', 'ABD']);
   const prioritized = [...normalized].sort((a, b) => {
-    const aLive = a.status === 'LIVE' || a.status === 'HT' ? 0 : finalStatuses.has(a.status) ? 2 : 1;
-    const bLive = b.status === 'LIVE' || b.status === 'HT' ? 0 : finalStatuses.has(b.status) ? 2 : 1;
-    if (aLive !== bLive) return aLive - bLive;
+    const aScore = a.status === 'LIVE' || a.status === 'HT' ? 0 : finalStatuses.has(a.status) ? 1 : 2;
+    const bScore = b.status === 'LIVE' || b.status === 'HT' ? 0 : finalStatuses.has(b.status) ? 1 : 2;
+    if (aScore !== bScore) return aScore - bScore;
+    // Для live/ht — более ранние первыми; для завершённых — более свежие первыми, чтобы быстрее обновить итоги/статы.
+    if (aScore === 1) return b.kickoffUtc.getTime() - a.kickoffUtc.getTime();
     return a.kickoffUtc.getTime() - b.kickoffUtc.getTime();
   });
   const matchesToProcess = prioritized.slice(0, maxMatchesPerRun);
@@ -436,17 +442,58 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
   });
 
   if (matchdayIds.size > 0) {
+    const affectedMatchdayIds = [...new Set(matchdayIds.values())];
     try {
-      await awardAutoDefBonusesForMatchdays([...new Set(matchdayIds.values())], sql);
+      await awardAutoDefBonusesForMatchdays(affectedMatchdayIds, sql);
     } catch (error) {
       errors.push(`auto DEF bonuses: ${error instanceof Error ? error.message : String(error)}`);
+    }
+
+    // Если день уже был резолвнут без статистики, дозаполняем correct_option/is_correct
+    // для вопросов, которые теперь можно вычислить по обновлённым данным матча.
+    try {
+      await sql`
+        with computed as (
+          select q.id, public.fn_question_answer(q.rule, m) as answer
+          from questions q
+          join matches m on m.id = q.match_id
+          where q.matchday_id in ${sql(affectedMatchdayIds)}
+            and m.status = 'FT'
+            and q.status = 'resolved'
+            and q.correct_option is null
+        ), resolved_q as (
+          update questions q
+             set correct_option = c.answer
+            from computed c
+           where q.id = c.id
+             and c.answer is not null
+          returning q.id, q.correct_option
+        )
+        update answers a
+           set is_correct = (a.choice = rq.correct_option)
+          from resolved_q rq
+         where a.question_id = rq.id
+      `;
+    } catch (error) {
+      errors.push(`regrade: ${error instanceof Error ? error.message : String(error)}`);
+    }
+
+    // После обновления матчей/статистики двигаем дни вперёд и резолвим готовые,
+    // чтобы предикты получили correct_option/is_correct и очки/кубики.
+    try {
+      const advanced = await advanceMatchdays(now);
+      if (!advanced.ok && advanced.errors.length > 0) {
+        errors.push(`advance: ${advanced.errors.join('; ').slice(0, 300)}`);
+      }
+    } catch (error) {
+      errors.push(`advance: ${error instanceof Error ? error.message : String(error)}`);
     }
   }
 
   const errorText = errors.length ? errors.join('; ').slice(0, 500) : null;
   await logSyncRun({
     endpoint: 'sync-fixtures',
-    status: partial ? 'ok' : 'ok',
+    status: 'ok',
     httpStatus,
     durationMs: Date.now() - startedAt,
     requestsUsed,

@@ -19,6 +19,20 @@ export type Viewer = {
   role: Role;
 };
 
+async function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T | null> {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  try {
+    return await Promise.race([
+      promise,
+      new Promise<null>((resolve) => {
+        timer = setTimeout(() => resolve(null), ms);
+      }),
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 export async function getViewer(): Promise<Viewer | null> {
   const env = serverEnv();
   if (!env.supabaseUrl || !env.supabaseAnonKey) return null;
@@ -41,21 +55,26 @@ export async function getViewer(): Promise<Viewer | null> {
       },
     });
 
-    const { data, error } = await supabase.auth.getUser();
-    if (error || !data.user) return null;
+    const authResult = await withTimeout(supabase.auth.getUser(), 5000);
+    if (!authResult || authResult.error || !authResult.data.user) return null;
 
-    const { data: profile } = await supabase
-      .from('profiles')
-      .select('nickname, role')
-      .eq('id', data.user.id)
-      .maybeSingle();
-
-    if (!profile) return null;
+    const profileResult = await withTimeout(
+      Promise.resolve(
+        supabase
+          .from('profiles')
+          .select('nickname, role')
+          .eq('id', authResult.data.user.id)
+          .maybeSingle(),
+      ),
+      5000,
+    );
+    const profile = profileResult?.data as { nickname: string; role: Role } | null | undefined;
+    if (!profileResult || profileResult.error || !profile) return null;
 
     return {
-      profileId: data.user.id,
-      nickname: profile.nickname as string,
-      role: profile.role as Role,
+      profileId: authResult.data.user.id,
+      nickname: profile.nickname,
+      role: profile.role,
     };
   } catch {
     return null;

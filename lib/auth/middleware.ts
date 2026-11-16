@@ -33,7 +33,14 @@ export async function updateSession(request: NextRequest): Promise<NextResponse>
 
   // Обновляет токен, если он истёк; ошибку намеренно не пробрасываем,
   // иначе любая проблема с сетью ломала бы весь сайт.
-  await supabase.auth.getUser();
+  try {
+    await Promise.race([
+      supabase.auth.getUser(),
+      new Promise<void>((resolve) => setTimeout(resolve, 4000)),
+    ]);
+  } catch {
+    // продолжаем без обновления сессии
+  }
 
   return response;
 }

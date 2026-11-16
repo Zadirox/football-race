@@ -20,13 +20,15 @@ export function db(): Db {
 
   if (!client) {
     client = postgres(url, {
-      max: 5,
+      // В serverless держим мало соединений, чтобы не упираться в лимиты pooler/Supabase.
+      max: 2,
       prepare: false,
-      idle_timeout: 20,
+      idle_timeout: 10,
+      max_lifetime: 60 * 5,
       connect_timeout: 10,
       // Не даём запросам зависать бесконечно (иначе страницы/функции упираются в лимит платформы).
       connection: {
-        statement_timeout: 30_000,
+        statement_timeout: 30000,
       },
       onnotice: () => {},
     });

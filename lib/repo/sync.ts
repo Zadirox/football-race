@@ -308,6 +308,9 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
       return exists;
     };
 
+    const normalizeName = (s: string): string =>
+      s.toLowerCase().replace(/ё/g, 'е').replace(/[^a-zа-я0-9]+/gi, ' ').trim();
+
     for (const match of matchesToProcess) {
       if (Date.now() >= deadlineMs - 5_000) {
         partial = true;
@@ -403,17 +406,25 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
 
       // Если этот же матч уже привязан к дню под другой записью (другой провайдер/id),
       // обновляем каноническую запись, чтобы вопросы/предикты получили актуальные счёт и статистику.
-      const [canonical] = await tx<{ id: string }[]>`
-        select m.id
+      const linked = await tx<{ id: string; provider: string; external_id: string; home_name: string; away_name: string; kickoff_utc: Date }[]>`
+        select m.id, m.provider, m.external_id, m.home_name, m.away_name, m.kickoff_utc
         from matchday_matches mm
         join matches m on m.id = mm.match_id
         where mm.matchday_id = ${matchdayId}
-          and lower(m.home_name) = lower(${match.homeName})
-          and lower(m.away_name) = lower(${match.awayName})
-          and abs(extract(epoch from (m.kickoff_utc - ${match.kickoffUtc}::timestamptz))) <= 21600
-        order by case when m.provider = ${match.provider} and m.external_id = ${match.externalId} then 0 else 1 end, m.id
-        limit 1
       `;
+
+      const targetTime = match.kickoffUtc.getTime();
+      const inName = normalizeName(match.homeName);
+      const outName = normalizeName(match.awayName);
+      const canonical = linked.find((m) => m.provider === match.provider && m.external_id === match.externalId)
+        ?? linked.find((m) => {
+          const dt = Math.abs(new Date(m.kickoff_utc).getTime() - targetTime);
+          if (dt > 6 * 60 * 60 * 1000) return false;
+          const hn = normalizeName(m.home_name);
+          const an = normalizeName(m.away_name);
+          return (hn === inName && an === outName) || (hn.includes(inName) || inName.includes(hn)) && (an.includes(outName) || outName.includes(an));
+        })
+        ?? null;
 
       const targetMatchId = canonical?.id ?? saved.id;
 

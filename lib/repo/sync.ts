@@ -375,9 +375,9 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
           league_code = excluded.league_code,
           league_title = excluded.league_title,
           home_name = excluded.home_name,
-          home_logo = excluded.home_logo,
+          home_logo = coalesce(excluded.home_logo, matches.home_logo),
           away_name = excluded.away_name,
-          away_logo = excluded.away_logo,
+          away_logo = coalesce(excluded.away_logo, matches.away_logo),
           kickoff_utc = excluded.kickoff_utc,
           status = excluded.status,
           minute = excluded.minute,
@@ -385,31 +385,79 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
           away_score = excluded.away_score,
           ht_home_score = excluded.ht_home_score,
           ht_away_score = excluded.ht_away_score,
-          corners_home = excluded.corners_home,
-          corners_away = excluded.corners_away,
-          yellow_cards_home = excluded.yellow_cards_home,
-          yellow_cards_away = excluded.yellow_cards_away,
-          red_cards_home = excluded.red_cards_home,
-          red_cards_away = excluded.red_cards_away,
-          possession_home = excluded.possession_home,
-          possession_away = excluded.possession_away,
-          shots_on_target_home = excluded.shots_on_target_home,
-          shots_on_target_away = excluded.shots_on_target_away,
+          corners_home = coalesce(excluded.corners_home, matches.corners_home),
+          corners_away = coalesce(excluded.corners_away, matches.corners_away),
+          yellow_cards_home = coalesce(excluded.yellow_cards_home, matches.yellow_cards_home),
+          yellow_cards_away = coalesce(excluded.yellow_cards_away, matches.yellow_cards_away),
+          red_cards_home = coalesce(excluded.red_cards_home, matches.red_cards_home),
+          red_cards_away = coalesce(excluded.red_cards_away, matches.red_cards_away),
+          possession_home = coalesce(excluded.possession_home, matches.possession_home),
+          possession_away = coalesce(excluded.possession_away, matches.possession_away),
+          shots_on_target_home = coalesce(excluded.shots_on_target_home, matches.shots_on_target_home),
+          shots_on_target_away = coalesce(excluded.shots_on_target_away, matches.shots_on_target_away),
           raw = excluded.raw
         returning id
       `;
 
       if (!saved) continue;
+
+      // Если этот же матч уже привязан к дню под другой записью (другой провайдер/id),
+      // обновляем каноническую запись, чтобы вопросы/предикты получили актуальные счёт и статистику.
+      const [canonical] = await tx<{ id: string }[]>`
+        select m.id
+        from matchday_matches mm
+        join matches m on m.id = mm.match_id
+        where mm.matchday_id = ${matchdayId}
+          and lower(m.home_name) = lower(${match.homeName})
+          and lower(m.away_name) = lower(${match.awayName})
+          and abs(extract(epoch from (m.kickoff_utc - ${match.kickoffUtc}::timestamptz))) <= 21600
+        order by case when m.provider = ${match.provider} and m.external_id = ${match.externalId} then 0 else 1 end, m.id
+        limit 1
+      `;
+
+      const targetMatchId = canonical?.id ?? saved.id;
+
+      if (canonical && canonical.id !== saved.id) {
+        await tx`
+          update matches set
+            league_code = ${match.leagueCode},
+            league_title = ${match.leagueTitle},
+            home_name = ${match.homeName},
+            home_logo = coalesce(${match.homeLogo}, home_logo),
+            away_name = ${match.awayName},
+            away_logo = coalesce(${match.awayLogo}, away_logo),
+            kickoff_utc = ${match.kickoffUtc},
+            status = ${match.status},
+            minute = ${match.minute},
+            home_score = ${match.homeScore},
+            away_score = ${match.awayScore},
+            ht_home_score = ${match.htHomeScore},
+            ht_away_score = ${match.htAwayScore},
+            corners_home = coalesce(${match.stats.cornersHome}, corners_home),
+            corners_away = coalesce(${match.stats.cornersAway}, corners_away),
+            yellow_cards_home = coalesce(${match.stats.yellowCardsHome}, yellow_cards_home),
+            yellow_cards_away = coalesce(${match.stats.yellowCardsAway}, yellow_cards_away),
+            red_cards_home = coalesce(${match.stats.redCardsHome}, red_cards_home),
+            red_cards_away = coalesce(${match.stats.redCardsAway}, red_cards_away),
+            possession_home = coalesce(${match.stats.possessionHome}, possession_home),
+            possession_away = coalesce(${match.stats.possessionAway}, possession_away),
+            shots_on_target_home = coalesce(${match.stats.shotsOnTargetHome}, shots_on_target_home),
+            shots_on_target_away = coalesce(${match.stats.shotsOnTargetAway}, shots_on_target_away),
+            raw = ${tx.json(match.raw as any)}
+          where id = ${canonical.id}
+        `;
+      }
+
       savedMatches += 1;
 
       await tx`
         insert into matchday_matches (matchday_id, match_id)
-        values (${matchdayId}, ${saved.id})
+        values (${matchdayId}, ${targetMatchId})
         on conflict do nothing
       `;
 
       // Вопросы для прогнозов: создаём один раз на матч в этом игровом дне.
-      if (!(await questionExists(matchdayId, saved.id))) {
+      if (!(await questionExists(matchdayId, targetMatchId))) {
         const seed = Math.abs(hashString(`${match.provider}:${match.externalId}`));
         const generated = generateMatchQuestions({ homeName: match.homeName, awayName: match.awayName }, seed, 4);
         for (const question of generated) {
@@ -418,14 +466,14 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
               matchday_id, match_id, kind, template, prompt, options, rule,
               locks_at, is_bonus, status, source
             ) values (
-              ${matchdayId}, ${saved.id}, ${question.kind}, ${question.rule.type}, ${question.prompt},
+              ${matchdayId}, ${targetMatchId}, ${question.kind}, ${question.rule.type}, ${question.prompt},
               ${tx.json(question.options as any)}, ${tx.json(question.rule as any)},
               ${match.kickoffUtc}, ${question.isBonus}, 'open', 'auto'
             )
           `;
           createdQuestions += 1;
         }
-        hasQuestionsCache.set(`${matchdayId}:${saved.id}`, true);
+        hasQuestionsCache.set(`${matchdayId}:${targetMatchId}`, true);
       }
     }
 

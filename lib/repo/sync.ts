@@ -414,17 +414,40 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
       `;
 
       const targetTime = match.kickoffUtc.getTime();
-      const inName = normalizeName(match.homeName);
-      const outName = normalizeName(match.awayName);
-      const canonical = linked.find((m) => m.provider === match.provider && m.external_id === match.externalId)
-        ?? linked.find((m) => {
+      const inHome = normalizeName(match.homeName);
+      const inAway = normalizeName(match.awayName);
+      const teamScore = (a: string, b: string): number => {
+        if (!a || !b) return 0;
+        if (a === b) return 3;
+        if (a.includes(b) || b.includes(a)) return 2;
+        const at = new Set(a.split(' ').filter(Boolean));
+        const bt = new Set(b.split(' ').filter(Boolean));
+        let inter = 0;
+        for (const t of at) if (bt.has(t)) inter += 1;
+        return inter > 0 ? 1 : 0;
+      };
+
+      let canonical: (typeof linked)[number] | null =
+        linked.find((m) => m.provider === match.provider && m.external_id === match.externalId) ?? null;
+
+      if (!canonical) {
+        let best: { m: (typeof linked)[number]; score: number; dt: number } | null = null;
+        for (const m of linked) {
           const dt = Math.abs(new Date(m.kickoff_utc).getTime() - targetTime);
-          if (dt > 6 * 60 * 60 * 1000) return false;
+          if (dt > 6 * 60 * 60 * 1000) continue;
           const hn = normalizeName(m.home_name);
           const an = normalizeName(m.away_name);
-          return (hn === inName && an === outName) || (hn.includes(inName) || inName.includes(hn)) && (an.includes(outName) || outName.includes(an));
-        })
-        ?? null;
+          const s = teamScore(hn, inHome) + teamScore(an, inAway);
+          const timeScore = dt <= 2 * 60 * 1000 ? 2 : dt <= 30 * 60 * 1000 ? 1 : 0;
+          const total = s * 10 + timeScore;
+          if (total <= 0) continue;
+          if (!best || total > best.score || (total === best.score && dt < best.dt)) {
+            best = { m, score: total, dt };
+          }
+        }
+        if (best && best.score >= 12) canonical = best.m; // good name match or name+close time
+        else if (best && best.score >= 2) canonical = best.m; // fallback (e.g. exact kickoff, weak names)
+      }
 
       const targetMatchId = canonical?.id ?? saved.id;
 

@@ -83,7 +83,7 @@ function withHardTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
 async function loadSeasonSnapshotUncachedForViewer(viewer: SeasonViewer): Promise<SeasonSnapshot> {
   if (!hasDatabase()) return buildDemoSnapshot();
   try {
-    return await withHardTimeout(loadFromDatabase(viewer), 12000);
+    return await withHardTimeout(loadFromDatabase(viewer), 25000);
   } catch (error) {
     console.error('Не удалось собрать снимок сезона из БД:', error);
     // В проде с БД не подменяем реальный сезон демо-данными (иначе на поле "чужие" игроки).
@@ -92,7 +92,10 @@ async function loadSeasonSnapshotUncachedForViewer(viewer: SeasonViewer): Promis
   }
 }
 
-/** Дедупликация в рамках одного запроса + короткий TTL между запросами. */
+/** Дедупликация в рамках одного запроса + короткий TTL между запросами.
+ * При ошибке загрузки (БД недоступна/таймаут) возвращаем устаревший кэш, если есть,
+ * чтобы не ронять все игровые страницы и дать людям ставить прогнозы.
+ */
 export const loadSeasonSnapshot = cache(async (): Promise<SeasonSnapshot> => {
   const viewer = await getCachedViewer();
   const key = viewer?.profileId ?? '__anon__';
@@ -100,12 +103,16 @@ export const loadSeasonSnapshot = cache(async (): Promise<SeasonSnapshot> => {
   const hit = snapshotCache.get(key);
   if (hit && now - hit.at < SNAPSHOT_TTL_MS) return hit.value;
 
-  const value = loadSeasonSnapshotUncachedForViewer(viewer).catch((err) => {
+  const loadPromise = loadSeasonSnapshotUncachedForViewer(viewer).catch((err) => {
+    if (hit) {
+      console.error('Не удалось обновить снапшот, отдаём устаревший кэш:', err);
+      return hit.value;
+    }
     snapshotCache.delete(key);
     throw err;
   });
-  snapshotCache.set(key, { at: now, value });
-  return value;
+  snapshotCache.set(key, { at: now, value: loadPromise });
+  return loadPromise;
 });
 
 async function loadFromDatabase(viewer: SeasonViewer): Promise<SeasonSnapshot> {

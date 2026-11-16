@@ -86,6 +86,8 @@ async function loadSeasonSnapshotUncachedForViewer(viewer: SeasonViewer): Promis
     return await withHardTimeout(loadFromDatabase(viewer), 12000);
   } catch (error) {
     console.error('Не удалось собрать снимок сезона из БД:', error);
+    // В проде с БД не подменяем реальный сезон демо-данными (иначе на поле "чужие" игроки).
+    if (hasDatabase()) throw error;
     return buildDemoSnapshot();
   }
 }

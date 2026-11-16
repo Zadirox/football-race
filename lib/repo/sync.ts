@@ -198,8 +198,7 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
                     'shotsOnTargetHome', shots_on_target_home, 'shotsOnTargetAway', shots_on_target_away
                   ) as stats
                 from matches
-                where (provider = 'sstats' and external_id = any(${sql(extIds)}))
-                   or (kickoff_utc >= (${window.from}::date - interval '1 day') and kickoff_utc <= (${window.to}::date + interval '2 day'))
+                where provider = 'sstats' and external_id = any(${sql(extIds)})
               `
             : [];
           const hasAny = (s: any) => s && Object.values(s).some((v) => v !== null && v !== undefined);

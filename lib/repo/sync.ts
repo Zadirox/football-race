@@ -102,7 +102,7 @@ function mergeMatches(groups: NormalizedMatch[][]): NormalizedMatch[] {
 export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<SyncFixturesReport> {
   const now = options.now ?? new Date();
   const startedAt = Date.now();
-  const deadlineMs = startedAt + 55_000;
+  const deadlineMs = startedAt + 80_000;
   const env = serverEnv();
   const window = options.window ?? syncWindow(now);
 
@@ -158,24 +158,8 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
   const errors: string[] = [];
   const groups: NormalizedMatch[][] = [];
 
-  if (hasFootballData) {
-    try {
-      const fixtures = await fetchFixtures({ token: env.footballDataToken!, from: window.from, to: window.to });
-      fetchedTotal += fixtures.matches.length;
-      requestsUsed += fixtures.requestsUsed;
-      httpStatus = fixtures.httpStatus;
-      groups.push(normalizeMatches(fixtures.matches));
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Источник матчей недоступен';
-      errors.push(message);
-      // 429 фиксируем отдельно, но даём шанс запасному источнику (Лига наций) отработать.
-      if (isAppError(error) && error.code === 'SYNC_QUOTA_EXCEEDED') {
-        // не прерываем сразу
-      }
-    }
-  }
-
   // Лига наций: берём из запасного источника (основной тариф её не отдаёт).
+  // Запускаем до football-data, чтобы детализация/статистика UNL успевала в бюджет прогона.
   try {
     if (!env.sstatsEnabled) {
       errors.push('Лига наций: источник sstats отключён (SSTATS_ENABLED=false)');
@@ -251,6 +235,25 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
   } catch (error) {
     const message = error instanceof Error ? error.message : 'Источник Лиги наций недоступен';
     errors.push(`Лига наций: ${message}`);
+  }
+
+  if (hasFootballData && Date.now() < deadlineMs - 5_000) {
+    try {
+      const fixtures = await fetchFixtures({ token: env.footballDataToken!, from: window.from, to: window.to });
+      fetchedTotal += fixtures.matches.length;
+      requestsUsed += fixtures.requestsUsed;
+      httpStatus = fixtures.httpStatus;
+      groups.push(normalizeMatches(fixtures.matches));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Источник матчей недоступен';
+      errors.push(message);
+      // 429 фиксируем отдельно, но даём шанс запасному источнику (Лига наций) отработать.
+      if (isAppError(error) && error.code === 'SYNC_QUOTA_EXCEEDED') {
+        // не прерываем сразу
+      }
+    }
+  } else if (hasFootballData) {
+    errors.push('football-data: пропущено из-за лимита времени прогона (приоритет UNL)');
   }
 
   const normalized = mergeMatches(groups);

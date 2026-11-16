@@ -106,9 +106,8 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
   const startedAt = Date.now();
   const budgetMs = Math.max(10_000, Math.min(options.budgetMs ?? 80_000, 120_000));
   const deadlineMs = startedAt + budgetMs;
-  // Резерв под запись в БД/advance, чтобы sync не тратил весь бюджет на fetch/enrich
-  // и не выходил до сохранения обновлений.
-  const dbReserveMs = 7_000;
+  // Резерв под запись в БД/advance, чтобы sync успевал сохранить прогресс.
+  const dbReserveMs = 5_000;
   const processingDeadlineMs = deadlineMs - dbReserveMs;
   const env = serverEnv();
   const window = options.window ?? syncWindow(now);
@@ -229,8 +228,8 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
         const enriched = await enrichSstatsMatchesWithStats({
           matches: unl.matches,
           apiKey: env.sstatsApiKey,
-          concurrency: 2,
-          maxDetails: Math.min(16, Math.max(2, enrichable)),
+          concurrency: 3,
+          maxDetails: Math.min(20, Math.max(4, enrichable)),
           deadlineMs: processingDeadlineMs,
         });
         requestsUsed += enriched.requestsUsed;

@@ -13,7 +13,7 @@ import { syncFixtures } from '@/lib/repo/sync';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
-const CRON_BUDGET_MS = 28_000;
+const CRON_BUDGET_MS = 45_000;
 
 async function run(request: Request): Promise<Response> {
   if (!cronAuthorized(request)) {

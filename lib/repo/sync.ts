@@ -163,6 +163,9 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
   let httpStatus: number | null = null;
   const errors: string[] = [];
   const groups: NormalizedMatch[][] = [];
+  let tListMs = 0;
+  let tEnrichMs = 0;
+  let tDbStartMs = 0;
 
   // Лига наций: берём из запасного источника (основной тариф её не отдаёт).
   // Запускаем до football-data, чтобы детализация/статистика UNL успевала в бюджет прогона.
@@ -221,9 +224,11 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
           // не критично — просто попробуем обогатить как обычно
         }
 
+        tListMs = Date.now() - startedAt;
         const enrichable = unl.matches.filter(
           (m) => m.status !== 'NS' && m.status !== 'PST' && m.status !== 'CANC' && !Object.values(m.stats).some((v) => v !== null),
         ).length;
+        const tEnrichStart = Date.now();
         const enriched = await enrichSstatsMatchesWithStats({
           matches: unl.matches,
           apiKey: env.sstatsApiKey,
@@ -231,6 +236,7 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
           maxDetails: Math.min(20, Math.max(4, enrichable)),
           deadlineMs: processingDeadlineMs,
         });
+        tEnrichMs = Date.now() - tEnrichStart;
         requestsUsed += enriched.requestsUsed;
         groups.push(enriched.matches);
       } else {
@@ -349,6 +355,7 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
     errors.push(`Обработано ${maxMatchesPerRun} из ${prioritized.length} матчей за прогон, остаток — в следующем запуске`);
   }
 
+  tDbStartMs = Date.now();
   await sql.begin(async (tx) => {
     const hasQuestionsCache = new Map<string, boolean>();
     const questionExists = async (matchdayId: string, matchId: string): Promise<boolean> => {
@@ -629,7 +636,8 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
     }
   }
 
-  const errorText = errors.length ? errors.join('; ').slice(0, 500) : null;
+  const timingInfo = `[timing:list=${tListMs}ms,enrich=${tEnrichMs}ms,db=${tDbStartMs ? Date.now() - tDbStartMs : 0}ms]`;
+  const errorText = (errors.length ? `${errors.join('; ')} ${timingInfo}` : timingInfo).slice(0, 500);
   await logSyncRun({
     endpoint: 'sync-fixtures',
     status: 'ok',

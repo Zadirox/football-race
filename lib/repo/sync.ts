@@ -328,11 +328,21 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
   const maxMatchesPerRun = 50;
   const finalStatuses = new Set(['FT', 'PST', 'CANC', 'ABD']);
   const prioritized = [...normalized].sort((a, b) => {
-    const aScore = a.status === 'LIVE' || a.status === 'HT' ? 0 : finalStatuses.has(a.status) ? 1 : 2;
-    const bScore = b.status === 'LIVE' || b.status === 'HT' ? 0 : finalStatuses.has(b.status) ? 1 : 2;
+    const nowMsSort = now.getTime();
+    const priority = (m: NormalizedMatch): number => {
+      if (m.status === 'LIVE' || m.status === 'HT') return 0;
+      const started = m.kickoffUtc.getTime() <= nowMsSort;
+      // Матчи, которые уже должны идти/завершиться, но ещё NS/нефинальны — подтягиваем раньше будущих.
+      if (started && (m.status === 'NS' || !finalStatuses.has(m.status))) return 1;
+      if (finalStatuses.has(m.status)) return 2;
+      return 3; // будущие NS
+    };
+    const aScore = priority(a);
+    const bScore = priority(b);
     if (aScore !== bScore) return aScore - bScore;
-    // Для live/ht — более ранние первыми; для завершённых — более свежие первыми, чтобы быстрее обновить итоги/статы.
-    if (aScore === 1) return b.kickoffUtc.getTime() - a.kickoffUtc.getTime();
+    // Для live/ht и начавшихся — более ранние первыми; для финальных — более свежие первыми.
+    if (aScore <= 1) return a.kickoffUtc.getTime() - b.kickoffUtc.getTime();
+    if (aScore === 2) return b.kickoffUtc.getTime() - a.kickoffUtc.getTime();
     return a.kickoffUtc.getTime() - b.kickoffUtc.getTime();
   });
   const matchesToProcess = prioritized.slice(0, maxMatchesPerRun);

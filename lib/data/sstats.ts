@@ -306,12 +306,35 @@ export function extractSstatsMatchStats(detail: unknown): MatchStats {
   };
 }
 
+function extractSstatsMatchCore(detail: unknown): Pick<NormalizedMatch, 'status' | 'minute' | 'homeScore' | 'awayScore' | 'htHomeScore' | 'htAwayScore'> | null {
+  const root = (detail && typeof detail === 'object' ? detail : {}) as Record<string, unknown>;
+  const data = (root.data && typeof root.data === 'object' ? root.data : root) as Record<string, unknown>;
+  const game = (data.game && typeof data.game === 'object' ? data.game : data) as Record<string, unknown>;
+
+  const toNum = (v: unknown): number | null => {
+    if (typeof v === 'number' && Number.isFinite(v)) return v;
+    if (typeof v === 'string' && v.trim() !== '' && Number.isFinite(Number(v))) return Number(v);
+    return null;
+  };
+
+  const rawStatus = (game as any).status ?? (game as any).statusName ?? (data as any).status ?? (data as any).statusName;
+  const ht = (game.htResult ?? (game as any).htResult ?? (data as any).htResult) as any;
+  return {
+    status: mapSstatsStatus(rawStatus),
+    minute: toNum((game as any).elapsed ?? (data as any).elapsed),
+    homeScore: toNum((game as any).homeResult ?? (game as any).homeFTResult ?? (data as any).homeResult ?? (data as any).homeFTResult),
+    awayScore: toNum((game as any).awayResult ?? (game as any).awayFTResult ?? (data as any).awayResult ?? (data as any).awayFTResult),
+    htHomeScore: toNum((game as any).homeHTResult ?? ht?.home ?? (data as any).homeHTResult),
+    htAwayScore: toNum((game as any).awayHTResult ?? ht?.away ?? (data as any).awayHTResult),
+  };
+}
+
 export async function fetchSstatsGameDetail(input: {
   id: string | number;
   apiKey?: string | null;
   fetchImpl?: typeof fetch;
   timeoutMs?: number;
-}): Promise<{ stats: MatchStats; requestsUsed: number }> {
+}): Promise<{ stats: MatchStats; core: Pick<NormalizedMatch, 'status' | 'minute' | 'homeScore' | 'awayScore' | 'htHomeScore' | 'htAwayScore'> | null; requestsUsed: number }> {
   const url = new URL(`${BASE_URL}/games/${encodeURIComponent(String(input.id))}`);
   if (input.apiKey) url.searchParams.set('apikey', input.apiKey);
   const doFetch = input.fetchImpl ?? fetch;
@@ -328,12 +351,11 @@ export async function fetchSstatsGameDetail(input: {
     signal: AbortSignal.timeout(timeoutMs),
   });
   if (!response.ok) {
-    throw new AppError('SYNC_PROVIDER_DOWN', `Детали матча вернули ${response.status}`);
+    throw new AppError('SYNC_PROVIDER_DOWN', `Детали матча недоступны: ${response.status}`);
   }
   const payload = await response.json();
-  return { stats: extractSstatsMatchStats(payload), requestsUsed: 1 };
+  return { stats: extractSstatsMatchStats(payload), core: extractSstatsMatchCore(payload), requestsUsed: 1 };
 }
-
 export async function enrichSstatsMatchesWithStats(input: {
   matches: NormalizedMatch[];
   apiKey?: string | null;
@@ -406,9 +428,26 @@ export async function enrichSstatsMatchesWithStats(input: {
             fetchImpl: input.fetchImpl,
             timeoutMs,
           });
-          return { index, match: { ...match, stats: detail.stats }, requestsUsed: detail.requestsUsed };
+          const rank = (st: NormalizedMatch['status']): number => {
+            if (st === 'FT' || st === 'PST' || st === 'CANC' || st === 'ABD') return 3;
+            if (st === 'LIVE' || st === 'HT') return 2;
+            return 1; // NS/unknown
+          };
+          const core = detail.core;
+          const merged: NormalizedMatch = { ...match, stats: detail.stats };
+          if (core) {
+            // Детали матча обычно свежее списка: обновляем статус/счёт/минуту, если есть прогресс.
+            if (rank(core.status) >= rank(match.status)) merged.status = core.status;
+            if (core.minute !== null) merged.minute = core.minute;
+            if (core.homeScore !== null) merged.homeScore = core.homeScore;
+            if (core.awayScore !== null) merged.awayScore = core.awayScore;
+            if (core.htHomeScore !== null) merged.htHomeScore = core.htHomeScore;
+            if (core.htAwayScore !== null) merged.htAwayScore = core.htAwayScore;
+          }
+
+          return { index, match: merged, requestsUsed: detail.requestsUsed };
         } catch {
-          // Если детали недоступны, оставляем матч без статистики — синк не ломаем.
+          // Если детали недоступны, оставляем матч без обновления статистики/статуса.
           return { index, match, requestsUsed: 0 };
         }
       }),

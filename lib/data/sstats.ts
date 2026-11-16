@@ -166,7 +166,7 @@ export function normalizeSstatsUnlGame(game: SstatsGame): NormalizedMatch | null
     awayScore,
     htHomeScore,
     htAwayScore,
-    stats: { ...EMPTY_MATCH_STATS },
+    stats: extractSstatsMatchStats(game),
     raw: game,
   };
 }

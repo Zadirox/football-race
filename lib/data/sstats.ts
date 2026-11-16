@@ -13,6 +13,18 @@ import { EMPTY_MATCH_STATS, type MatchStats, type NormalizedMatch } from './norm
 const BASE_URL = 'https://api.sstats.net';
 const TIMEOUT_MS = 15_000;
 
+function shiftDateStr(date: string, days: number): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+  if (!m) return date;
+  const d = new Date(Date.UTC(Number(m[1]), Number(m[2]) - 1, Number(m[3]) + days));
+  return d.toISOString().slice(0, 10);
+}
+
+/** date-only To в sstats исключает указанную дату (до её полуночи), поэтому +1 день для включительного конца окна. */
+function toSstatsToParam(to: string): string {
+  return /^\d{4}-\d{2}-\d{2}$/.test(to) ? shiftDateStr(to, 1) : to;
+}
+
 export type SstatsFixtureFetch = {
   matches: NormalizedMatch[];
   fetched: number;
@@ -72,27 +84,39 @@ function parseUtc(value: unknown): Date | null {
 }
 
 export function mapSstatsStatus(status: string | number | null | undefined): NormalizedMatch['status'] {
-  const s = String(status ?? '').toLowerCase().trim();
-  if (!s) return 'NS';
+  const raw = String(status ?? '').trim();
+  if (!raw) return 'NS';
+  const s = raw.toLowerCase();
 
-  if (s.includes('finish') || s.includes('ended') || s.includes('full time') || s === 'ft' || s === 'aet' || s === 'pen' || s === '3') {
-    return 'FT';
+  // Числовые коды sstats API (см. OpenAPI /Games/{id}).
+  if (/^\d+$/.test(s)) {
+    const n = Number(s);
+    if (n === 1 || n === 2) return 'NS';
+    if (n === 3 || n === 5 || n === 6 || n === 7 || n === 19) return 'LIVE';
+    if (n === 4 || n === 11) return 'HT';
+    if (n === 8 || n === 9 || n === 10 || n === 17 || n === 18) return 'FT';
+    if (n === 12 || n === 13) return 'ABD';
+    if (n === 14) return 'PST';
+    if (n === 15) return 'CANC';
+    return 'NS';
   }
+
   if (s.includes('postpon')) return 'PST';
   if (s.includes('cancel')) return 'CANC';
   if (s.includes('abandon') || s.includes('suspend') || s.includes('interrupt')) return 'ABD';
-  if (s.includes('half')) {
-    if (s.includes('1st') || s.includes('2nd') || s.includes('first') || s.includes('second')) return 'LIVE';
-    return 'HT';
+
+  if (s.includes('finish') || s.includes('ended') || s.includes('full time') || s === 'ft' || s === 'aet' || s === 'pen') {
+    return 'FT';
   }
-  if (s.includes('live') || s.includes('play') || s.includes('progress')) {
+
+  if (s.includes('half time') || s.includes('halftime') || s === 'ht') return 'HT';
+  if (s.includes('1st half') || s.includes('2nd half') || s.includes('first half') || s.includes('second half') || s.includes('extra time') || s.includes('penalties')) {
     return 'LIVE';
   }
+
+  if (s.includes('live') || s.includes('play') || s.includes('progress')) return 'LIVE';
   if (s.includes('not') || s.includes('sched') || s.includes('timed')) return 'NS';
 
-  // Числовые коды (на случай если придут без имени статуса).
-  if (s === '1') return 'NS';
-  if (s === '2') return 'LIVE';
   return 'NS';
 }
 
@@ -111,17 +135,20 @@ export function normalizeSstatsUnlGame(game: SstatsGame): NormalizedMatch | null
   const awayName = teamNameRu(cleanName(awayTeam?.shortName ?? awayTeam?.name ?? awayTeam, 'Гости'));
   if (!homeName || !awayName) return null;
 
-  const status = mapSstatsStatus(toText((game as any).statusName ?? (game as any).status) ?? (game as any).status);
+  const rawStatus = (game as any).status ?? (game as any).statusName;
+  const status = mapSstatsStatus(rawStatus);
+
   const toNum = (v: unknown): number | null => {
     if (typeof v === 'number' && Number.isFinite(v)) return v;
     if (typeof v === 'string' && v.trim() !== '' && Number.isFinite(Number(v))) return Number(v);
     return null;
   };
-  const homeScore = toNum(game.homeResult);
-  const awayScore = toNum(game.awayResult);
+  const homeScore = toNum((game as any).homeResult ?? (game as any).homeFTResult);
+  const awayScore = toNum((game as any).awayResult ?? (game as any).awayFTResult);
   const ht = (game.htResult ?? (game as any).htResult) as any;
-  const htHomeScore = toNum(ht?.home);
-  const htAwayScore = toNum(ht?.away);
+  const htHomeScore = toNum((game as any).homeHTResult ?? ht?.home);
+  const htAwayScore = toNum((game as any).awayHTResult ?? ht?.away);
+  const elapsed = toNum((game as any).elapsed);
 
   return {
     provider: 'sstats',
@@ -134,7 +161,7 @@ export function normalizeSstatsUnlGame(game: SstatsGame): NormalizedMatch | null
     awayLogo: null,
     kickoffUtc,
     status,
-    minute: null,
+    minute: elapsed,
     homeScore,
     awayScore,
     htHomeScore,
@@ -163,7 +190,10 @@ export async function fetchSstatsUnlFixtures(input: {
   url.searchParams.set('LeagueId', String(leagueId));
   url.searchParams.set('Year', String(year));
   url.searchParams.set('From', input.from);
-  url.searchParams.set('To', input.to);
+  url.searchParams.set('To', toSstatsToParam(input.to));
+  // Явно задаём TZ=3 (МСК) для date-only параметров; по умолчанию в API тоже 3.
+  url.searchParams.set('TimeZone', '3');
+  if (input.apiKey) url.searchParams.set('apikey', input.apiKey);
 
   const doFetch = input.fetchImpl ?? fetch;
   const startedAt = Date.now();
@@ -256,8 +286,11 @@ export function extractSstatsMatchStats(detail: unknown): MatchStats {
   const redCardsAway = pickStat(stats, ['redCardsAway', 'awayRedCards']) ?? pickStat(game, ['redCardsAway']);
   const possessionHome = pickStat(stats, ['ballPossessionHome', 'possessionHome', 'homePossession']) ?? pickStat(game, ['ballPossessionHome', 'possessionHome']);
   const possessionAway = pickStat(stats, ['ballPossessionAway', 'possessionAway', 'awayPossession']) ?? pickStat(game, ['ballPossessionAway', 'possessionAway']);
-  const shotsOnTargetHome = pickStat(stats, ['shotsOnTargetHome', 'homeShotsOnTarget']) ?? pickStat(game, ['shotsOnTargetHome']);
-  const shotsOnTargetAway = pickStat(stats, ['shotsOnTargetAway', 'awayShotsOnTarget']) ?? pickStat(game, ['shotsOnTargetAway']);
+  // В sstats "удары в створ" = shotsOnGoal*.
+  const shotsOnTargetHome =
+    pickStat(stats, ['shotsOnGoalHome', 'shotsOnTargetHome', 'homeShotsOnTarget']) ?? pickStat(game, ['shotsOnGoalHome', 'shotsOnTargetHome']);
+  const shotsOnTargetAway =
+    pickStat(stats, ['shotsOnGoalAway', 'shotsOnTargetAway', 'awayShotsOnTarget']) ?? pickStat(game, ['shotsOnGoalAway', 'shotsOnTargetAway']);
 
   return {
     cornersHome,
@@ -278,7 +311,8 @@ export async function fetchSstatsGameDetail(input: {
   apiKey?: string | null;
   fetchImpl?: typeof fetch;
 }): Promise<{ stats: MatchStats; requestsUsed: number }> {
-  const url = new URL(`${BASE_URL}/Games/${encodeURIComponent(String(input.id))}`);
+  const url = new URL(`${BASE_URL}/games/${encodeURIComponent(String(input.id))}`);
+  if (input.apiKey) url.searchParams.set('apikey', input.apiKey);
   const doFetch = input.fetchImpl ?? fetch;
   const headers: Record<string, string> = { accept: 'application/json' };
   if (input.apiKey) {

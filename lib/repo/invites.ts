@@ -104,13 +104,19 @@ export async function listInvites(): Promise<AdminInviteView[]> {
     order by created_at desc
     limit 100
   `;
+  const toIso = (value: Date | string | null | undefined): string | null => {
+    if (!value) return null;
+    const d = value instanceof Date ? value : new Date(value);
+    return Number.isNaN(d.getTime()) ? null : d.toISOString();
+  };
+
   return rows.map((r) => ({
     id: r.id,
     nickname: r.nickname,
     role: r.role,
-    createdAt: new Date(r.created_at).toISOString(),
-    expiresAt: r.expires_at ? new Date(r.expires_at).toISOString() : null,
-    usedAt: r.used_at ? new Date(r.used_at).toISOString() : null,
+    createdAt: toIso(r.created_at) ?? new Date(0).toISOString(),
+    expiresAt: toIso(r.expires_at),
+    usedAt: toIso(r.used_at),
     usedBy: r.used_by,
     seasonId: r.season_id,
   }));
@@ -143,10 +149,16 @@ export async function getInviteByToken(token: string): Promise<PublicInviteView 
   `;
   if (!row) return null;
   const expired = row.expires_at ? new Date(row.expires_at).getTime() < Date.now() : false;
+  const toIso = (value: Date | string | null | undefined): string | null => {
+    if (!value) return null;
+    const d = value instanceof Date ? value : new Date(value);
+    return Number.isNaN(d.getTime()) ? null : d.toISOString();
+  };
+
   return {
     nickname: row.nickname,
     seasonTitle: row.season_title,
-    expiresAt: row.expires_at ? new Date(row.expires_at).toISOString() : null,
+    expiresAt: toIso(row.expires_at),
     used: row.used_at !== null,
     expired,
   };

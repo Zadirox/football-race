@@ -24,6 +24,10 @@ export function db(): Db {
       prepare: false,
       idle_timeout: 20,
       connect_timeout: 10,
+      // Не даём запросам зависать бесконечно (иначе страницы/функции упираются в лимит платформы).
+      connection: {
+        statement_timeout: 30_000,
+      },
       onnotice: () => {},
     });
   }

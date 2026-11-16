@@ -212,7 +212,7 @@ export async function listPendingForAdmin(): Promise<AdminPendingView[]> {
     id: row.id,
     nickname: row.nickname,
     kind: row.kind,
-    expiresAt: new Date(row.expires_at).toISOString(),
+    expiresAt: toIsoDate(row.expires_at),
   }));
 }
 

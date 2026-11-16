@@ -314,17 +314,19 @@ async function loadFromDatabase(viewer: SeasonViewer): Promise<SeasonSnapshot> {
   const players = toPlayerViews(playerRows, effectRows, viewerId);
   const cells = maskSecretCells(toCellViews(cellRows), players);
 
+  const [closedForViewer, closedMatchdays] = await Promise.all([
+    viewerId
+      ? loadLatestClosedMatchdayResultForViewer(season.id, viewerId).catch(() => null)
+      : Promise.resolve(null),
+    loadClosedMatchdays(season.id, 12).catch(() => []),
+  ]);
+
   let myLastClosedDayResult: MyLastClosedDayResult | null = null;
   let lastClosedDayTop: SeasonSnapshot['lastClosedDayTop'] = [];
-  if (viewerId) {
-    const closed = await loadLatestClosedMatchdayResultForViewer(season.id, viewerId);
-    if (closed) {
-      myLastClosedDayResult = { ...closed.mine, matchday: closed.matchday };
-      lastClosedDayTop = closed.top;
-    }
+  if (closedForViewer) {
+    myLastClosedDayResult = { ...closedForViewer.mine, matchday: closedForViewer.matchday };
+    lastClosedDayTop = closedForViewer.top;
   }
-
-  const closedMatchdays = await loadClosedMatchdays(season.id, 12);
 
   return {
     season: toSeasonView(season),

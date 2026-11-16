@@ -314,11 +314,25 @@ async function loadFromDatabase(viewer: SeasonViewer): Promise<SeasonSnapshot> {
   const players = toPlayerViews(playerRows, effectRows, viewerId);
   const cells = maskSecretCells(toCellViews(cellRows), players);
 
+  const withSoftTimeout = async <T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> => {
+    let timer: ReturnType<typeof setTimeout> | null = null;
+    try {
+      return await Promise.race([
+        promise,
+        new Promise<T>((resolve) => {
+          timer = setTimeout(() => resolve(fallback), ms);
+        }),
+      ]);
+    } finally {
+      if (timer) clearTimeout(timer);
+    }
+  };
+
   const [closedForViewer, closedMatchdays] = await Promise.all([
     viewerId
-      ? loadLatestClosedMatchdayResultForViewer(season.id, viewerId).catch(() => null)
+      ? withSoftTimeout(loadLatestClosedMatchdayResultForViewer(season.id, viewerId).catch(() => null), 4000, null)
       : Promise.resolve(null),
-    loadClosedMatchdays(season.id, 12).catch(() => []),
+    withSoftTimeout(loadClosedMatchdays(season.id, 12).catch(() => []), 4000, []),
   ]);
 
   let myLastClosedDayResult: MyLastClosedDayResult | null = null;

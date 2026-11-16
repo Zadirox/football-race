@@ -230,7 +230,7 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
           matches: unl.matches,
           apiKey: env.sstatsApiKey,
           concurrency: 2,
-          maxDetails: Math.min(8, Math.max(2, enrichable)),
+          maxDetails: Math.min(16, Math.max(2, enrichable)),
           deadlineMs: processingDeadlineMs,
         });
         requestsUsed += enriched.requestsUsed;

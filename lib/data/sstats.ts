@@ -255,42 +255,91 @@ export async function fetchSstatsUnlFixtures(input: {
 
 function toStatNumber(value: unknown): number | null {
   if (typeof value === 'number' && Number.isFinite(value)) return value;
-  if (typeof value === 'string' && value.trim() !== '' && Number.isFinite(Number(value))) return Number(value);
+  if (typeof value === 'string') {
+    const cleaned = value.replace('%', '').trim();
+    if (cleaned !== '' && Number.isFinite(Number(cleaned))) return Number(cleaned);
+  }
   return null;
 }
 
 function pickStat(obj: Record<string, unknown> | null | undefined, keys: string[]): number | null {
   if (!obj) return null;
   for (const key of keys) {
-    const v = toStatNumber(obj[key]);
+    const v = toStatNumber((obj as any)[key]);
     if (v !== null) return v;
   }
   return null;
 }
 
-export function extractSstatsMatchStats(detail: unknown): MatchStats {
-  const root = (detail && typeof detail === 'object' ? detail : {}) as Record<string, unknown>;
-  const data = (root.data && typeof root.data === 'object' ? root.data : root) as Record<string, unknown>;
-  const game = (data.game && typeof data.game === 'object' ? data.game : data) as Record<string, unknown>;
-  const stats = (data.statistics && typeof data.statistics === 'object'
-    ? data.statistics
-    : game.statistics && typeof game.statistics === 'object'
-      ? game.statistics
-      : null) as Record<string, unknown> | null;
+function asObj(v: unknown): Record<string, unknown> | null {
+  return v && typeof v === 'object' && !Array.isArray(v) ? (v as Record<string, unknown>) : null;
+}
 
-  const cornersHome = pickStat(stats, ['cornerKicksHome', 'cornersHome', 'homeCorners']) ?? pickStat(game, ['cornerKicksHome', 'cornersHome']);
-  const cornersAway = pickStat(stats, ['cornerKicksAway', 'cornersAway', 'awayCorners']) ?? pickStat(game, ['cornerKicksAway', 'cornersAway']);
-  const yellowCardsHome = pickStat(stats, ['yellowCardsHome', 'homeYellowCards']) ?? pickStat(game, ['yellowCardsHome']);
-  const yellowCardsAway = pickStat(stats, ['yellowCardsAway', 'awayYellowCards']) ?? pickStat(game, ['yellowCardsAway']);
-  const redCardsHome = pickStat(stats, ['redCardsHome', 'homeRedCards']) ?? pickStat(game, ['redCardsHome']);
-  const redCardsAway = pickStat(stats, ['redCardsAway', 'awayRedCards']) ?? pickStat(game, ['redCardsAway']);
-  const possessionHome = pickStat(stats, ['ballPossessionHome', 'possessionHome', 'homePossession']) ?? pickStat(game, ['ballPossessionHome', 'possessionHome']);
-  const possessionAway = pickStat(stats, ['ballPossessionAway', 'possessionAway', 'awayPossession']) ?? pickStat(game, ['ballPossessionAway', 'possessionAway']);
-  // В sstats "удары в створ" = shotsOnGoal*.
-  const shotsOnTargetHome =
-    pickStat(stats, ['shotsOnGoalHome', 'shotsOnTargetHome', 'homeShotsOnTarget']) ?? pickStat(game, ['shotsOnGoalHome', 'shotsOnTargetHome']);
-  const shotsOnTargetAway =
-    pickStat(stats, ['shotsOnGoalAway', 'shotsOnTargetAway', 'awayShotsOnTarget']) ?? pickStat(game, ['shotsOnGoalAway', 'shotsOnTargetAway']);
+export function extractSstatsMatchStats(detail: unknown): MatchStats {
+  const root = asObj(detail) ?? {};
+  const data = asObj(root.data) ?? root;
+  const game = asObj(data.game) ?? data;
+
+  const candidates: Array<Record<string, unknown> | null> = [];
+  const pushObj = (v: unknown) => { const o = asObj(v); if (o) candidates.push(o); };
+  pushObj(data.statistics);
+  pushObj(game.statistics);
+  pushObj(data.stats);
+  pushObj(game.stats);
+  pushObj((data as any).matchStatistics);
+  pushObj((game as any).matchStatistics);
+
+  const statArrays = [data.statistics, game.statistics, (data as any).stats, (game as any).stats];
+  for (const arr of statArrays) {
+    if (Array.isArray(arr)) {
+      for (const item of arr) pushObj(item);
+      const agg: Record<string, unknown> = {};
+      for (const item of arr) {
+        const o = asObj(item); if (!o) continue;
+        const t = String((o as any).type ?? (o as any).name ?? (o as any).key ?? '').toLowerCase();
+        const h = toStatNumber((o as any).home ?? (o as any).homeValue ?? (o as any).valueHome);
+        const a = toStatNumber((o as any).away ?? (o as any).awayValue ?? (o as any).valueAway);
+        if (t && h !== null) agg[t + 'Home'] = h;
+        if (t && a !== null) agg[t + 'Away'] = a;
+      }
+      if (Object.keys(agg).length) candidates.push(agg);
+    }
+  }
+  pushObj(game);
+  pushObj(data);
+
+  const pickAny = (homeKeys: string[], awayKeys: string[]) => {
+    let home: number | null = null;
+    let away: number | null = null;
+    for (const c of candidates) {
+      if (home === null) home = pickStat(c, homeKeys);
+      if (away === null) away = pickStat(c, awayKeys);
+      if (home !== null && away !== null) break;
+    }
+    return [home, away] as const;
+  };
+
+  const [cornersHome, cornersAway] = pickAny(
+    ['cornerKicksHome','cornersHome','homeCorners','cornerHome','corners_home','cornershome','cornerkicks','corner kicks'],
+    ['cornerKicksAway','cornersAway','awayCorners','cornerAway','corners_away','cornersaway','cornerkicks','corner kicks'],
+  );
+  const [yellowCardsHome, yellowCardsAway] = pickAny(
+    ['yellowCardsHome','homeYellowCards','yellowHome','yellow_cards_home','yellowcards','yellow cards'],
+    ['yellowCardsAway','awayYellowCards','yellowAway','yellow_cards_away','yellowcards','yellow cards'],
+  );
+  const [redCardsHome, redCardsAway] = pickAny(
+    ['redCardsHome','homeRedCards','redHome','red_cards_home','redcards','red cards'],
+    ['redCardsAway','awayRedCards','redAway','red_cards_away','redcards','red cards'],
+  );
+  const [possessionHome, possessionAway] = pickAny(
+    ['ballPossessionHome','possessionHome','homePossession','ball_possession_home','possession','ball possession'],
+    ['ballPossessionAway','possessionAway','awayPossession','ball_possession_away','possession','ball possession'],
+  );
+  // В sstats "удары в створ" часто shotsOnGoal*.
+  const [shotsOnTargetHome, shotsOnTargetAway] = pickAny(
+    ['shotsOnGoalHome','shotsOnTargetHome','homeShotsOnTarget','shots_on_target_home','shotsongoal','shots on goal','shotsontarget','shots on target'],
+    ['shotsOnGoalAway','shotsOnTargetAway','awayShotsOnTarget','shots_on_target_away','shotsongoal','shots on goal','shotsontarget','shots on target'],
+  );
 
   return {
     cornersHome,

@@ -36,7 +36,7 @@ const ENTRIES: Entry[] = [
   { ru: 'Дания', short: 'ДАН', aliases: ['Denmark'] },
   { ru: 'Египет', short: 'ЕГИ', aliases: ['Egypt'] },
   { ru: 'Израиль', short: 'ИЗР', aliases: ['Israel'] },
-  { ru: 'Ирландия', short: 'ИРЛ', aliases: ['Republic of Ireland', 'Ireland'] },
+  { ru: 'Ирландия', short: 'ИРЛ', aliases: ['Republic of Ireland', 'Ireland', 'Rep. of Ireland', 'Rep. Of Ireland', 'Rep of Ireland', 'Republic Of Ireland', 'ROI'] },
   { ru: 'Исландия', short: 'ИСЛ', aliases: ['Iceland'] },
   { ru: 'Испания', short: 'ИСП', aliases: ['Spain'] },
   { ru: 'Италия', short: 'ИТА', aliases: ['Italy'] },

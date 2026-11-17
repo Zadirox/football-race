@@ -38,11 +38,11 @@ function Avatar({ name }: { name: string }) {
 
 function PlayerCell({ nickname, profileId, meId }: { nickname: string; profileId: string; meId: string | null }) {
   return (
-    <div className="player-cell">
+    <Link href={`/profile/${profileId}`} className="player-cell" style={{ color: 'inherit', textDecoration: 'none' }}>
       <Avatar name={nickname} />
       <span>{nickname}</span>
       {profileId === meId && <span className="chip chip--positive">ты</span>}
-    </div>
+    </Link>
   );
 }
 

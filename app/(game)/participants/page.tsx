@@ -61,15 +61,17 @@ export default async function ParticipantsPage() {
           return (
             <article key={player.profileId} className="card">
               <div className="card__head">
-                <Avatar nickname={player.nickname} avatarUrl={player.avatarUrl} size="md" />
-                <div style={{ minWidth: 0 }}>
-                  <h2 className="card__title">
-                    <Link href={`/profile/${player.profileId}`} style={{ color: 'inherit', textDecoration: 'none' }}>
-                      {player.nickname}
-                    </Link>
-                  </h2>
-                  <div className="card__meta">клетка {player.position} из 80</div>
-                </div>
+                <Link
+                  href={`/profile/${player.profileId}`}
+                  style={{ display: 'flex', alignItems: 'center', gap: 10, color: 'inherit', textDecoration: 'none', minWidth: 0 }}
+                  aria-label={`Профиль ${player.nickname}`}
+                >
+                  <Avatar nickname={player.nickname} avatarUrl={player.avatarUrl} size="md" />
+                  <div style={{ minWidth: 0 }}>
+                    <h2 className="card__title">{player.nickname}</h2>
+                    <div className="card__meta">клетка {player.position} из 80</div>
+                  </div>
+                </Link>
                 <span className={`chip ${ROLE_CHIP[player.role]}`} style={{ marginLeft: 'auto' }}>
                   {ROLE_LABEL[player.role]}
                 </span>

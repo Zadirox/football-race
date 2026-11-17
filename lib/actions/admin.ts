@@ -235,7 +235,7 @@ export async function grantPackAction(input: unknown): Promise<AdminRunResult> {
   }
 }
 
-/** Ручной бонус состава: засчитать/снять для FWD/MID/GK после FT. */
+/** Ручной бонус состава: засчитать/снять для любой позиции после FT (без автоматики). */
 export async function awardLineupBonusAction(input: unknown): Promise<AdminRunResult> {
   if (!hasDatabase()) return demoOnly();
   if (!serverEnv().cardsEnabled) return { ok: false, message: 'Раздел карточек и составов временно недоступен' };

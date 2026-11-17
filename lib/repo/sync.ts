@@ -15,7 +15,6 @@ import { generateMatchQuestions } from '@/lib/data/questions';
 import { syncWindow } from '@/lib/data/sync-window';
 import { isAppError } from '@/lib/errors';
 import { grantPacksForResolvedNationalMatchday } from '@/lib/repo/cards-grants';
-import { awardAutoDefBonusesForMatchdays } from '@/lib/repo/lineup-bonus';
 import {
   allMatchesFinal,
   nextMatchdayStatus,
@@ -589,11 +588,6 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
 
   if (matchdayIds.size > 0) {
     const affectedMatchdayIds = [...new Set(matchdayIds.values())];
-    try {
-      await awardAutoDefBonusesForMatchdays(affectedMatchdayIds, sql);
-    } catch (error) {
-      errors.push(`auto DEF bonuses: ${error instanceof Error ? error.message : String(error)}`);
-    }
 
     // Если день уже был резолвнут без статистики, дозаполняем correct_option/is_correct
     // для вопросов, которые теперь можно вычислить по обновлённым данным матча.
@@ -764,13 +758,6 @@ export async function advanceMatchdays(now = new Date()): Promise<AdvanceReport>
         } catch (error) {
           report.errors.push(
             `${day.id}: pack grants failed: ${error instanceof Error ? error.message : String(error)}`,
-          );
-        }
-        try {
-          await awardAutoDefBonusesForMatchdays([day.id], sql);
-        } catch (error) {
-          report.errors.push(
-            `${day.id}: auto DEF bonuses failed: ${error instanceof Error ? error.message : String(error)}`,
           );
         }
       } else {

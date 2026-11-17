@@ -44,6 +44,7 @@ const PENDING_KIND: Record<string, string> = {
 
 const ROLE_LABEL: Record<AdminManualLineupSlotView['roleGroup'], string> = {
   GK: 'вратарь',
+  DEF: 'защитник',
   MID: 'полузащитник',
   FWD: 'нападающий',
 };
@@ -470,7 +471,7 @@ export function AdminTools({ enabled, players, matches, pending, manualBonusSlot
                 <div>
                   <h3 className="card__title">Бонус состава</h3>
                   <p className="card__meta">
-                    Проверьте слоты (вратарь, полузащитник, нападающий) после FT: засчитайте/снимите бонус и отметьте как проверенное — обработанные уберутся из очереди.
+                    Проверьте все слоты состава после FT (вратарь, защитник, полузащитник, нападающий): засчитайте/снимите бонус вручную (в т.ч. за оценку 6.0) и отметьте как проверенное — обработанные уберутся из очереди. Автоматического начисления нет.
                   </p>
                 </div>
                 <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text-dim)' }}>
@@ -484,7 +485,7 @@ export function AdminTools({ enabled, players, matches, pending, manualBonusSlot
                 const active = localSlots.filter((s) => !s.reviewedAt);
                 const reviewed = localSlots.filter((s) => !!s.reviewedAt);
                 const list = showReviewedBonuses ? localSlots : active;
-                if (localSlots.length === 0) return <p className="card__text">Нет слотов для ручного бонуса по завершённым матчам.</p>;
+                if (localSlots.length === 0) return <p className="card__text">Нет слотов состава по завершённым матчам.</p>;
                 if (list.length === 0) return <p className="card__text">Все слоты проверены. {reviewed.length > 0 ? 'Можно показать проверенные выше.' : ''}</p>;
                 return (
                   <div className="admin-bonus-list">

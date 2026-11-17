@@ -52,7 +52,7 @@ export type AdminManualLineupSlotView = {
   slot: 'GK' | 'OF1' | 'OF2';
   cardName: string;
   cardTeamName: string | null;
-  roleGroup: 'GK' | 'MID' | 'FWD';
+  roleGroup: 'GK' | 'DEF' | 'MID' | 'FWD';
   rarity: CardRarity;
   rating: number;
   points: number;
@@ -290,7 +290,7 @@ export async function grantPackToProfile(actorId: string, input: PackGrantInput)
   });
 }
 
-/** Ручной бонус состава (FWD/MID/GK) с идемпотентной записью результата и score_events. */
+/** Ручной бонус состава (любая позиция) с идемпотентной записью результата и score_events. */
 export async function awardManualLineupBonus(
   actorId: string,
   input: LineupBonusManualInput,
@@ -331,8 +331,8 @@ export async function awardManualLineupBonus(
     if (!slot) throw new AppError('NOT_FOUND', 'Слот состава не найден');
 
     const role = slot.role_group;
-    if (role !== 'GK' && role !== 'MID' && role !== 'FWD') {
-      throw new AppError('INVALID_INPUT', 'Ручной бонус доступен только для вратаря, полузащитника или нападающего');
+    if (role !== 'GK' && role !== 'DEF' && role !== 'MID' && role !== 'FWD') {
+      throw new AppError('INVALID_INPUT', 'Ручной бонус доступен только для карточек состава (вратарь, защитник, полузащитник, нападающий)');
     }
 
     if (slot.match_status !== 'FT') {
@@ -443,7 +443,7 @@ export async function awardManualLineupBonus(
   });
 }
 
-/** Слоты состава для ручного бонуса: только FWD/MID/GK, матчи FT, с текущим состоянием награды. */
+/** Отмечает ручную проверку слота (для любой позиции состава) без изменения начисления. */
 export async function reviewManualLineupBonus(
   actorId: string,
   input: { lineupSlotId: string; reviewed: boolean },
@@ -482,7 +482,6 @@ export async function reviewManualLineupBonus(
     }
 
     const rarity = slot.card_rarity as CardRarity;
-    const basePoints = LINEUP_POINTS[rarity] ?? 0;
     const nowExpr = input.reviewed ? tx`now()` : null;
     const reviewer = input.reviewed ? actorId : null;
 
@@ -524,7 +523,7 @@ export async function listManualLineupBonusSlots(): Promise<AdminManualLineupSlo
       slot: 'GK' | 'OF1' | 'OF2';
       card_name: string;
       card_team_name: string | null;
-      role_group: 'GK' | 'MID' | 'FWD';
+      role_group: 'GK' | 'DEF' | 'MID' | 'FWD';
       rarity: CardRarity;
       rating: number | string | null;
       awarded: boolean | null;
@@ -559,7 +558,7 @@ export async function listManualLineupBonusSlots(): Promise<AdminManualLineupSlo
       left join national_teams nt on nt.id = c.national_team_id
       left join lineup_card_results lcr on lcr.lineup_slot_id = ls.id
      where m.status = 'FT'
-       and c.role_group in ('GK', 'MID', 'FWD')
+       and c.role_group in ('GK', 'DEF', 'MID', 'FWD')
      order by coalesce((lcr.reviewed_at is not null), false) asc, m.kickoff_utc desc, pr.nickname asc, ls.slot asc
      limit 300
   `;

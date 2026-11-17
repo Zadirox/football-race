@@ -135,18 +135,14 @@ export function PredictionsClient({ snapshot }: { snapshot: SeasonSnapshot }) {
 
   const visibleMatches = league ? matches.filter((m) => m.leagueCode === league) : matches;
 
-  // По умолчанию разворачиваем незаполненные матчи; заполненные сворачиваем, чтобы не захламлять список.
+  // По умолчанию все матчи свёрнуты; участник раскрывает нужный вручную.
   useEffect(() => {
     if (viewingPast && !pastData) return;
     setOpenMatches((prev) => {
       const next = { ...prev };
       for (const match of visibleMatches) {
         if (next[match.id] !== undefined) continue;
-        const mq = questions.filter((q) => q.matchId === match.id);
-        const regularQ = mq.filter((q) => !q.isBonus);
-        const answeredCount = regularQ.filter((q) => (viewingPast ? q.myChoice : (choices[q.id] ?? q.myChoice))).length;
-        const complete = regularQ.length > 0 && answeredCount === regularQ.length;
-        next[match.id] = !complete;
+        next[match.id] = false;
       }
       return next;
     });
@@ -384,7 +380,7 @@ export function PredictionsClient({ snapshot }: { snapshot: SeasonSnapshot }) {
                 const regularQ = mq.filter((q) => !q.isBonus);
                 const answeredCount = regularQ.filter((q) => effectiveChoices[q.id]).length;
                 const complete = regularQ.length > 0 && answeredCount === regularQ.length;
-                const isOpen = openMatches[match.id] ?? !complete;
+                const isOpen = openMatches[match.id] ?? false;
                 return (
                   <MatchQuestions
                     key={match.id}

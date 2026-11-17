@@ -1,3 +1,5 @@
+'use client';
+
 import { avatarColor } from '@/lib/avatar';
 
 type AvatarSize = 'xs' | 'sm' | 'md' | 'lg';

@@ -463,7 +463,7 @@ export async function reviewManualLineupBonus(
       }[]
     >`
       select ls.id,
-             m.season_id,
+             ls.season_id,
              ls.profile_id,
              ls.match_id,
              ls.card_instance_id,

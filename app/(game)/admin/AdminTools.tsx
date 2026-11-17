@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useTransition } from 'react';
+import { useEffect, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { Notice, SectionTitle } from '@/components/ui/Panel';
+import { formatRuShortDateTimeMsk } from '@/lib/format';
 import { teamDisplay } from '@/lib/data/team-names';
 import {
   awardLineupBonusAction,
@@ -12,6 +13,7 @@ import {
   grantPackAction,
   updateMatchAction,
   type AdminRunResult,
+  reviewLineupBonusAction,
 } from '@/lib/actions/admin';
 import type { MatchView, PlayerView, Role } from '@/lib/types';
 import type { AdminManualLineupSlotView, AdminPendingView } from '@/lib/repo/admin-tools';
@@ -58,23 +60,11 @@ function scoreText(value: number | null | undefined): string {
 }
 
 function expiresLabel(iso: string): string {
-  return new Date(iso).toLocaleString('ru-RU', {
-    day: '2-digit',
-    month: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
-    timeZone: 'Europe/Moscow',
-  });
+  return formatRuShortDateTimeMsk(iso);
 }
 
 function kickoffLabel(iso: string): string {
-  return new Date(iso).toLocaleString('ru-RU', {
-    day: '2-digit',
-    month: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
-    timeZone: 'Europe/Moscow',
-  });
+  return formatRuShortDateTimeMsk(iso);
 }
 
 type ToolsProps = {
@@ -96,7 +86,12 @@ export function AdminTools({ enabled, players, matches, pending, manualBonusSlot
   const [pendingTx, startTransition] = useTransition();
   const [busy, setBusy] = useState<Block | null>(null);
   const [busySlotId, setBusySlotId] = useState<string | null>(null);
+  const [busyAction, setBusyAction] = useState<'award' | 'review' | null>(null);
+  const [showReviewedBonuses, setShowReviewedBonuses] = useState(false);
+  const [localSlots, setLocalSlots] = useState(manualBonusSlots);
   const [feedback, setFeedback] = useState<{ block: Block; result: AdminRunResult } | null>(null);
+
+  useEffect(() => { setLocalSlots(manualBonusSlots); }, [manualBonusSlots]);
 
   const matchList = matches.slice(0, 20);
   const firstMatch = matchList[0] ?? null;
@@ -118,7 +113,7 @@ export function AdminTools({ enabled, players, matches, pending, manualBonusSlot
   const [roleProfile, setRoleProfile] = useState(players[0]?.profileId ?? '');
   const [role, setRole] = useState<Role>('player');
 
-  const run = (block: Block, action: () => Promise<AdminRunResult>) => {
+  const run = (block: Block, action: () => Promise<AdminRunResult>, opts?: { refresh?: boolean }) => {
     if (!enabled || pendingTx) return;
     setBusy(block);
     setBusySlotId(null);
@@ -128,7 +123,7 @@ export function AdminTools({ enabled, players, matches, pending, manualBonusSlot
       setFeedback({ block, result });
       setBusy(null);
       setBusySlotId(null);
-      if (result.ok) router.refresh();
+      if (result.ok && opts?.refresh !== false) router.refresh();
     });
   };
 
@@ -136,13 +131,38 @@ export function AdminTools({ enabled, players, matches, pending, manualBonusSlot
     if (!enabled || pendingTx) return;
     setBusy('bonus');
     setBusySlotId(slotId);
+    setBusyAction('award');
     setFeedback(null);
     startTransition(async () => {
       const result = await awardLineupBonusAction({ lineupSlotId: slotId, triggered });
       setFeedback({ block: 'bonus', result });
       setBusy(null);
       setBusySlotId(null);
+      setBusyAction(null);
       if (result.ok) router.refresh();
+    });
+  };
+
+  const runSlotReview = (slotId: string, reviewed: boolean) => {
+    if (!enabled || pendingTx) return;
+    setBusy('bonus');
+    setBusySlotId(slotId);
+    setBusyAction('review');
+    setFeedback(null);
+    // optimistic hide/unhide
+    setLocalSlots((prev) => prev.map((s) => s.slotId === slotId ? { ...s, reviewedAt: reviewed ? new Date().toISOString() : null } : s));
+    startTransition(async () => {
+      const result = await reviewLineupBonusAction({ lineupSlotId: slotId, reviewed });
+      setFeedback({ block: 'bonus', result });
+      setBusy(null);
+      setBusySlotId(null);
+      setBusyAction(null);
+      if (!result.ok) {
+        // revert on failure
+        setLocalSlots((prev) => prev.map((s) => s.slotId === slotId ? { ...s, reviewedAt: reviewed ? null : new Date().toISOString() } : s));
+      } else {
+        router.refresh();
+      }
     });
   };
 
@@ -445,52 +465,81 @@ export function AdminTools({ enabled, players, matches, pending, manualBonusSlot
               </button>
             </section>
 
-            <section className="card" aria-label="Бонус состава">
-              <h3 className="card__title">Бонус состава (вручную)</h3>
-              <p className="card__meta">
-                Засчитать или снять бонус для вратаря, полузащитника и нападающего после финального свистка (FT).
-              </p>
+            <section className="card admin-bonus-card" aria-label="Бонус состава">
+              <div style={{ display: 'flex', justifyContent: 'space-between', gap: 12, alignItems: 'flex-start', flexWrap: 'wrap' }}>
+                <div>
+                  <h3 className="card__title">Бонус состава</h3>
+                  <p className="card__meta">
+                    Проверьте слоты (вратарь, полузащитник, нападающий) после FT: засчитайте/снимите бонус и отметьте как проверенное — обработанные уберутся из очереди.
+                  </p>
+                </div>
+                <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8, fontSize: 13, color: 'var(--text-dim)' }}>
+                  <input type="checkbox" checked={showReviewedBonuses} onChange={(e) => setShowReviewedBonuses(e.target.checked)} />
+                  Показать проверенные
+                </label>
+              </div>
               {notice('bonus')}
 
-              {manualBonusSlots.length === 0 ? (
-                <p className="card__text">Нет слотов для ручного бонуса по завершённым матчам.</p>
-              ) : (
-                <div className="list">
-                  {manualBonusSlots.map((item) => {
-                    const home = teamDisplay(item.homeTeamName);
-                    const away = teamDisplay(item.awayTeamName);
-                    const isBusy = busy === 'bonus' && busySlotId === item.slotId;
-                    return (
-                      <div key={item.slotId} className="list-row" style={{ alignItems: 'flex-start', gap: 10 }}>
-                        <span className={item.awarded ? 'chip chip--positive' : 'chip chip--muted'}>
-                          {item.awarded ? `+${item.points}` : `${item.points} оч.`}
-                        </span>
-                        <span className="list-row__main">
-                          <span className="list-row__title">
-                            {item.nickname} · {item.cardName} ({item.cardTeamName ?? '—'})
-                          </span>
-                          <span className="list-row__meta">
-                            {home.name} — {away.name} · {kickoffLabel(item.kickoffAt)} МСК · {item.slot} ·{' '}
-                            {ROLE_LABEL[item.roleGroup]} · {RARITY_LABEL[item.rarity]} · рейтинг {item.rating}
-                          </span>
-                          <span className="list-row__meta">
-                            Статус: {item.awarded ? `засчитан (${item.method ?? 'manual'})` : 'не засчитан'}
-                          </span>
-                        </span>
-                        <button
-                          type="button"
-                          className="btn btn--sm"
-                          disabled={!enabled || pendingTx}
-                          title={disabledHint}
-                          onClick={() => runSlotBonus(item.slotId, !item.awarded)}
-                        >
-                          {isBusy ? '…' : item.awarded ? 'Снять' : 'Засчитать бонус'}
-                        </button>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
+              {(() => {
+                const active = localSlots.filter((s) => !s.reviewedAt);
+                const reviewed = localSlots.filter((s) => !!s.reviewedAt);
+                const list = showReviewedBonuses ? localSlots : active;
+                if (localSlots.length === 0) return <p className="card__text">Нет слотов для ручного бонуса по завершённым матчам.</p>;
+                if (list.length === 0) return <p className="card__text">Все слоты проверены. {reviewed.length > 0 ? 'Можно показать проверенные выше.' : ''}</p>;
+                return (
+                  <div className="admin-bonus-list">
+                    <div className="card__meta" style={{ marginBottom: 8 }}>В очереди: {active.length} · проверено: {reviewed.length}</div>
+                    {list.map((item) => {
+                      const home = teamDisplay(item.homeTeamName);
+                      const away = teamDisplay(item.awayTeamName);
+                      const isBusy = busy === 'bonus' && busySlotId === item.slotId;
+                      const awarding = isBusy && busyAction === 'award';
+                      const reviewing = isBusy && busyAction === 'review';
+                      const reviewed = !!item.reviewedAt;
+                      return (
+                        <div key={item.slotId} className={`admin-bonus-item${reviewed ? ' is-reviewed' : ''}`}>
+                          <div className="admin-bonus-item__main">
+                            <div className="admin-bonus-item__top">
+                              <span className={item.awarded ? 'chip chip--positive' : 'chip chip--muted'}>
+                                {item.awarded ? `+${item.points} зачтено` : `${item.points} оч.`}
+                              </span>
+                              <span className="chip chip--info">{item.slot} · {ROLE_LABEL[item.roleGroup]}</span>
+                              <span className="card__meta">{RARITY_LABEL[item.rarity]} · {item.rating}</span>
+                              {reviewed && <span className="chip chip--muted">проверено</span>}
+                            </div>
+                            <div className="list-row__title">
+                              {item.nickname} — {item.cardName} {item.cardTeamName ? `(${item.cardTeamName})` : ''}
+                            </div>
+                            <div className="list-row__meta">
+                              {home.name} — {away.name} · {kickoffLabel(item.kickoffAt)} МСК · {item.awarded ? `статус: засчитан (${item.method ?? 'manual'})` : 'статус: не засчитан'}
+                            </div>
+                          </div>
+                          <div className="admin-bonus-item__actions">
+                            <button
+                              type="button"
+                              className={`btn btn--sm ${item.awarded ? '' : 'btn--primary'}`}
+                              disabled={!enabled || pendingTx}
+                              title={disabledHint}
+                              onClick={() => runSlotBonus(item.slotId, !item.awarded)}
+                            >
+                              {awarding ? '…' : item.awarded ? 'Снять' : 'Засчитать'}
+                            </button>
+                            <button
+                              type="button"
+                              className="btn btn--sm btn--ghost"
+                              disabled={!enabled || pendingTx}
+                              title={disabledHint}
+                              onClick={() => runSlotReview(item.slotId, !reviewed)}
+                            >
+                              {reviewing ? '…' : reviewed ? 'Вернуть' : 'Проверено'}
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
             </section>
           </>
         ) : null}

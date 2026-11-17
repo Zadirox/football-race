@@ -1,8 +1,9 @@
 'use client';
 
-import { useState, useTransition } from 'react';
+import { useMemo, useState, useTransition } from 'react';
 import { useRouter } from 'next/navigation';
 import { Notice, SectionTitle } from '@/components/ui/Panel';
+import { formatRuShortDateTimeMsk } from '@/lib/format';
 import {
   createInviteAction,
   revokeInviteAction,
@@ -11,13 +12,15 @@ import {
 
 function fmt(iso: string | null): string {
   if (!iso) return '—';
-  return new Date(iso).toLocaleString('ru-RU', {
-    day: '2-digit',
-    month: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
-    timeZone: 'Europe/Moscow',
-  });
+  return formatRuShortDateTimeMsk(iso);
+}
+
+type InviteStatus = 'active' | 'used' | 'expired';
+
+function statusOf(inv: AdminInviteView, now: number): InviteStatus {
+  if (inv.usedAt) return 'used';
+  if (inv.expiresAt && Date.parse(inv.expiresAt) <= now) return 'expired';
+  return 'active';
 }
 
 export function InvitesAdmin({ enabled, invites }: { enabled: boolean; invites: AdminInviteView[] }) {
@@ -27,6 +30,21 @@ export function InvitesAdmin({ enabled, invites }: { enabled: boolean; invites: 
   const [createdLink, setCreatedLink] = useState<{ nickname: string; url: string } | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [filter, setFilter] = useState<'active' | 'used' | 'all'>('active');
+
+  const now = Date.now();
+  const decorated = useMemo(() => invites.map((inv) => ({ inv, status: statusOf(inv, now) })), [invites, now]);
+  const counts = useMemo(() => ({
+    active: decorated.filter((x) => x.status === 'active').length,
+    used: decorated.filter((x) => x.status === 'used').length,
+    expired: decorated.filter((x) => x.status === 'expired').length,
+  }), [decorated]);
+
+  const visible = useMemo(() => {
+    if (filter === 'all') return decorated;
+    if (filter === 'used') return decorated.filter((x) => x.status === 'used' || x.status === 'expired');
+    return decorated.filter((x) => x.status === 'active');
+  }, [decorated, filter]);
 
   const onCreate = () => {
     if (!enabled || pending) return;
@@ -72,89 +90,101 @@ export function InvitesAdmin({ enabled, invites }: { enabled: boolean; invites: 
   return (
     <>
       <SectionTitle>Приглашения</SectionTitle>
-      <div className="card" style={{ marginBottom: 24 }}>
-        <h3 className="card__title">Одноразовая ссылка по нику</h3>
-        <p className="card__meta" style={{ marginBottom: 12 }}>
-          Задайте ник — будет создана одноразовая ссылка. Друг перейдёт по ней, задаст пароль и попадёт в активный сезон
-          как игрок. Почта не нужна, повторно по ссылке войти нельзя.
-        </p>
-
-        {!enabled && (
-          <div style={{ marginBottom: 12 }}>
-            <Notice>Включится после подключения БД.</Notice>
+      <div className="card admin-invites" style={{ marginBottom: 24 }}>
+        <div style={{ display: 'grid', gap: 12 }}>
+          <div>
+            <h3 className="card__title">Одноразовая ссылка по нику</h3>
+            <p className="card__meta" style={{ marginBottom: 0 }}>
+              Создайте ссылку для игрока — он задаст пароль и попадёт в активный сезон. Использованные и истёкшие приглашения скрыты из активного списка.
+            </p>
           </div>
-        )}
 
-        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end', marginBottom: 12 }}>
-          <div className="field" style={{ flex: '1 1 220px', marginBottom: 0 }}>
-            <label htmlFor="invite-nick">Ник игрока</label>
-            <input
-              id="invite-nick"
-              className="input"
-              type="text"
-              value={nickname}
-              onChange={(e) => setNickname(e.target.value)}
-              placeholder="Например: Артём"
-              disabled={!enabled || pending}
-              maxLength={24}
-            />
-          </div>
-          <button type="button" className="btn btn--primary" onClick={onCreate} disabled={!enabled || pending || nickname.trim().length < 2}>
-            {pending ? 'Создаём…' : 'Создать ссылку'}
-          </button>
-        </div>
+          {!enabled && <Notice>Включится после подключения БД.</Notice>}
 
-        {error && (
-          <div style={{ marginBottom: 12 }}>
-            <Notice tone="danger">{error}</Notice>
-          </div>
-        )}
-
-        {createdLink && (
-          <div style={{ marginBottom: 16 }}>
-            <Notice tone="info">
-              Ссылка для <strong>{createdLink.nickname}</strong> создана. Скопируйте и отправьте другу — она показывается
-              один раз.
-            </Notice>
-            <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
-              <input className="input" type="text" readOnly value={createdLink.url} style={{ flex: '1 1 320px' }} />
-              <button type="button" className="btn" onClick={onCopy}>
-                {copied ? 'Скопировано' : 'Копировать'}
-              </button>
+          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+            <div className="field" style={{ flex: '1 1 240px', marginBottom: 0 }}>
+              <label htmlFor="invite-nick">Ник игрока</label>
+              <input
+                id="invite-nick"
+                className="input"
+                type="text"
+                value={nickname}
+                onChange={(e) => setNickname(e.target.value)}
+                placeholder="Например: Артём"
+                disabled={!enabled || pending}
+                maxLength={24}
+              />
             </div>
+            <button type="button" className="btn btn--primary" onClick={onCreate} disabled={!enabled || pending || nickname.trim().length < 2}>
+              {pending ? 'Создаём…' : 'Создать ссылку'}
+            </button>
           </div>
-        )}
 
-        <div className="list">
-          {invites.length === 0 ? (
-            <p className="card__text">Приглашений пока нет.</p>
-          ) : (
-            invites.map((inv) => {
-              const status = inv.usedAt ? 'использовано' : 'активно';
-              return (
-                <div key={inv.id} className="list-row">
-                  <span className={`chip ${inv.usedAt ? 'chip--muted' : 'chip--positive'}`}>{status}</span>
-                  <span className="list-row__main">
-                    <span className="list-row__title">{inv.nickname}</span>
-                    <span className="list-row__meta">
-                      создано {fmt(inv.createdAt)} МСК
-                      {inv.usedAt ? ` · использовано ${fmt(inv.usedAt)}` : ''}
-                    </span>
-                  </span>
-                  {!inv.usedAt && (
-                    <button
-                      type="button"
-                      className="btn btn--sm"
-                      disabled={!enabled || pending}
-                      onClick={() => onRevoke(inv.id)}
-                    >
-                      Отозвать
-                    </button>
-                  )}
-                </div>
-              );
-            })
+          {error && <Notice tone="danger">{error}</Notice>}
+
+          {createdLink && (
+            <div>
+              <Notice tone="info">
+                Ссылка для <strong>{createdLink.nickname}</strong> создана. Скопируйте и отправьте — показывается один раз.
+              </Notice>
+              <div style={{ display: 'flex', gap: 8, marginTop: 8, flexWrap: 'wrap' }}>
+                <input className="input" type="text" readOnly value={createdLink.url} style={{ flex: '1 1 320px' }} />
+                <button type="button" className="btn" onClick={onCopy}>
+                  {copied ? 'Скопировано' : 'Копировать'}
+                </button>
+              </div>
+            </div>
           )}
+
+          <div className="filters" role="group" aria-label="Фильтр приглашений">
+            <button type="button" className="filter" data-active={filter === 'active'} onClick={() => setFilter('active')}>
+              Активные <span className="filter__count">{counts.active}</span>
+            </button>
+            <button type="button" className="filter" data-active={filter === 'used'} onClick={() => setFilter('used')}>
+              Использованные/истёкшие <span className="filter__count">{counts.used + counts.expired}</span>
+            </button>
+            <button type="button" className="filter" data-active={filter === 'all'} onClick={() => setFilter('all')}>
+              Все <span className="filter__count">{invites.length}</span>
+            </button>
+          </div>
+
+          <div className="admin-invites__list">
+            {visible.length === 0 ? (
+              <p className="card__text" style={{ margin: 0 }}>
+                {invites.length === 0 ? 'Приглашений пока нет.' : filter === 'active' ? 'Нет активных приглашений — старые скрыты, их можно посмотреть во вкладке выше.' : 'В этом списке пусто.'}
+              </p>
+            ) : (
+              visible.map(({ inv, status }) => {
+                const chipClass = status === 'active' ? 'chip--positive' : status === 'expired' ? 'chip--trap' : 'chip--muted';
+                const label = status === 'active' ? 'активно' : status === 'expired' ? 'истекло' : 'использовано';
+                return (
+                  <div key={inv.id} className="admin-invite-row">
+                    <div className="admin-invite-row__main">
+                      <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                        <span className={`chip ${chipClass}`}>{label}</span>
+                        <span className="list-row__title">{inv.nickname}</span>
+                      </div>
+                      <span className="list-row__meta">
+                        создано {fmt(inv.createdAt)} МСК
+                        {inv.expiresAt ? ` · истекает ${fmt(inv.expiresAt)}` : ''}
+                        {inv.usedAt ? ` · использовано ${fmt(inv.usedAt)}` : ''}
+                      </span>
+                    </div>
+                    {status === 'active' && (
+                      <button
+                        type="button"
+                        className="btn btn--sm btn--ghost"
+                        disabled={!enabled || pending}
+                        onClick={() => onRevoke(inv.id)}
+                      >
+                        Отозвать
+                      </button>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </div>
         </div>
       </div>
     </>

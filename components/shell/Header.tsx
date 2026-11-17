@@ -10,6 +10,7 @@ import type { MeView } from '@/lib/types';
 
 type HeaderProps = {
   me: MeView | null;
+  meAvatarUrl?: string | null;
   /** Конец игрового дня по МСК; null — день ещё не собран. */
   closesAt: string | null;
   demo: boolean;
@@ -53,7 +54,7 @@ function remainingLabel(closesAt: string | null): string {
   return `до конца игрового дня: ${pad(hours)}:${pad(minutes)}:${pad(seconds)}`;
 }
 
-export function Header({ me, closesAt, demo, cardsEnabled }: HeaderProps) {
+export function Header({ me, meAvatarUrl, closesAt, demo, cardsEnabled }: HeaderProps) {
   const pathname = usePathname();
   const router = useRouter();
   const [now, setNow] = useState<string | null>(null);
@@ -219,8 +220,13 @@ export function Header({ me, closesAt, demo, cardsEnabled }: HeaderProps) {
 
       <div className="topbar__actions">
         {me ? (
-          <Link href="/participants" className="icon-btn icon-btn--profile" title={`${me.nickname} · ${me.role}`} aria-label={`Профиль: ${me.nickname}`}>
-            {me.nickname.slice(0, 1).toUpperCase()}
+          <Link href="/profile/me" className="icon-btn icon-btn--profile" title={`${me.nickname} · ${me.role}`} aria-label={`Мой профиль: ${me.nickname}`}>
+            {meAvatarUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={meAvatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', borderRadius: 'inherit', display: 'block' }} />
+            ) : (
+              me.nickname.slice(0, 1).toUpperCase()
+            )}
           </Link>
         ) : (
           <Link href="/login" className="btn btn--sm btn--primary">

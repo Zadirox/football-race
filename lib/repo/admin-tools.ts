@@ -58,6 +58,7 @@ export type AdminManualLineupSlotView = {
   points: number;
   awarded: boolean;
   method: 'auto' | 'manual' | null;
+  reviewedAt: string | null;
 };
 
 function jsonParam(value: unknown): string | null {
@@ -443,6 +444,69 @@ export async function awardManualLineupBonus(
 }
 
 /** Слоты состава для ручного бонуса: только FWD/MID/GK, матчи FT, с текущим состоянием награды. */
+export async function reviewManualLineupBonus(
+  actorId: string,
+  input: { lineupSlotId: string; reviewed: boolean },
+): Promise<void> {
+  if (!hasDatabase()) return;
+  const sql = db();
+  await sql.begin(async (tx) => {
+    const [slot] = await tx<
+      {
+        id: string;
+        season_id: string;
+        profile_id: string;
+        match_id: string;
+        card_instance_id: string;
+        card_rarity: CardRarity;
+        match_status: string;
+      }[]
+    >`
+      select ls.id,
+             m.season_id,
+             ls.profile_id,
+             ls.match_id,
+             ls.card_instance_id,
+             c.rarity as card_rarity,
+             m.status as match_status
+        from lineup_slots ls
+        join matches m on m.id = ls.match_id
+        join card_instances ci on ci.id = ls.card_instance_id
+        join cards c on c.id = ci.card_id
+       where ls.id = ${input.lineupSlotId}
+       limit 1
+    `;
+    if (!slot) throw new AppError('NOT_FOUND', 'Слот состава не найден');
+    if (slot.match_status !== 'FT') {
+      throw new AppError('CONFLICT', 'Подтвердить проверку можно только для завершённого матча (FT).');
+    }
+
+    const rarity = slot.card_rarity as CardRarity;
+    const basePoints = LINEUP_POINTS[rarity] ?? 0;
+    const nowExpr = input.reviewed ? tx`now()` : null;
+    const reviewer = input.reviewed ? actorId : null;
+
+    await tx`
+      insert into lineup_card_results (
+        lineup_slot_id, profile_id, match_id, card_instance_id,
+        rarity, points, awarded, method, awarded_at, awarded_by, reason, reviewed_at, reviewed_by
+      )
+      values (
+        ${slot.id}, ${slot.profile_id}, ${slot.match_id}, ${slot.card_instance_id},
+        ${rarity}, 0, false, 'manual', null, null, 'review', ${nowExpr}, ${reviewer}
+      )
+      on conflict (lineup_slot_id)
+      do update set
+        reviewed_at = ${nowExpr},
+        reviewed_by = ${reviewer}
+    `;
+
+    await audit(tx, actorId, 'lineup_bonus.review', 'lineup_slot', slot.id, null, {
+      reviewed: input.reviewed,
+    });
+  });
+}
+
 export async function listManualLineupBonusSlots(): Promise<AdminManualLineupSlotView[]> {
   if (!hasDatabase()) return [];
 
@@ -466,6 +530,7 @@ export async function listManualLineupBonusSlots(): Promise<AdminManualLineupSlo
       awarded: boolean | null;
       result_points: number | string | null;
       method: 'auto' | 'manual' | null;
+      reviewed_at: string | Date | null;
     }[]
   >`
     select ls.id as slot_id,
@@ -484,7 +549,8 @@ export async function listManualLineupBonusSlots(): Promise<AdminManualLineupSlo
            c.rating,
            lcr.awarded,
            lcr.points as result_points,
-           lcr.method
+           lcr.method,
+           lcr.reviewed_at
       from lineup_slots ls
       join profiles pr on pr.id = ls.profile_id
       join matches m on m.id = ls.match_id
@@ -494,8 +560,8 @@ export async function listManualLineupBonusSlots(): Promise<AdminManualLineupSlo
       left join lineup_card_results lcr on lcr.lineup_slot_id = ls.id
      where m.status = 'FT'
        and c.role_group in ('GK', 'MID', 'FWD')
-     order by m.kickoff_utc desc, pr.nickname asc, ls.slot asc
-     limit 200
+     order by coalesce((lcr.reviewed_at is not null), false) asc, m.kickoff_utc desc, pr.nickname asc, ls.slot asc
+     limit 300
   `;
 
   return rows.map((row) => {
@@ -522,6 +588,7 @@ export async function listManualLineupBonusSlots(): Promise<AdminManualLineupSlo
       points: awarded ? toNum(row.result_points) || basePoints : basePoints,
       awarded,
       method: row.method,
+      reviewedAt: row.reviewed_at ? toIsoDate(row.reviewed_at) : null,
     };
   });
 }

@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { Panel, Notice, SectionTitle } from '@/components/ui/Panel';
+import { formatRuDateRange, formatRuDateTimeMsk, formatRuDayMonth } from '@/lib/format';
 import { serverEnv } from '@/lib/env';
 import { listInvites } from '@/lib/repo/invites';
 import { listManualLineupBonusSlots, listPendingForAdmin } from '@/lib/repo/admin-tools';
@@ -10,13 +11,7 @@ import { InvitesAdmin } from './InvitesAdmin';
 
 function timeMsk(iso: string | undefined): string {
   if (!iso) return '—';
-  return new Date(iso).toLocaleString('ru-RU', {
-    day: '2-digit',
-    month: 'long',
-    hour: '2-digit',
-    minute: '2-digit',
-    timeZone: 'Europe/Moscow',
-  });
+  return formatRuDateTimeMsk(iso);
 }
 
 export default async function AdminPage() {
@@ -63,12 +58,12 @@ export default async function AdminPage() {
         )}
       </div>
 
-      <SectionTitle>Сезон</SectionTitle>
+      <SectionTitle>Обзор</SectionTitle>
       <div className="grid grid--two" style={{ marginBottom: 22 }}>
         <div className="card">
           <h3 className="card__title">{snapshot.season.title}</h3>
           <p className="card__meta">
-            {snapshot.season.startsOn} — {snapshot.season.endsOn} · статус: {snapshot.season.status}
+            {formatRuDateRange(snapshot.season.startsOn, snapshot.season.endsOn)} · статус: {snapshot.season.status}
           </p>
           <p className="card__text">
             Слаг: <code>{snapshot.season.slug}</code>. Участников: {snapshot.players.length}.
@@ -77,12 +72,12 @@ export default async function AdminPage() {
         <div className="card">
           <h3 className="card__title">Игровой день</h3>
           <p className="card__meta">
-            {snapshot.matchday?.gameDate ?? '—'} · {snapshot.matchday?.status ?? 'не собран'}
+            {snapshot.matchday?.gameDate ? formatRuDayMonth(snapshot.matchday.gameDate) : '—'} · {snapshot.matchday?.status ?? 'не собран'}
           </p>
           <p className="card__text">
-            Открыт: {timeMsk(snapshot.matchday?.opensAt)} МСК
+            Открыт: {timeMsk(snapshot.matchday?.opensAt)}
             <br />
-            Закрыт: {timeMsk(snapshot.matchday?.closesAt)} МСК
+            Закрыт: {timeMsk(snapshot.matchday?.closesAt)}
             <br />
             Матчей: {snapshot.matches.length} · вопросов: {snapshot.matchday?.qTotal ?? 0}
           </p>
@@ -103,52 +98,48 @@ export default async function AdminPage() {
         cardsEnabled={env.cardsEnabled}
       />
 
-      <SectionTitle>Окружение</SectionTitle>
-      <div className="list" style={{ marginBottom: 24 }}>
-        {checks.map(([name, ready, hint]) => (
-          <div key={name} className="list-row">
-            <span className={ready ? 'chip chip--positive' : 'chip chip--muted'}>{ready ? '✓' : '—'}</span>
-            <span className="list-row__main">
-              <span className="list-row__title">{name}</span>
-              <span className="list-row__meta">{hint}</span>
-            </span>
-            <span className="card__meta">{ready ? 'задан' : 'не задан'}</span>
+      <details className="admin-details" style={{ marginTop: 8 }}>
+        <summary className="section__title" style={{ cursor: 'pointer', listStyle: 'none' }}>Окружение и участники</summary>
+        <div style={{ marginTop: 12 }}>
+          <SectionTitle>Окружение</SectionTitle>
+          <div className="list" style={{ marginBottom: 24 }}>
+            {checks.map(([name, ready, hint]) => (
+              <div key={name} className="list-row">
+                <span className={ready ? 'chip chip--positive' : 'chip chip--muted'}>{ready ? '✓' : '—'}</span>
+                <span className="list-row__main">
+                  <span className="list-row__title">{name}</span>
+                  <span className="list-row__meta">{hint}</span>
+                </span>
+                <span className="card__meta">{ready ? 'задан' : 'не задан'}</span>
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
 
-      <SectionTitle>Участники</SectionTitle>
-      <table className="table table--cards">
-        <thead>
-          <tr>
-            <th>Имя</th>
-            <th>Роль</th>
-            <th>Клетка</th>
-            <th>Очки</th>
-            <th>Ответов</th>
-          </tr>
-        </thead>
-        <tbody>
-          {snapshot.players.map((player) => (
-            <tr key={player.profileId} data-me={player.isMe}>
-              <td data-label="Имя">{player.nickname}</td>
-              <td className="card__meta" data-label="Роль">
-                {player.role}
-              </td>
-              <td data-label="Клетка">{player.position}</td>
-              <td data-label="Очки">{player.points}</td>
-              <td data-label="Ответов">
-                {player.answered} · верно {player.correct}
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-
-      <p className="card__meta" style={{ marginTop: 18 }}>
-        Порядок подключения базы описан в README: применить миграции, заполнить окружение, засидить сезон. После этого
-        эта страница включит действия без изменения кода.
-      </p>
+          <SectionTitle>Участники</SectionTitle>
+          <table className="table table--cards">
+            <thead>
+              <tr>
+                <th>Имя</th>
+                <th>Роль</th>
+                <th>Клетка</th>
+                <th>Очки</th>
+                <th>Ответов</th>
+              </tr>
+            </thead>
+            <tbody>
+              {snapshot.players.map((player) => (
+                <tr key={player.profileId} data-me={player.isMe}>
+                  <td data-label="Имя">{player.nickname}</td>
+                  <td className="card__meta" data-label="Роль">{player.role}</td>
+                  <td data-label="Клетка">{player.position}</td>
+                  <td data-label="Очки">{player.points}</td>
+                  <td data-label="Ответов">{player.answered} · верно {player.correct}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </details>
     </Panel>
   );
 }

@@ -2,13 +2,12 @@
 
 import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { formatRuDayMonth } from '@/lib/format';
 import { dayResultDieLabel, dayResultsSeenKey, formatDayAccuracy, shouldShowDaySummary } from '@/lib/game/day-results';
 import type { SeasonSnapshot } from '@/lib/types';
 
 function formatDayDate(gameDate: string): string {
-  const date = new Date(`${gameDate}T12:00:00Z`);
-  if (Number.isNaN(date.getTime())) return gameDate;
-  return date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'long', timeZone: 'Europe/Moscow' });
+  return formatRuDayMonth(gameDate);
 }
 
 export function DayResultsSummary({ snapshot }: { snapshot: SeasonSnapshot }) {

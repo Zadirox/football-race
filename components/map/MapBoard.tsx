@@ -5,6 +5,7 @@ import { mechanic } from '@/lib/game/catalog';
 import { flavorMap, type PlainFlavor } from '@/lib/game/cell-flavor';
 import { buildPathD, cellPoint, stackOffset } from '@/lib/game/map-layout';
 import { describeEffects } from '@/lib/game/engine';
+import { avatarColor } from '@/lib/avatar';
 import type { Rect } from '@/lib/ui/card-placement';
 import type { CellView, PlayerView } from '@/lib/types';
 import { CellCard } from './CellCard';
@@ -300,14 +301,17 @@ export function MapBoard({
                 <span
                   className="token__body"
                   style={{
-                    background: `linear-gradient(150deg, ${avatarColor(player.nickname, 0)}, ${avatarColor(
-                      player.nickname,
-                      1,
-                    )})`,
-                  }}
+                              background: `linear-gradient(150deg, ${avatarColor(player.nickname, 0)}, ${avatarColor(player.nickname, 1)})`,
+                              overflow: 'hidden',
+                            }}
                 >
-                  {player.nickname.slice(0, 1).toUpperCase()}
-                </span>
+                            {player.avatarUrl ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img src={player.avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} loading="lazy" />
+                            ) : (
+                              player.nickname.slice(0, 1).toUpperCase()
+                            )}
+                          </span>
                 <span className="token__name">{player.nickname}</span>
               </button>
             );
@@ -328,23 +332,32 @@ export function MapBoard({
   );
 }
 
-const PALETTES = [
-  ['#d8ff74', '#8fd0f0'],
-  ['#ffd08a', '#e4573d'],
-  ['#c7b8ff', '#5aa9e6'],
-  ['#a8f0d8', '#4fae8a'],
-  ['#ffe08a', '#f2c14e'],
-  ['#f6b6c8', '#c05c7a'],
-];
-
-export function avatarColor(name: string, index: 0 | 1): string {
-  let hash = 0;
-  for (let i = 0; i < name.length; i++) hash = (hash * 31 + name.charCodeAt(i)) % 997;
-  const palette = PALETTES[hash % PALETTES.length] ?? PALETTES[0]!;
-  return palette[index] ?? palette[0]!;
-}
+export { avatarColor } from '@/lib/avatar';
 
 export function PlayerBadge({ player, size }: { player: PlayerView; size?: 'sm' }) {
+  const px = size === 'sm' ? 26 : 34;
+  if (player.avatarUrl) {
+    return (
+      <span
+        className={`avatar ${size === 'sm' ? 'avatar--sm' : ''}`}
+        style={{
+          width: px,
+          height: px,
+          borderRadius: '50%',
+          overflow: 'hidden',
+          display: 'inline-flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          background: `linear-gradient(150deg, ${avatarColor(player.nickname, 0)}, ${avatarColor(player.nickname, 1)})`,
+          flex: '0 0 auto',
+        }}
+        aria-hidden="true"
+      >
+        {/* eslint-disable-next-line @next/next/no-img-element */}
+        <img src={player.avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} loading="lazy" />
+      </span>
+    );
+  }
   return (
     <span
       className={`avatar ${size === 'sm' ? 'avatar--sm' : ''}`}

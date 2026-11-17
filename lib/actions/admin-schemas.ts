@@ -67,6 +67,13 @@ export const lineupBonusManualSchema = z.object({
 
 export type LineupBonusManualInput = z.infer<typeof lineupBonusManualSchema>;
 
+export const lineupBonusReviewSchema = z.object({
+  lineupSlotId: z.uuid(),
+  reviewed: z.boolean().default(true),
+});
+
+export type LineupBonusReviewInput = z.infer<typeof lineupBonusReviewSchema>;
+
 const gameDateString = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Формат даты: ГГГГ-ММ-ДД');
 
 export const syncFixturesSchema = z

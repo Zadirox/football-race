@@ -893,71 +893,83 @@ function pluralCells(n: number): string {
 
 function PlayerPopover({ player, onClose }: { player: PlayerView; onClose: () => void }) {
   const effects = effectSummary(player);
+  const totalDice = player.dice.gold + player.dice.silver + player.dice.bronze + player.dice.wood;
   return (
     <div className="modal" role="dialog" aria-modal="true" aria-label={`Профиль ${player.nickname}`} onClick={onClose}>
-      <div className="modal__card" onClick={(event) => event.stopPropagation()} style={{ width: 'min(420px, 100%)' }}>
+      <div className="modal__card" onClick={(event) => event.stopPropagation()} style={{ width: 'min(460px, 100%)' }}>
         <div className="modal__eyebrow">
-          <span>Участник</span>
+          <span>Мини-профиль</span>
           <span>{player.role === 'admin' ? 'админ' : player.role === 'spectator' ? 'зритель' : 'игрок'}</span>
-          {player.isMe && <span className="chip chip--positive">это ты</span>}
+          {player.isMe && <span className="chip chip--positive">это вы</span>}
         </div>
         <div style={{ display: 'flex', alignItems: 'center', gap: 12, marginBottom: 16 }}>
           <span
             className="avatar"
             style={{
-              width: 48,
-              height: 48,
-              fontSize: 18,
+              width: 56,
+              height: 56,
+              fontSize: 20,
+              overflow: 'hidden',
               background: `linear-gradient(150deg, ${avatarColor(player.nickname, 0)}, ${avatarColor(player.nickname, 1)})`,
             }}
           >
-            {player.nickname.slice(0, 1)}
+            {player.avatarUrl ? (
+              // eslint-disable-next-line @next/next/no-img-element
+              <img src={player.avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+            ) : (
+              player.nickname.slice(0, 1).toUpperCase()
+            )}
           </span>
-          <div>
+          <div style={{ minWidth: 0 }}>
             <h2 className="modal__title" style={{ margin: 0 }}>
               {player.nickname}
             </h2>
-            <div className="card__meta">Клетка {player.position} из 80</div>
+            <div className="card__meta">Клетка {player.position} из 80 · очков {player.points}</div>
           </div>
         </div>
 
-        <div className="stats" style={{ marginBottom: 16 }}>
+        <div className="stats" style={{ marginBottom: 14 }}>
           <div className="stat">
             <div className="stat__label">Очки</div>
             <div className="stat__value stat__value--lime">{player.points}</div>
           </div>
           <div className="stat">
             <div className="stat__label">Точность</div>
-            <div className="stat__value">{formatAccuracy(player.answered ? player.correct / player.answered : null)}</div>
+            <div className="stat__value" style={{ fontSize: 20 }}>{formatAccuracy(player.answered ? player.correct / player.answered : null)}</div>
+            <div className="card__meta">{player.correct}/{player.answered}</div>
           </div>
           <div className="stat">
             <div className="stat__label">Кубики</div>
-            <div className="stat__value">
-              {player.dice.gold + player.dice.silver + player.dice.bronze + player.dice.wood}
+            <div className="stat__value">{totalDice}</div>
+            <div className="card__meta">d6×{player.dice.gold} d4×{player.dice.silver} d3×{player.dice.bronze} d2×{player.dice.wood}</div>
+          </div>
+        </div>
+
+        <div style={{ display: 'grid', gap: 10, marginBottom: 14 }}>
+          <div>
+            <div className="card__meta" style={{ marginBottom: 6 }}>Эффекты</div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              {effects.length === 0 ? <span className="chip chip--muted">нет</span> : effects.map((effect) => (
+                <span key={effect} className="chip chip--info">{effect}</span>
+              ))}
+            </div>
+          </div>
+          <div>
+            <div className="card__meta" style={{ marginBottom: 4 }}>Любимые</div>
+            <div style={{ fontSize: 13, color: 'var(--text-dim)', display: 'grid', gap: 2 }}>
+              <div>Сборная: {player.favoriteNationalTeam?.name ?? '—'}</div>
+              <div>Клуб: {player.favoriteClub?.name ?? '—'}</div>
+              <div>Игрок: {player.favoritePlayer?.name ?? '—'}</div>
             </div>
           </div>
         </div>
 
-        <div className="card__meta" style={{ marginBottom: 6 }}>
-          Эффекты
-        </div>
-        <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6, marginBottom: 16 }}>
-          {effects.length === 0 ? (
-            <span className="chip chip--muted">чисто</span>
-          ) : (
-            effects.map((effect) => (
-              <span key={effect} className="chip chip--info">
-                {effect}
-              </span>
-            ))
-          )}
-        </div>
+        {player.lastAction && <p className="modal__text" style={{ marginBottom: 14 }}>Последнее: {player.lastAction}</p>}
 
-        {player.lastAction && <p className="modal__text">Последнее: {player.lastAction}</p>}
-
-        <button type="button" className="btn btn--block" onClick={onClose}>
-          Закрыть
-        </button>
+        <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+          <Link href={`/profile/${player.profileId}`} className="btn btn--primary">Открыть профиль</Link>
+          <button type="button" className="btn" onClick={onClose}>Закрыть</button>
+        </div>
       </div>
     </div>
   );

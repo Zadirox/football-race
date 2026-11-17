@@ -12,6 +12,7 @@ import { revalidatePath } from 'next/cache';
 import {
   diceGrantSchema,
   lineupBonusManualSchema,
+  lineupBonusReviewSchema,
   matchUpdateSchema,
   packGrantSchema,
   pendingCloseSchema,
@@ -26,6 +27,7 @@ import {
   forceClosePending,
   grantDice,
   grantPackToProfile,
+  reviewManualLineupBonus,
   setRole,
   updateMatch,
 } from '@/lib/repo/admin-tools';
@@ -255,3 +257,19 @@ export async function awardLineupBonusAction(input: unknown): Promise<AdminRunRe
     return toResult(error);
   }
 }
+
+export async function reviewLineupBonusAction(input: unknown): Promise<AdminRunResult> {
+  if (!hasDatabase()) return demoOnly();
+  if (!serverEnv().cardsEnabled) return { ok: false, message: 'Карточки и составы временно недоступны' };
+  try {
+    const viewer = await requireAdmin();
+    const parsed = lineupBonusReviewSchema.safeParse(input);
+    if (!parsed.success) return invalidInput(parsed.error) ?? { ok: false, message: 'Проверь ввод' };
+    await reviewManualLineupBonus(viewer.profileId, parsed.data);
+    revalidateAdmin();
+    return { ok: true, message: parsed.data.reviewed ? 'Отмечено как проверенное.' : 'Возвращено в очередь.' };
+  } catch (error) {
+    return toResult(error);
+  }
+}
+

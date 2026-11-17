@@ -1,5 +1,6 @@
 import Link from 'next/link';
 import { Panel } from '@/components/ui/Panel';
+import { Avatar } from '@/components/ui/Avatar';
 import { describeEffects } from '@/lib/game/engine';
 import { accuracyOf, formatAccuracy, MIN_ANSWERS_FOR_ACCURACY } from '@/lib/game/scoring';
 import { loadFavoritesOptions } from '@/lib/repo/reference-data';
@@ -60,17 +61,13 @@ export default async function ParticipantsPage() {
           return (
             <article key={player.profileId} className="card">
               <div className="card__head">
-                <span
-                  className="avatar"
-                  aria-hidden="true"
-                  style={{
-                    background: `linear-gradient(150deg, hsl(${hue} 85% 70%), hsl(${(hue + 42) % 360} 70% 48%))`,
-                  }}
-                >
-                  {player.nickname.slice(0, 1).toUpperCase()}
-                </span>
+                <Avatar nickname={player.nickname} avatarUrl={player.avatarUrl} size="md" />
                 <div style={{ minWidth: 0 }}>
-                  <h2 className="card__title">{player.nickname}</h2>
+                  <h2 className="card__title">
+                    <Link href={`/profile/${player.profileId}`} style={{ color: 'inherit', textDecoration: 'none' }}>
+                      {player.nickname}
+                    </Link>
+                  </h2>
                   <div className="card__meta">клетка {player.position} из 80</div>
                 </div>
                 <span className={`chip ${ROLE_CHIP[player.role]}`} style={{ marginLeft: 'auto' }}>

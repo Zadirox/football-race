@@ -6,6 +6,7 @@ import { Panel, EmptyState, Notice } from '@/components/ui/Panel';
 import { canAnswer, dayState, type MatchdayView } from '@/lib/game/day-state';
 import { distributionPercent, distributionTotal } from '@/lib/game/distribution';
 import { dayResultDieLabel, formatDayAccuracy } from '@/lib/game/day-results';
+import { formatRuDayMonth, formatRuDayMonthYear, formatRuKickoffMsk } from '@/lib/format';
 import { loadMatchdayPredictionsAction, submitAnswerAction } from '@/lib/actions/game';
 import { teamDisplay } from '@/lib/data/team-names';
 import { answerFor, type QuestionRule } from '@/lib/data/questions';
@@ -22,13 +23,7 @@ const STATUS_LABEL: Record<MatchView['status'], string> = {
 };
 
 function kickoffMsk(iso: string): string {
-  return new Date(iso).toLocaleString('ru-RU', {
-    day: '2-digit',
-    month: 'short',
-    hour: '2-digit',
-    minute: '2-digit',
-    timeZone: 'Europe/Moscow',
-  });
+  return formatRuKickoffMsk(iso);
 }
 
 export function PredictionsClient({ snapshot }: { snapshot: SeasonSnapshot }) {
@@ -67,6 +62,7 @@ export function PredictionsClient({ snapshot }: { snapshot: SeasonSnapshot }) {
   const [savingId, setSavingId] = useState<string | null>(null);
   const [, startTransition] = useTransition();
   const [league, setLeague] = useState<string | null>(null);
+  const [openMatches, setOpenMatches] = useState<Record<string, boolean>>({});
 
   // При обновлении текущего дня (polling/router.refresh) подхватываем новые выборы/данные.
   useEffect(() => {
@@ -92,7 +88,8 @@ export function PredictionsClient({ snapshot }: { snapshot: SeasonSnapshot }) {
 
   useEffect(() => {
     setLeague(null);
-  }, [view]);
+    setOpenMatches({});
+  }, [view, pastData?.id, snapshot.matchday?.id]);
 
   const pastOptions = useMemo(() => {
     const opts = snapshot.closedMatchdays.filter((d) => d.id !== snapshot.matchday?.id);
@@ -137,6 +134,23 @@ export function PredictionsClient({ snapshot }: { snapshot: SeasonSnapshot }) {
   }, [matches]);
 
   const visibleMatches = league ? matches.filter((m) => m.leagueCode === league) : matches;
+
+  // По умолчанию разворачиваем незаполненные матчи; заполненные сворачиваем, чтобы не захламлять список.
+  useEffect(() => {
+    if (viewingPast && !pastData) return;
+    setOpenMatches((prev) => {
+      const next = { ...prev };
+      for (const match of visibleMatches) {
+        if (next[match.id] !== undefined) continue;
+        const mq = questions.filter((q) => q.matchId === match.id);
+        const regularQ = mq.filter((q) => !q.isBonus);
+        const answeredCount = regularQ.filter((q) => (viewingPast ? q.myChoice : (choices[q.id] ?? q.myChoice))).length;
+        const complete = regularQ.length > 0 && answeredCount === regularQ.length;
+        next[match.id] = !complete;
+      }
+      return next;
+    });
+  }, [visibleMatches, questions, choices, viewingPast, pastData]);
   const regular = questions.filter((q) => !q.isBonus);
   const answered = viewingPast
     ? regular.filter((q) => q.myChoice).length
@@ -192,8 +206,16 @@ export function PredictionsClient({ snapshot }: { snapshot: SeasonSnapshot }) {
     </span>
   );
 
-  const currentLabel = snapshot.matchday ? `Текущий день (${snapshot.matchday.gameDate})` : 'Текущий день';
-  const selectedPast = viewingPast ? pastOptions.find((d) => d.id === view) ?? snapshot.closedMatchdays.find((d) => d.id === view) : null;
+  const currentLabel = snapshot.matchday
+    ? `Текущий день (${formatRuDayMonth(snapshot.matchday.gameDate)})`
+    : 'Текущий день';
+  const selectedPast = viewingPast
+    ? pastOptions.find((d) => d.id === view) ?? snapshot.closedMatchdays.find((d) => d.id === view)
+    : null;
+
+  const toggleMatch = (id: string) => {
+    setOpenMatches((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
 
   return (
     <Panel
@@ -205,7 +227,7 @@ export function PredictionsClient({ snapshot }: { snapshot: SeasonSnapshot }) {
       actions={answersChip}
     >
       {(pastOptions.length > 0 || viewingPast) && (
-        <div style={{ marginBottom: 16, display: 'flex', gap: 8, flexWrap: 'wrap', alignItems: 'center' }}>
+        <div className="predictions-daybar">
           <button
             type="button"
             className="filter"
@@ -214,17 +236,19 @@ export function PredictionsClient({ snapshot }: { snapshot: SeasonSnapshot }) {
           >
             {currentLabel}
           </button>
-          <label style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+          <label className="predictions-daybar__select">
             <span className="card__meta">Прошлый день:</span>
             <select
+              className="predictions-select"
               value={viewingPast ? view : ''}
               onChange={(e) => { const id = e.target.value; if (id) void openPastDay(id); }}
               disabled={pastLoading}
+              aria-label="Выбор прошедшего дня"
             >
-              <option value="">{viewingPast ? selectedPast?.gameDate ?? 'выбран' : 'выбрать…'}</option>
+              <option value="">{viewingPast ? (selectedPast ? formatRuDayMonthYear(selectedPast.gameDate) : 'выбран') : 'выбрать…'}</option>
               {pastOptions.map((d) => (
                 <option key={d.id} value={d.id}>
-                  {d.gameDate}{d.qTotal != null ? ` · ${d.qTotal} вопр.` : ''}
+                  {formatRuDayMonthYear(d.gameDate)}{d.qTotal != null ? ` · ${d.qTotal} вопр.` : ''}
                 </option>
               ))}
             </select>
@@ -242,7 +266,7 @@ export function PredictionsClient({ snapshot }: { snapshot: SeasonSnapshot }) {
       {viewingPast && !pastError && pastData && (
         <div style={{ marginBottom: 16 }}>
           <Notice tone="info">
-            Просмотр прошедшего дня ({pastData.matchday.gameDate}): приём ответов закрыт. Показаны проценты ответов и итог (верно/мимо) по твоим прогнозам.
+            Просмотр прошедшего дня ({formatRuDayMonthYear(pastData.matchday.gameDate)}): приём ответов закрыт. Показаны проценты ответов и итог (верно/мимо) по твоим прогнозам.
             {regular.length > 0 ? ` Угадано ${correctCount} из ${regular.length} (${formatDayAccuracy(correctCount, regular.length)}).` : ''}
           </Notice>
         </div>
@@ -275,7 +299,7 @@ export function PredictionsClient({ snapshot }: { snapshot: SeasonSnapshot }) {
       {!viewingPast && lastClosed && (
         <div style={{ marginBottom: 16 }}>
           <Notice tone="info">
-            Итоги прошедшего дня ({lastClosed.gameDate}): угадано {lastClosed.correct} из {lastClosed.total} ({formatDayAccuracy(lastClosed.correct, lastClosed.total)}), кубик за день — {dayResultDieLabel(lastClosed.dieTier) ?? 'не выдан'}{lastClosed.bonusHit ? ', бонус за точный счёт получен.' : '.'}
+            Итоги прошедшего дня ({formatRuDayMonth(lastClosed.gameDate)}): угадано {lastClosed.correct} из {lastClosed.total} ({formatDayAccuracy(lastClosed.correct, lastClosed.total)}), кубик за день — {dayResultDieLabel(lastClosed.dieTier) ?? 'не выдан'}{lastClosed.bonusHit ? ', бонус за точный счёт получен.' : '.'}
             {pastOptions.length > 0 ? ' Ниже можно открыть прошлый день и посмотреть проценты и свои ответы.' : ''}
           </Notice>
         </div>
@@ -355,18 +379,29 @@ export function PredictionsClient({ snapshot }: { snapshot: SeasonSnapshot }) {
             <EmptyState title="Вопросов нет" text={viewingPast ? 'В этом дне нет матчей для отображения.' : 'Как только день будет собран, здесь появятся матчи и вопросы к ним.'} />
           ) : (
             <div className="predictions-matches">
-              {visibleMatches.map((match) => (
-                <MatchQuestions
-                  key={match.id}
-                  match={match}
-                  questions={questions.filter((q) => q.matchId === match.id)}
-                  choices={effectiveChoices}
-                  onPick={pick}
-                  matchday={activeMatchday}
-                  nowMs={nowMs}
-                  canPlay={canPlay}
-                />
-              ))}
+              {visibleMatches.map((match) => {
+                const mq = questions.filter((q) => q.matchId === match.id);
+                const regularQ = mq.filter((q) => !q.isBonus);
+                const answeredCount = regularQ.filter((q) => effectiveChoices[q.id]).length;
+                const complete = regularQ.length > 0 && answeredCount === regularQ.length;
+                const isOpen = openMatches[match.id] ?? !complete;
+                return (
+                  <MatchQuestions
+                    key={match.id}
+                    match={match}
+                    questions={mq}
+                    choices={effectiveChoices}
+                    onPick={pick}
+                    matchday={activeMatchday}
+                    nowMs={nowMs}
+                    canPlay={canPlay}
+                    open={isOpen}
+                    complete={complete}
+                    answered={answeredCount}
+                    onToggle={() => toggleMatch(match.id)}
+                  />
+                );
+              })}
             </div>
           )}
         </>
@@ -383,6 +418,10 @@ function MatchQuestions({
   matchday,
   nowMs,
   canPlay,
+  open = true,
+  complete = false,
+  answered: answeredProp,
+  onToggle,
 }: {
   match: MatchView;
   questions: QuestionView[];
@@ -391,9 +430,13 @@ function MatchQuestions({
   matchday: MatchdayView | null;
   nowMs: number;
   canPlay: boolean;
+  open?: boolean;
+  complete?: boolean;
+  answered?: number;
+  onToggle?: () => void;
 }) {
   const regular = questions.filter((q) => !q.isBonus);
-  const answered = regular.filter((q) => choices[q.id]).length;
+  const answered = answeredProp ?? regular.filter((q) => choices[q.id]).length;
   const allLocked = questions.length > 0 && questions.every((q) => !canAnswer(q, matchday, nowMs));
   const live = match.status === 'LIVE' || match.status === 'HT';
   const finished = match.status === 'FT';
@@ -428,38 +471,59 @@ function MatchQuestions({
   const showStats = statParts.length > 0 && (match.status === 'LIVE' || match.status === 'HT' || match.status === 'FT');
 
   return (
-    <section className="predictions-match">
+    <section
+      className={`predictions-match${complete ? ' predictions-match--complete' : ''}${open ? ' predictions-match--open' : ''}`}
+      data-complete={complete ? 'true' : undefined}
+    >
       <div className="predictions-match__head">
-        <div className="predictions-match__title" title={`${home.name} — ${away.name}`}>
-          {home.name} <span className="predictions-match__vs">—</span> {away.name}
-        </div>
-        <div className="predictions-match__meta">
-          <span className={live ? 'chip chip--positive' : 'chip chip--muted'}>
-            {STATUS_LABEL[match.status]}
-          </span>
-          <span className={live ? 'chip chip--info' : 'chip chip--muted'}>
-            {hasScore ? `${match.homeScore} : ${match.awayScore}` : '— : —'}
-            {match.minute !== null ? ` · ${match.minute}′` : ''}
-          </span>
-          <span className="chip chip--muted">{match.leagueTitle}</span>
-          <span className="chip chip--muted">начало {kickoffMsk(match.kickoffUtc)}</span>
-          {allLocked ? (
-            <span className="chip chip--trap">приём закрыт</span>
-          ) : (
-            <span className="chip chip--info">приём до {kickoffMsk(match.kickoffUtc)}</span>
-          )}
-          <span className="card__meta">отвечено {answered} из {regular.length}</span>
-        </div>
-        {showStats && (
-          <div className="predictions-match__meta" style={{ marginTop: 6 }}>
-            <span className="chip chip--muted" title="Статистика матча (по последним данным)">
-              {statParts.join(' · ')}
-            </span>
+        <button
+          type="button"
+          className="predictions-match__toggle"
+          onClick={onToggle}
+          aria-expanded={open}
+          aria-controls={`match-${match.id}-questions`}
+        >
+          <span className="predictions-match__chev" aria-hidden="true">{open ? '▾' : '▸'}</span>
+          <div className="predictions-match__head-main">
+            <div className="predictions-match__title" title={`${home.name} — ${away.name}`}>
+              {home.name} <span className="predictions-match__vs">—</span> {away.name}
+            </div>
+            <div className="predictions-match__meta">
+              <span className={live ? 'chip chip--positive' : finished ? 'chip chip--info' : 'chip chip--muted'}>
+                {STATUS_LABEL[match.status]}
+              </span>
+              <span className={live ? 'chip chip--info' : 'chip chip--muted'}>
+                {hasScore ? `${match.homeScore} : ${match.awayScore}` : '— : —'}
+                {match.minute !== null ? ` · ${match.minute}′` : ''}
+              </span>
+              <span className="chip chip--muted">{match.leagueTitle}</span>
+              <span className="chip chip--muted">начало {kickoffMsk(match.kickoffUtc)}</span>
+              {allLocked ? (
+                <span className="chip chip--trap">приём закрыт</span>
+              ) : (
+                <span className="chip chip--info">приём до {kickoffMsk(match.kickoffUtc)}</span>
+              )}
+            </div>
+            {showStats && (
+              <div className="predictions-match__meta predictions-match__stats">
+                <span className="chip chip--muted" title="Статистика матча (по последним данным)">
+                  {statParts.join(' · ')}
+                </span>
+              </div>
+            )}
           </div>
-        )}
+          <div className="predictions-match__progress" aria-label={`Отвечено ${answered} из ${regular.length}`}>
+            {complete ? (
+              <span className="chip chip--positive predictions-match__complete-badge">✓ все ответы</span>
+            ) : (
+              <span className="chip chip--muted">{answered}/{regular.length}</span>
+            )}
+          </div>
+        </button>
       </div>
 
-      <div className="predictions-match__questions">
+      {open && (
+      <div id={`match-${match.id}-questions`} className="predictions-match__questions">
         {questions.map((question) => {
           const selected = choices[question.id];
           const closed = !canAnswer(question, matchday, nowMs);
@@ -558,6 +622,7 @@ function MatchQuestions({
           );
         })}
       </div>
+      )}
     </section>
   );
 }

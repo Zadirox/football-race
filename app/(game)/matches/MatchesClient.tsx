@@ -3,6 +3,7 @@
 import { useMemo, useState } from 'react';
 import Link from 'next/link';
 import { Panel, EmptyState, Notice } from '@/components/ui/Panel';
+import { formatRuKickoffMsk } from '@/lib/format';
 import { teamDisplay } from '@/lib/data/team-names';
 import type { MatchView } from '@/lib/types';
 
@@ -17,13 +18,7 @@ const STATUS_LABEL: Record<MatchView['status'], string> = {
 };
 
 function kickoffMsk(iso: string): string {
-  return new Date(iso).toLocaleString('ru-RU', {
-    day: '2-digit',
-    month: 'long',
-    hour: '2-digit',
-    minute: '2-digit',
-    timeZone: 'Europe/Moscow',
-  });
+  return formatRuKickoffMsk(iso);
 }
 
 function Crest({ name, url }: { name: string; url: string | null }) {

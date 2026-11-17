@@ -30,6 +30,7 @@ export default async function GameLayout({ children }: { children: React.ReactNo
       <Snowfall />
       <Header
         me={snapshot.me}
+        meAvatarUrl={snapshot.players.find((p) => p.isMe)?.avatarUrl ?? null}
         closesAt={snapshot.matchday?.closesAt ?? null}
         demo={snapshot.demo}
         cardsEnabled={cardsEnabled}

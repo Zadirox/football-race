@@ -358,8 +358,62 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
     }
   }
 
+  // Enrich club sstats matches with detail stats (corners/cards/possession/shots).
+  // UNL was enriched earlier; club comps were not. Enrich any remaining sstats matches.
+  const allSstatsFlat = sstatsGroups.flat();
+  const needsStatEnrich = allSstatsFlat.filter(
+    (m) => m.provider === 'sstats' && m.status !== 'NS' && m.status !== 'PST' && m.status !== 'CANC' && !Object.values(m.stats).some((v) => v !== null),
+  ).length;
+  if (needsStatEnrich > 0 && processingDeadlineMs - Date.now() > 6_000) {
+    try {
+      const enrichStart = Date.now();
+      const enrichedSstats = await enrichSstatsMatchesWithStats({
+        matches: allSstatsFlat,
+        apiKey: env.sstatsApiKey,
+        concurrency: 3,
+        maxDetails: Math.min(30, Math.max(4, needsStatEnrich)),
+        deadlineMs: processingDeadlineMs,
+      });
+      requestsUsed += enrichedSstats.requestsUsed;
+      tEnrichMs += Date.now() - enrichStart;
+      sstatsGroups.length = 0;
+      sstatsGroups.push(enrichedSstats.matches);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      errors.push(`club-enrich: ${message}`);
+    }
+  }
+
   // Merge with sstats priority on provider:externalId conflicts.
   const normalized = mergeMatches([...fdGroups, ...sstatsGroups]);
+
+  // Propagate stats from sstats matches to same-game football-data matches.
+  // FD has no corners/cards/possession/SOT; stat questions on FD matches need them.
+  {
+    const normTeam = (s: string) => teamNameRu(s).toLowerCase().replace(/ё/g, 'е').replace(/[^a-zа-я0-9]+/gi, ' ').trim();
+    const hasStats = (m: NormalizedMatch) => Object.values(m.stats).some((v) => v !== null);
+    const sstatsWithStats = normalized.filter((m) => m.provider === 'sstats' && hasStats(m));
+    if (sstatsWithStats.length > 0) {
+      for (let i = 0; i < normalized.length; i++) {
+        const m = normalized[i]!;
+        if (m.provider === 'sstats' || hasStats(m)) continue;
+        if (m.status === 'NS' || m.status === 'PST' || m.status === 'CANC') continue;
+        const mh = normTeam(m.homeName);
+        const ma = normTeam(m.awayName);
+        const mt = m.kickoffUtc.getTime();
+        const donor = sstatsWithStats.find((s) => {
+          const dt = Math.abs(s.kickoffUtc.getTime() - mt);
+          if (dt > 6 * 60 * 60 * 1000) return false;
+          const sh = normTeam(s.homeName);
+          const sa = normTeam(s.awayName);
+          const homeOk = sh === mh || sh.includes(mh) || mh.includes(sh);
+          const awayOk = sa === ma || sa.includes(ma) || ma.includes(sa);
+          return homeOk && awayOk;
+        });
+        if (donor) normalized[i] = { ...m, stats: { ...m.stats, ...donor.stats } };
+      }
+    }
+  }
 
   if (normalized.length === 0) {
     if (errors.length === 0) {
@@ -794,8 +848,9 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
   if (matchdayIds.size > 0) {
     const affectedMatchdayIds = [...new Set(matchdayIds.values())];
 
-    // Backfill correct_option/is_correct для уже завершённых матчей, если пропущено.
+    // Backfill: resolve/grade questions when stats become available after initial resolve.
     try {
+      // 1) Resolved questions missing correct_option (stats arrived late).
       await sql`
         with computed as (
           select q.id, public.fn_question_answer(q.rule, m) as answer
@@ -818,6 +873,45 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
           from resolved_q rq
          where a.question_id = rq.id
       `;
+
+      // 2) Open/locked questions on FT matches where answer is now computable.
+      //    Covers orphaned questions in already-resolved matchdays and late stat arrival.
+      const newlyResolved = await sql<{ matchday_id: string; resolved_at: string | null }[]>`
+        with computed as (
+          select q.id, q.matchday_id, public.fn_question_answer(q.rule, m) as answer
+          from questions q
+          join matches m on m.id = q.match_id
+          where q.matchday_id in ${sql(affectedMatchdayIds)}
+            and m.status = 'FT'
+            and q.status in ('open', 'locked')
+        ), updated_q as (
+          update questions q
+             set correct_option = c.answer,
+                 status = 'resolved'
+            from computed c
+           where q.id = c.id
+             and c.answer is not null
+          returning q.id, q.matchday_id, q.correct_option
+        ), graded as (
+          update answers a
+             set is_correct = (a.choice = uq.correct_option)
+            from updated_q uq
+           where a.question_id = uq.id
+          returning a.question_id
+        )
+        select distinct uq.matchday_id, md.resolved_at::text as resolved_at
+          from updated_q uq
+          join matchdays md on md.id = uq.matchday_id
+      `;
+
+      // 3) Re-resolve already-resolved matchdays that got newly-resolved questions so
+      //    score_events/dice/Q are recomputed. rpc_resolve_matchday is idempotent-ish:
+      //    score_events/dice use ON CONFLICT DO NOTHING; Q and resolved_at are recalculated.
+      const toReResolve = newlyResolved.filter((r) => r.resolved_at !== null).map((r) => r.matchday_id);
+      for (const mdId of toReResolve) {
+        await sql`update matchdays set resolved_at = null where id = ${mdId} and resolved_at is not null`;
+        await sql`select public.rpc_resolve_matchday(${mdId}::uuid)`;
+      }
     } catch (error) {
       errors.push(`regrade: ${error instanceof Error ? error.message : String(error)}`);
     }

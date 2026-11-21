@@ -481,6 +481,7 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
 
   // Prefer matches not yet attached in window to avoid starving the tail of the queue.
   let prioritizedProcessing = eligibleForProcessing;
+  let unattachedCount = 0;
   if (eligibleForProcessing.length > 0) {
     const attachedRows = await sql<{ match_id: string }[]>`
       select mm.match_id
@@ -508,13 +509,16 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
       if (mid && attachedByKey.has(mid)) tail.push(m);
       else head.push(m);
     }
+    unattachedCount = head.length;
     prioritizedProcessing = [...head, ...tail];
   }
 
-  const matchesToProcess = prioritizedProcessing.slice(0, maxMatchesPerRun);
-  if (prioritizedProcessing.length > maxMatchesPerRun) {
+  // Guarantee all unattached matches get a chance; attached fill remaining capacity.
+  const cap = Math.min(prioritizedProcessing.length, Math.max(maxMatchesPerRun, unattachedCount));
+  const matchesToProcess = prioritizedProcessing.slice(0, cap);
+  if (prioritizedProcessing.length > matchesToProcess.length) {
     partial = true;
-    errors.push(`обработано ${maxMatchesPerRun} из ${prioritizedProcessing.length} матчей за проход, остаток — в следующем прогоне`);
+    errors.push(`обработано ${matchesToProcess.length} из ${prioritizedProcessing.length} матчей за проход, остаток — в следующем прогоне`);
   }
 
   tDbStartMs = Date.now();

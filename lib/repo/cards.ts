@@ -1,10 +1,26 @@
 import { db } from '@/lib/db';
 import { AppError, isAppError } from '@/lib/errors';
-import { pickCardTemplate, rollRarity, type CardRarity } from '@/lib/game/cards';
-import type { OwnedCardView, PackGrantSource, PackGrantView, PackOpenResultView } from '@/lib/types';
+import {
+  CLUB_BONUS_SECOND_CHANCE,
+  CLUB_RARITY_ODDS,
+  NATIONAL_RARITY_ODDS,
+  pickCardTemplate,
+  rollPackRarities,
+  type CardRarity,
+  type RarityOdds,
+} from '@/lib/game/cards';
+import type {
+  CardSetKind,
+  OwnedCardView,
+  PackGrantSource,
+  PackGrantView,
+  PackOpenResultView,
+} from '@/lib/types';
 
 export const NATIONAL_CARD_SET_ID = '00000000-0000-0000-0000-00000000c001';
 export const NATIONAL_PACK_ID = '00000000-0000-0000-0000-00000000a001';
+export const CLUB_CARD_SET_ID = '00000000-0000-0000-0000-00000000c002';
+export const CLUB_PACK_ID = '00000000-0000-0000-0000-00000000a002';
 
 type DbClient = ReturnType<typeof db>;
 
@@ -20,7 +36,12 @@ type GrantRow = {
   granted_at: string | Date;
   opened_at: string | Date | null;
   opened_opening_id: string | null;
-  pack_title?: string | null;
+};
+
+type GrantWithPackRow = GrantRow & {
+  pack_title: string;
+  pack_set_id: string;
+  set_kind: CardSetKind;
 };
 
 type PackRow = {
@@ -28,35 +49,57 @@ type PackRow = {
   set_id: string;
   title: string;
   is_active: boolean;
+  odds: unknown;
+};
+
+type PackMetaRow = {
+  id: string;
+  set_id: string;
+  odds: unknown;
+  set_kind: CardSetKind;
 };
 
 type CardTemplateRow = {
   id: string;
+  set_id: string;
   player_name: string;
   nationality: string | null;
+  club_name: string | null;
+  club_id: string | null;
   role_group: string | null;
   rating: number | string | null;
   photo_url: string | null;
   rarity: CardRarity;
   national_team_slug: string | null;
+  set_kind: CardSetKind;
 };
 
-type OpeningCardRow = {
-  grant_id: string;
-  opening_id: string | null;
-  card_instance_id: string | null;
+type OpeningCardJoinedRow = {
+  card_index?: number | string | null;
   rolled_rarity: CardRarity | null;
-  opened_at: string | Date | null;
   instance_id: string | null;
   obtained_at: string | Date | null;
   card_id: string | null;
+  set_id: string | null;
   player_name: string | null;
   nationality: string | null;
+  club_name: string | null;
+  club_id: string | null;
   role_group: string | null;
   rating: number | string | null;
   photo_url: string | null;
   rarity: CardRarity | null;
   national_team_slug: string | null;
+  set_kind: CardSetKind | null;
+};
+
+type OpeningHeaderRow = {
+  grant_id: string;
+  opening_id: string | null;
+  opened_at: string | Date | null;
+  // legacy single-card columns
+  card_instance_id: string | null;
+  rolled_rarity: CardRarity | null;
 };
 
 function toNumber(value: number | string | null | undefined): number {
@@ -79,30 +122,61 @@ function asRoleGroup(value: string | null): 'GK' | 'DEF' | 'MID' | 'FWD' {
   return 'MID';
 }
 
+function asSetKind(value: string | null | undefined): CardSetKind {
+  return value === 'club' ? 'club' : 'national';
+}
+
 function isUniqueViolation(error: unknown): boolean {
   return !!error && typeof error === 'object' && 'code' in error && (error as { code?: unknown }).code === '23505';
+}
+
+function parseOdds(raw: unknown): { odds: RarityOdds; bonusSecondChancePercent: number } {
+  const fallback = { odds: NATIONAL_RARITY_ODDS, bonusSecondChancePercent: 0 };
+  if (!raw || typeof raw !== 'object') return fallback;
+  const o = raw as Record<string, unknown>;
+  const common = Number(o.common);
+  const rare = Number(o.rare);
+  const epic = Number(o.epic);
+  const legend = Number(o.legend);
+  if (![common, rare, epic, legend].every(Number.isFinite)) return fallback;
+  const sum = common + rare + epic + legend;
+  if (sum <= 0) return fallback;
+  const bonus = Number(o.bonusSecondChance ?? 0);
+  return {
+    odds: { common, rare, epic, legend },
+    bonusSecondChancePercent: Number.isFinite(bonus) && bonus > 0 ? bonus : 0,
+  };
 }
 
 function mapOwnedCard(row: {
   instance_id: string;
   obtained_at: string | Date;
   card_id: string;
+  set_id?: string | null;
   player_name: string;
   nationality: string | null;
+  club_name?: string | null;
+  club_id?: string | null;
   national_team_name?: string | null;
   role_group: string | null;
   rating: number | string | null;
   photo_url: string | null;
   rarity: CardRarity;
   national_team_slug: string | null;
+  set_kind?: CardSetKind | string | null;
 }): OwnedCardView {
+  const nationalTeam = row.national_team_name ?? row.club_name ?? row.nationality ?? '';
   return {
     id: row.card_id,
     instanceId: row.instance_id,
     obtainedAt: toIso(row.obtained_at),
     playerName: row.player_name,
-    nationalTeam: row.national_team_name ?? row.nationality ?? '',
+    nationalTeam,
     nationalTeamSlug: row.national_team_slug ?? null,
+    clubId: row.club_id ?? null,
+    clubName: row.club_name ?? null,
+    setId: row.set_id ?? '',
+    setKind: asSetKind(row.set_kind),
     roleGroup: asRoleGroup(row.role_group),
     rating: toNumber(row.rating),
     photoUrl: row.photo_url,
@@ -110,9 +184,12 @@ function mapOwnedCard(row: {
   };
 }
 
-function mapGrantView(row: GrantRow & { pack_title: string }): PackGrantView {
+function mapGrantView(row: GrantWithPackRow): PackGrantView {
   return {
     id: row.id,
+    packId: row.pack_id,
+    setId: row.pack_set_id,
+    setKind: asSetKind(row.set_kind),
     packTitle: row.pack_title,
     source: row.source,
     createdAt: toIso(row.granted_at),
@@ -124,7 +201,7 @@ export async function getActiveNationalPack(
   sql: DbClient = db(),
 ): Promise<PackRow | null> {
   const [row] = await sql<PackRow[]>`
-    select p.id, p.set_id, p.title, p.is_active
+    select p.id, p.set_id, p.title, p.is_active, p.odds
       from packs p
       join card_sets cs on cs.id = p.set_id
      where cs.kind = 'national'
@@ -134,7 +211,25 @@ export async function getActiveNationalPack(
      limit 1
   `;
   if (!row) return null;
-  // seasonId accepted for season-context resolution; active pack is season-agnostic in MVP.
+  void seasonId;
+  return row;
+}
+
+export async function getActiveClubPack(
+  seasonId: string,
+  sql: DbClient = db(),
+): Promise<PackRow | null> {
+  const [row] = await sql<PackRow[]>`
+    select p.id, p.set_id, p.title, p.is_active, p.odds
+      from packs p
+      join card_sets cs on cs.id = p.set_id
+     where cs.kind = 'club'
+       and cs.is_active = true
+       and p.is_active = true
+     order by case when p.id = ${CLUB_PACK_ID}::uuid then 0 else 1 end, p.id
+     limit 1
+  `;
+  if (!row) return null;
   void seasonId;
   return row;
 }
@@ -205,11 +300,13 @@ export async function listUnopenedPacks(
   seasonId: string,
   sql: DbClient = db(),
 ): Promise<PackGrantView[]> {
-  const rows = await sql<(GrantRow & { pack_title: string })[]>`
+  const rows = await sql<GrantWithPackRow[]>`
     select g.id, g.season_id, g.profile_id, g.pack_id, g.source, g.matchday_id, g.cell_event_id,
-           g.grant_index, g.granted_at, g.opened_at, g.opened_opening_id, p.title as pack_title
+           g.grant_index, g.granted_at, g.opened_at, g.opened_opening_id,
+           p.title as pack_title, p.set_id as pack_set_id, cs.kind as set_kind
       from pack_grants g
       join packs p on p.id = g.pack_id
+      join card_sets cs on cs.id = p.set_id
      where g.profile_id = ${profileId}
        and g.season_id = ${seasonId}
        and g.opened_at is null
@@ -233,56 +330,107 @@ export async function countUnopenedPacks(
   return toNumber(rows[0]?.count ?? 0);
 }
 
+function mapOpeningCards(rows: OpeningCardJoinedRow[]): OwnedCardView[] {
+  const cards: OwnedCardView[] = [];
+  for (const row of rows) {
+    if (!row.instance_id || !row.card_id || !row.player_name || !row.rarity) continue;
+    cards.push(mapOwnedCard({
+      instance_id: row.instance_id,
+      obtained_at: row.obtained_at ?? new Date(),
+      card_id: row.card_id,
+      set_id: row.set_id,
+      player_name: row.player_name,
+      nationality: row.nationality,
+      club_name: row.club_name,
+      club_id: row.club_id,
+      role_group: row.role_group,
+      rating: row.rating,
+      photo_url: row.photo_url,
+      rarity: row.rarity,
+      national_team_slug: row.national_team_slug,
+      set_kind: row.set_kind,
+    }));
+  }
+  return cards;
+}
+
 async function loadOpenResult(tx: DbClient, grantId: string): Promise<PackOpenResultView | null> {
-  const [row] = await tx<OpeningCardRow[]>`
+  const [header] = await tx<OpeningHeaderRow[]>`
     select g.id as grant_id,
-           po.id as opening_id,
-           po.card_instance_id,
-           po.rolled_rarity,
+           coalesce(g.opened_opening_id, po.id) as opening_id,
            po.opened_at,
+           po.card_instance_id,
+           po.rolled_rarity
+      from pack_grants g
+      left join pack_openings po on po.id = g.opened_opening_id or po.pack_grant_id = g.id
+     where g.id = ${grantId}
+     limit 1
+  `;
+  if (!header?.opening_id) return null;
+
+  const cardRows = await tx<OpeningCardJoinedRow[]>`
+    select poc.card_index,
+           poc.rolled_rarity,
            ci.id as instance_id,
            ci.created_at as obtained_at,
            c.id as card_id,
+           c.set_id,
            c.player_name,
            c.nationality,
+           c.club_name,
+           c.club_id,
            c.role_group,
            c.rating,
            c.photo_url,
            c.rarity,
-           nt.slug as national_team_slug
-      from pack_grants g
-      left join pack_openings po on po.id = g.opened_opening_id or po.pack_grant_id = g.id
-      left join card_instances ci on ci.id = po.card_instance_id
-      left join cards c on c.id = ci.card_id
+           nt.slug as national_team_slug,
+           cs.kind as set_kind
+      from pack_opening_cards poc
+      join card_instances ci on ci.id = poc.card_instance_id
+      join cards c on c.id = ci.card_id
+      join card_sets cs on cs.id = c.set_id
       left join national_teams nt on nt.id = c.national_team_id
-     where g.id = ${grantId}
-     limit 1
+     where poc.opening_id = ${header.opening_id}
+     order by poc.card_index asc, poc.id asc
   `;
-  if (!row?.opening_id) return null;
 
-  if (!row.card_instance_id) {
-    return { grantId, card: null, collectionComplete: true };
+  let cards = mapOpeningCards(cardRows);
+
+  // Fallback for legacy/inconsistent state: read single card from pack_openings.
+  if (cards.length === 0 && header.card_instance_id) {
+    const legacyRows = await tx<OpeningCardJoinedRow[]>`
+      select 1 as card_index,
+             ${header.rolled_rarity}::text as rolled_rarity,
+             ci.id as instance_id,
+             ci.created_at as obtained_at,
+             c.id as card_id,
+             c.set_id,
+             c.player_name,
+             c.nationality,
+             c.club_name,
+             c.club_id,
+             c.role_group,
+             c.rating,
+             c.photo_url,
+             c.rarity,
+             nt.slug as national_team_slug,
+             cs.kind as set_kind
+        from card_instances ci
+        join cards c on c.id = ci.card_id
+        join card_sets cs on cs.id = c.set_id
+        left join national_teams nt on nt.id = c.national_team_id
+       where ci.id = ${header.card_instance_id}
+       limit 1
+    `;
+    cards = mapOpeningCards(legacyRows);
   }
 
-  if (row.instance_id && row.card_id && row.player_name && row.rarity) {
-    return {
-      grantId,
-      card: mapOwnedCard({
-        instance_id: row.instance_id,
-        obtained_at: row.obtained_at ?? row.opened_at ?? new Date(),
-        card_id: row.card_id,
-        player_name: row.player_name,
-        nationality: row.nationality,
-        role_group: row.role_group,
-        rating: row.rating,
-        photo_url: row.photo_url,
-        rarity: row.rarity,
-        national_team_slug: row.national_team_slug,
-      }),
-    };
-  }
-
-  return null;
+  return {
+    grantId,
+    cards,
+    card: cards[0] ?? null,
+    collectionComplete: cards.length === 0,
+  };
 }
 
 async function resolveOpenedGrantResult(
@@ -292,6 +440,28 @@ async function resolveOpenedGrantResult(
   const result = await loadOpenResult(tx, grantId);
   if (result) return result;
   throw new AppError('CONFLICT', 'Pack grant is opened but opening state is inconsistent');
+}
+
+type PickedTemplate = {
+  template: CardTemplateRow;
+  rolledRarity: CardRarity;
+};
+
+function pickTemplatesForRarities(
+  available: CardTemplateRow[],
+  rarities: CardRarity[],
+  random: () => number,
+): PickedTemplate[] {
+  const remaining = [...available];
+  const picks: PickedTemplate[] = [];
+  for (const rolledRarity of rarities) {
+    const picked = pickCardTemplate(remaining, rolledRarity, random);
+    if (!picked) break;
+    const idx = remaining.findIndex((t) => t.id === picked.id);
+    if (idx >= 0) remaining.splice(idx, 1);
+    picks.push({ template: picked as CardTemplateRow, rolledRarity: picked.rarity });
+  }
+  return picks;
 }
 
 async function openPackGrantOnce(opts: {
@@ -318,13 +488,18 @@ async function openPackGrantOnce(opts: {
       return await resolveOpenedGrantResult(client, grant.id);
     }
 
-    const [pack] = await client<{ set_id: string }[]>`
-      select set_id from packs where id = ${grant.pack_id} limit 1
+    const [pack] = await client<PackMetaRow[]>`
+      select p.id, p.set_id, p.odds, cs.kind as set_kind
+        from packs p
+        join card_sets cs on cs.id = p.set_id
+       where p.id = ${grant.pack_id}
+       limit 1
     `;
     if (!pack) throw new AppError('NOT_FOUND', 'Pack not found');
 
     const templates = await client<CardTemplateRow[]>`
-      select c.id, c.player_name, c.nationality, c.role_group, c.rating, c.photo_url, c.rarity, nt.slug as national_team_slug
+      select c.id, c.set_id, c.player_name, c.nationality, c.club_name, c.club_id, c.role_group,
+             c.rating, c.photo_url, c.rarity, nt.slug as national_team_slug, ${pack.set_kind}::text as set_kind
         from cards c
         left join national_teams nt on nt.id = c.national_team_id
        where c.set_id = ${pack.set_id}
@@ -336,13 +511,19 @@ async function openPackGrantOnce(opts: {
          )
     `;
 
-    const rolled = rollRarity(opts.random);
-    const picked = pickCardTemplate(templates, rolled, opts.random);
+    const parsed = parseOdds(pack.odds);
+    const defaultBonus = pack.set_kind === 'club' ? CLUB_BONUS_SECOND_CHANCE : 0;
+    const defaultOdds = pack.set_kind === 'club' ? CLUB_RARITY_ODDS : NATIONAL_RARITY_ODDS;
+    const odds = parsed.odds ?? defaultOdds;
+    const bonusSecondChancePercent = parsed.bonusSecondChancePercent || defaultBonus;
 
-    if (!picked) {
+    const rolledRarities = rollPackRarities(opts.random, odds, bonusSecondChancePercent);
+    const picks = pickTemplatesForRarities(templates, rolledRarities, opts.random);
+
+    if (picks.length === 0) {
       const [opening] = await client<{ id: string }[]>`
         insert into pack_openings (pack_id, profile_id, season_id, card_instance_id, rolled_rarity, idempotency_key, pack_grant_id)
-        values (${grant.pack_id}, ${opts.profileId}, ${opts.seasonId}, null, ${rolled}, ${grant.id}::uuid, ${grant.id})
+        values (${grant.pack_id}, ${opts.profileId}, ${opts.seasonId}, null, ${rolledRarities[0] ?? 'common'}, ${grant.id}::uuid, ${grant.id})
         on conflict (pack_grant_id) where pack_grant_id is not null
         do update set opened_at = pack_openings.opened_at
         returning id
@@ -357,24 +538,43 @@ async function openPackGrantOnce(opts: {
       return await resolveOpenedGrantResult(client, grant.id);
     }
 
-    const [instance] = await client<{ id: string; created_at: string | Date }[]>`
-      insert into card_instances (card_id, owner_id, season_id, obtained_from)
-      values (${picked.id}, ${opts.profileId}, ${opts.seasonId}, 'pack')
-      returning id, created_at
-    `;
-    if (!instance) throw new AppError('CONFLICT_RETRY', 'Failed to create card instance');
-
+    const firstPick = picks[0]!;
     const [opening] = await client<{ id: string }[]>`
       insert into pack_openings (pack_id, profile_id, season_id, card_instance_id, rolled_rarity, idempotency_key, pack_grant_id)
-      values (${grant.pack_id}, ${opts.profileId}, ${opts.seasonId}, ${instance.id}, ${picked.rarity}, ${grant.id}::uuid, ${grant.id})
+      values (${grant.pack_id}, ${opts.profileId}, ${opts.seasonId}, null, ${firstPick.rolledRarity}, ${grant.id}::uuid, ${grant.id})
       on conflict (pack_grant_id) where pack_grant_id is not null
       do nothing
       returning id
     `;
     if (!opening) {
-      // Another concurrent opener won for this grant; abort so the minted instance rolls back.
+      // Another concurrent opener won for this grant; abort so any side effects roll back.
       throw new AppError('CONFLICT_RETRY', 'Concurrent pack opening lost grant reservation');
     }
+
+    let firstInstanceId: string | null = null;
+    for (let i = 0; i < picks.length; i++) {
+      const pick = picks[i]!;
+      const [instance] = await client<{ id: string }[]>`
+        insert into card_instances (card_id, owner_id, season_id, obtained_from)
+        values (${pick.template.id}, ${opts.profileId}, ${opts.seasonId}, 'pack')
+        returning id
+      `;
+      if (!instance) throw new AppError('CONFLICT_RETRY', 'Failed to create card instance');
+      if (i === 0) firstInstanceId = instance.id;
+
+      await client`
+        insert into pack_opening_cards (opening_id, card_instance_id, rolled_rarity, card_index)
+        values (${opening.id}::uuid, ${instance.id}::uuid, ${pick.rolledRarity}, ${i + 1})
+        on conflict (opening_id, card_index) do nothing
+      `;
+    }
+
+    await client`
+      update pack_openings
+         set card_instance_id = coalesce(card_instance_id, ${firstInstanceId}::uuid),
+             rolled_rarity = coalesce(rolled_rarity, ${firstPick.rolledRarity})
+       where id = ${opening.id}
+    `;
 
     await client`
       update pack_grants
@@ -406,8 +606,6 @@ export async function openPackGrant(opts: {
       );
     } catch (error) {
       if (!isRetryableOpenConflict(error)) throw error;
-      // Abort/rollback happened (for unique violations or lost reservation); retry to
-      // re-lock grant and return the committed idempotent result or re-attempt safely.
     }
   }
 
@@ -423,28 +621,37 @@ export async function listCollection(
     instance_id: string;
     obtained_at: string | Date;
     card_id: string;
+    set_id: string;
     player_name: string;
     nationality: string | null;
     national_team_name: string | null;
+    club_name: string | null;
+    club_id: string | null;
     role_group: string | null;
     rating: number | string | null;
     photo_url: string | null;
     rarity: CardRarity;
     national_team_slug: string | null;
+    set_kind: CardSetKind;
   }[]>`
     select ci.id as instance_id,
            ci.created_at as obtained_at,
            c.id as card_id,
+           c.set_id,
            c.player_name,
            c.nationality,
            nt.name as national_team_name,
+           c.club_name,
+           c.club_id,
            c.role_group,
            c.rating,
            c.photo_url,
            c.rarity,
-           nt.slug as national_team_slug
+           nt.slug as national_team_slug,
+           cs.kind as set_kind
       from card_instances ci
       join cards c on c.id = ci.card_id
+      join card_sets cs on cs.id = c.set_id
       left join national_teams nt on nt.id = c.national_team_id
      where ci.owner_id = ${profileId}
        and ci.season_id = ${seasonId}
@@ -454,6 +661,7 @@ export async function listCollection(
 }
 
 export type CollectionProgressView = {
+  setId: string;
   owned: number;
   total: number;
   byRarity: Record<CardRarity, { owned: number; total: number }>;
@@ -493,5 +701,19 @@ export async function getCollectionProgress(
     total += t;
   }
 
-  return { owned, total, byRarity };
+  return { setId, owned, total, byRarity };
+}
+
+export async function getCollectionProgresses(
+  profileId: string,
+  seasonId: string,
+  setIds: string[],
+  sql: DbClient = db(),
+): Promise<CollectionProgressView[]> {
+  const unique = Array.from(new Set(setIds.filter(Boolean)));
+  const results: CollectionProgressView[] = [];
+  for (const id of unique) {
+    results.push(await getCollectionProgress(profileId, seasonId, id, sql));
+  }
+  return results;
 }

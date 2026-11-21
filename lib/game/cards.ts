@@ -1,5 +1,6 @@
 ﻿/**
- * National cards MVP: rarity odds, lineup points, matchday packs, and slot helpers.
+ * Cards: rarity odds, lineup points, matchday packs, and slot helpers.
+ * Supports national (legacy default) and club pack odds/bonus rules.
  */
 import type { DiceTier } from '@/lib/game/dice';
 
@@ -7,12 +8,29 @@ export type CardRarity = 'common' | 'rare' | 'epic' | 'legend';
 export type RoleGroup = 'GK' | 'DEF' | 'MID' | 'FWD';
 export type LineupSlotKind = 'GK' | 'OF1' | 'OF2';
 
-export const CARD_RARITY_ODDS = {
+export type RarityOdds = Readonly<Record<CardRarity, number>>;
+
+/** National cards MVP odds (default). */
+export const NATIONAL_RARITY_ODDS: RarityOdds = {
   common: 70,
   rare: 22,
   epic: 7,
   legend: 1,
-} as const;
+};
+
+/** Club cards odds (2C.4, Variant C). */
+export const CLUB_RARITY_ODDS: RarityOdds = {
+  common: 55,
+  rare: 28,
+  epic: 13,
+  legend: 4,
+};
+
+/** Club pack A+: chance (percent) of a second card roll. */
+export const CLUB_BONUS_SECOND_CHANCE = 10;
+
+/** Backward-compatible alias (national odds). */
+export const CARD_RARITY_ODDS = NATIONAL_RARITY_ODDS;
 
 export const LINEUP_POINTS = {
   common: 10,
@@ -27,14 +45,30 @@ export function matchdayPackCount(tier: DiceTier | null): number {
   return tier === 'gold' ? 2 : 1;
 }
 
-export function rollRarity(random: () => number): CardRarity {
+export function rollRarity(random: () => number, odds: RarityOdds = NATIONAL_RARITY_ODDS): CardRarity {
   const roll = random() * 100;
-  if (roll < CARD_RARITY_ODDS.common) return 'common';
-  if (roll < CARD_RARITY_ODDS.common + CARD_RARITY_ODDS.rare) return 'rare';
-  if (roll < CARD_RARITY_ODDS.common + CARD_RARITY_ODDS.rare + CARD_RARITY_ODDS.epic) {
+  if (roll < odds.common) return 'common';
+  if (roll < odds.common + odds.rare) return 'rare';
+  if (roll < odds.common + odds.rare + odds.epic) {
     return 'epic';
   }
   return 'legend';
+}
+
+/**
+ * Rolls rarities for a pack open: 1 guaranteed card, plus a second card with
+ * `bonusSecondChancePercent` probability (independent roll, same odds).
+ */
+export function rollPackRarities(
+  random: () => number,
+  odds: RarityOdds = NATIONAL_RARITY_ODDS,
+  bonusSecondChancePercent = 0,
+): CardRarity[] {
+  const rarities: CardRarity[] = [rollRarity(random, odds)];
+  if (bonusSecondChancePercent > 0 && random() * 100 < bonusSecondChancePercent) {
+    rarities.push(rollRarity(random, odds));
+  }
+  return rarities;
 }
 
 export function hasCollectibleLeft(total: number, owned: number): boolean {

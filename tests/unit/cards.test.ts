@@ -1,10 +1,14 @@
 ﻿import { describe, expect, it } from 'vitest';
 import {
   CARD_RARITY_ODDS,
+  CLUB_BONUS_SECOND_CHANCE,
+  CLUB_RARITY_ODDS,
   LINEUP_POINTS,
+  NATIONAL_RARITY_ODDS,
   canSlotCard,
   isOutfield,
   matchdayPackCount,
+  rollPackRarities,
   rollRarity,
 } from '@/lib/game/cards';
 
@@ -42,6 +46,51 @@ describe('rollRarity deterministic edges', () => {
     expect(rollRarity(() => 0.699999)).toBe('common');
     expect(rollRarity(() => 0.700001)).toBe('rare');
     expect(rollRarity(() => 0.999999)).toBe('legend');
+  });
+});
+
+describe('club rarity odds (2C.4, Variant C)', () => {
+  it('odds 55/28/13/4 sum to 100 and bonus chance is 10%', () => {
+    expect(CLUB_RARITY_ODDS).toEqual({ common: 55, rare: 28, epic: 13, legend: 4 });
+    expect(
+      CLUB_RARITY_ODDS.common +
+        CLUB_RARITY_ODDS.rare +
+        CLUB_RARITY_ODDS.epic +
+        CLUB_RARITY_ODDS.legend,
+    ).toBe(100);
+    expect(CLUB_BONUS_SECOND_CHANCE).toBe(10);
+  });
+
+  it('rollRarity respects custom odds (club thresholds)', () => {
+    expect(rollRarity(() => 0.549999, CLUB_RARITY_ODDS)).toBe('common');
+    expect(rollRarity(() => 0.550001, CLUB_RARITY_ODDS)).toBe('rare');
+    expect(rollRarity(() => 0.829999, CLUB_RARITY_ODDS)).toBe('rare');
+    expect(rollRarity(() => 0.830001, CLUB_RARITY_ODDS)).toBe('epic');
+    expect(rollRarity(() => 0.959999, CLUB_RARITY_ODDS)).toBe('epic');
+    expect(rollRarity(() => 0.960001, CLUB_RARITY_ODDS)).toBe('legend');
+  });
+});
+
+describe('rollPackRarities (A+)', () => {
+  it('returns 1 card when bonus roll does not trigger', () => {
+    const seq = [0.1, 0.5]; // rarity -> common, bonus roll 50% >= 10%
+    let i = 0;
+    const random = () => seq[i++] ?? 0.5;
+    expect(rollPackRarities(random, CLUB_RARITY_ODDS, CLUB_BONUS_SECOND_CHANCE)).toEqual(['common']);
+  });
+
+  it('returns 2 cards when bonus roll triggers with independent rarity rolls', () => {
+    const seq = [0.96, 0.05, 0.2]; // 1st legend, bonus triggers (5% < 10%), 2nd common
+    let i = 0;
+    const random = () => seq[i++] ?? 0.5;
+    expect(rollPackRarities(random, CLUB_RARITY_ODDS, CLUB_BONUS_SECOND_CHANCE)).toEqual(['legend', 'common']);
+  });
+
+  it('returns 1 card when bonus chance is 0 (national/default behavior)', () => {
+    const seq = [0.1, 0.01];
+    let i = 0;
+    const random = () => seq[i++] ?? 0.5;
+    expect(rollPackRarities(random, NATIONAL_RARITY_ODDS, 0)).toEqual(['common']);
   });
 });
 

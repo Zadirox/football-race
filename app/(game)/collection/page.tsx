@@ -3,7 +3,13 @@ import { Panel, Notice } from '@/components/ui/Panel';
 import { getViewer } from '@/lib/auth/session';
 import { db } from '@/lib/db';
 import { hasDatabase, serverEnv } from '@/lib/env';
-import { getCollectionProgress, listCollection, listUnopenedPacks } from '@/lib/repo/cards';
+import {
+  CLUB_CARD_SET_ID,
+  NATIONAL_CARD_SET_ID,
+  getCollectionProgresses,
+  listCollection,
+  listUnopenedPacks,
+} from '@/lib/repo/cards';
 import { CollectionClient } from './CollectionClient';
 
 async function getActiveSeasonId(): Promise<string | null> {
@@ -50,19 +56,19 @@ export default async function CollectionPage() {
     );
   }
 
-  const [packs, cards, progress] = await Promise.all([
+  const [packs, cards, progresses] = await Promise.all([
     listUnopenedPacks(profileId, seasonId),
     listCollection(profileId, seasonId),
-    getCollectionProgress(profileId, seasonId),
+    getCollectionProgresses(profileId, seasonId, [NATIONAL_CARD_SET_ID, CLUB_CARD_SET_ID]),
   ]);
 
   return (
     <Panel
       title="Коллекция"
-      subtitle="Национальные карточки: открывайте паки и собирайте состав сборных."
+      subtitle="Открывайте паки и собирайте карточки сборных и клубов."
       size="wide"
     >
-      <CollectionClient packs={packs} cards={cards} progress={progress} />
+      <CollectionClient packs={packs} cards={cards} progresses={progresses} />
     </Panel>
   );
 }

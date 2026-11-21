@@ -7,6 +7,7 @@ import { CardTile } from '@/components/cards/CardTile';
 import { Notice } from '@/components/ui/Panel';
 import { teamDisplay } from '@/lib/data/team-names';
 import { LINEUP_POINTS } from '@/lib/game/cards';
+import { canLineupCardPlayMatch, lineupCardTeamLabel } from '@/lib/game/lineup-eligibility';
 import { RARITY_LABEL_RU, ROLE_LABEL_RU, teamFlag } from '@/lib/game/cards-ui';
 import type { LineupSlotKind, MatchLineupView, OwnedCardView } from '@/lib/types';
 
@@ -18,9 +19,9 @@ type Props = {
 const SLOTS: LineupSlotKind[] = ['OF1', 'OF2', 'GK'];
 
 const SLOT_META: Record<LineupSlotKind, { title: string; short: string; hint: string }> = {
-  GK: { title: 'Вратарь', short: 'GK', hint: 'Только GK своей сборной' },
-  OF1: { title: 'Полевой 1', short: 'OF', hint: 'DEF / MID / FWD своей сборной' },
-  OF2: { title: 'Полевой 2', short: 'OF', hint: 'DEF / MID / FWD своей сборной' },
+  GK: { title: 'Вратарь', short: 'GK', hint: 'Только GK своей команды' },
+  OF1: { title: 'Полевой 1', short: 'OF', hint: 'DEF / MID / FWD своей команды' },
+  OF2: { title: 'Полевой 2', short: 'OF', hint: 'DEF / MID / FWD своей команды' },
 };
 
 const PITCH_SLOT_CLASS: Record<LineupSlotKind, string> = {
@@ -28,23 +29,6 @@ const PITCH_SLOT_CLASS: Record<LineupSlotKind, string> = {
   OF1: 'slot slot--of1',
   OF2: 'slot slot--of2',
 };
-
-function normalize(s: string): string {
-  return s
-    .trim()
-    .toLowerCase()
-    .normalize('NFKD')
-    .replace(/[\u0300-\u036f]/g, '')
-    .replace(/\s+/g, ' ');
-}
-
-function canCardPlayMatch(cardTeam: string, homeName: string, awayName: string): boolean {
-  const cardCanon = normalize(teamDisplay(cardTeam).name) || normalize(cardTeam);
-  const homeCanon = normalize(teamDisplay(homeName).name) || normalize(homeName);
-  const awayCanon = normalize(teamDisplay(awayName).name) || normalize(awayName);
-  if (!cardCanon) return false;
-  return cardCanon === homeCanon || cardCanon === awayCanon;
-}
 
 function kickoffLabel(iso: string): string {
   return new Date(iso).toLocaleString('ru-RU', {
@@ -57,7 +41,8 @@ function kickoffLabel(iso: string): string {
 }
 
 function cardShort(card: OwnedCardView): string {
-  return `${card.playerName} · ${ROLE_LABEL_RU[card.roleGroup]} · ${card.rating}`;
+  const team = lineupCardTeamLabel(card);
+  return `${card.playerName} · ${ROLE_LABEL_RU[card.roleGroup]} · ${card.rating}${team ? ` · ${team}` : ''}`;
 }
 
 export function LineupsClient({ matches, ownedCards }: Props) {
@@ -133,15 +118,18 @@ export function LineupsClient({ matches, ownedCards }: Props) {
       if (selectedInMatch.has(c.instanceId)) return false;
       if (slot === 'GK' && c.roleGroup !== 'GK') return false;
       if (slot !== 'GK' && c.roleGroup === 'GK') return false;
-      return canCardPlayMatch(c.nationalTeam, match.homeName, match.awayName);
+      return canLineupCardPlayMatch(c, {
+        homeName: match.homeName,
+        awayName: match.awayName,
+        leagueCode: match.leagueCode ?? null,
+      });
     });
   };
 
   if (matches.length === 0) {
     return (
       <Notice tone="info">
-        Нет матчей, где у вас есть хотя бы одна карточка игрока из участвующей сборной. Получите карточки команд
-        сегодняшних матчей, чтобы выставить состав.
+        Нет матчей, где у вас есть хотя бы одна подходящая карточка команды-участницы.
       </Notice>
     );
   }
@@ -156,8 +144,8 @@ export function LineupsClient({ matches, ownedCards }: Props) {
 
       <div className="card" style={{ marginBottom: 16, padding: 12 }}>
         <p className="card__text" style={{ margin: 0 }}>
-          Состав на матч: <strong>1 вратарь + 2 полевых</strong> своей сборной. Менять можно до кик-оффа.
-          Потенциальный бонус: <strong>10/20/30/40</strong> за Common/Rare/Epic/Legend (если условие бонуса выполнено).
+          Состав на матч: <strong>1 вратарь + 2 полевых</strong> своей команды. Можно менять до начала матча.
+          Потенциальный бонус: <strong>10/20/30/40</strong> за Common/Rare/Epic/Legend (если условие бонуса выполнится).
         </p>
       </div>
 
@@ -186,7 +174,7 @@ export function LineupsClient({ matches, ownedCards }: Props) {
                 </div>
               </div>
 
-              <div className="pitch" aria-label="Мини-поле состава">
+              <div className="pitch" aria-label="Слоты состава">
                 <div className="pitch__lines" aria-hidden="true" />
                 {SLOTS.map((slot) => {
                   const slotState = match.slots.find((s) => s.slot === slot) ?? { matchId: match.matchId, slot, card: null };
@@ -198,17 +186,19 @@ export function LineupsClient({ matches, ownedCards }: Props) {
                   const selectedCard = chosen ? (ownedCards.find((c) => c.instanceId === chosen) ?? currentCard) : currentCard;
                   const potential = selectedCard ? LINEUP_POINTS[selectedCard.rarity] : null;
 
-                  let bonusLine = 'Бонус пока не начислен';
+                  let bonusLine = 'Бонус ещё не рассчитан';
                   let bonusTone: 'muted' | 'good' | 'bad' = 'muted';
                   if (slotState.bonusAwarded) {
-                    bonusLine = `Бонус начислен: +${slotState.bonusPoints ?? 0} (${slotState.bonusMethod === 'auto' ? 'авто' : 'вручную'})`;
+                    bonusLine = `Бонус начислен: +${slotState.bonusPoints ?? 0} (${slotState.bonusMethod === 'auto' ? 'авто' : 'ручной'})`;
                     bonusTone = 'good';
                   } else if (slotState.bonusMethod) {
-                    bonusLine = 'Бонус не засчитан';
+                    bonusLine = 'Бонус не начислен';
                     bonusTone = 'bad';
                   } else if (potential != null) {
                     bonusLine = `Потенциал: +${potential} (${RARITY_LABEL_RU[selectedCard!.rarity]})`;
                   }
+
+                  const teamLabel = selectedCard ? lineupCardTeamLabel(selectedCard) : '';
 
                   return (
                     <div key={slot} className={PITCH_SLOT_CLASS[slot]}>
@@ -221,8 +211,9 @@ export function LineupsClient({ matches, ownedCards }: Props) {
                         {selectedCard ? (
                           <div className="slot__card">
                             <CardTile card={selectedCard} size="sm" interactive={false} />
+                            {teamLabel && <div className="slot__preview-note">{teamLabel}</div>}
                             {chosen && chosen !== (currentCard?.instanceId ?? '') && (
-                              <div className="slot__preview-note">Превью (не сохранено)</div>
+                              <div className="slot__preview-note">Черновик (не сохранён)</div>
                             )}
                           </div>
                         ) : (
@@ -248,12 +239,12 @@ export function LineupsClient({ matches, ownedCards }: Props) {
                               <option value="">— не выбрано —</option>
                               {options.map((c) => (
                                 <option key={c.instanceId} value={c.instanceId}>
-                                  {cardShort(c)} · {c.nationalTeam} · {RARITY_LABEL_RU[c.rarity]} (+{LINEUP_POINTS[c.rarity]})
+                                  {cardShort(c)} · {RARITY_LABEL_RU[c.rarity]} (+{LINEUP_POINTS[c.rarity]})
                                 </option>
                               ))}
                               {currentCard && !options.some((o) => o.instanceId === currentCard.instanceId) && (
                                 <option value={currentCard.instanceId}>
-                                  {cardShort(currentCard)} · {currentCard.nationalTeam} · {RARITY_LABEL_RU[currentCard.rarity]} (+{LINEUP_POINTS[currentCard.rarity]})
+                                  {cardShort(currentCard)} · {RARITY_LABEL_RU[currentCard.rarity]} (+{LINEUP_POINTS[currentCard.rarity]})
                                 </option>
                               )}
                             </select>
@@ -266,7 +257,7 @@ export function LineupsClient({ matches, ownedCards }: Props) {
                               disabled={locked || pending || !chosen}
                               onClick={() => save(match.matchId, slot)}
                             >
-                              {busyKey === key ? 'Сохраняем…' : 'Сохранить'}
+                              {busyKey === key ? 'Сохранение…' : 'Сохранить'}
                             </button>
                             <button
                               type="button"
@@ -274,17 +265,17 @@ export function LineupsClient({ matches, ownedCards }: Props) {
                               disabled={locked || pending || (!currentCard && !chosen)}
                               onClick={() => clear(match.matchId, slot)}
                             >
-                              {busyKey === `${key}:clear` ? '…' : 'Очистить'}
+                              {busyKey === `${key}:clear` ? '…' : 'Убрать'}
                             </button>
                           </div>
 
                           <div className="slot__hint">
                             {locked ? (
-                              <span>Редактирование закрыто: матч начался.</span>
+                              <span>Изменения недоступны: матч начался.</span>
                             ) : options.length > 0 ? (
                               <span>Доступно подходящих: {options.length}. {meta.hint}.</span>
                             ) : (
-                              <span>Нет подходящих карточек. Нужна {slot === 'GK' ? 'карточка GK' : 'полевой игрок (DEF/MID/FWD)'} сборной этого матча.</span>
+                              <span>Нет подходящих карточек. Нужна {slot === 'GK' ? 'карточка GK' : 'полевая карточка (DEF/MID/FWD)'} команды-участницы этого матча.</span>
                             )}
                           </div>
                         </div>

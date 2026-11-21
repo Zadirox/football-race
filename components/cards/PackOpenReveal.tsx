@@ -169,14 +169,15 @@ export function PackOpenReveal({ card, collectionComplete, variant = 'fut', pale
     later(() => {
       if (cancelledRef.current) return;
       setPhase('country');
+      const teamLabel = card.clubName || card.nationalTeam || '—';
       runSlot({
         duration: DUR.country,
-        pool: COUNTRY_POOL,
-        target: card.nationalTeam || '—',
+        pool: card.setKind === 'club' ? [teamLabel, ...COUNTRY_POOL.slice(0, 12)] : COUNTRY_POOL,
+        target: teamLabel,
         onTick: (v) => setCountryText(String(v)),
         onDone: () => {
           if (cancelledRef.current) return;
-          setCountryText(card.nationalTeam || '—');
+          setCountryText(teamLabel);
           setCountryLocked(true);
           playRollTick(0.18);
         },
@@ -317,10 +318,10 @@ export function PackOpenReveal({ card, collectionComplete, variant = 'fut', pale
             ) : (
               <>
                 <div className="intro" data-show={phase === 'intro' ? 'true' : 'false'}>
-                  <div className="intro__badge">NATIONAL PACK</div>
+                  <div className="intro__badge">{card.setKind === 'club' ? 'CLUB PACK' : 'NATIONAL PACK'}</div>
                   <div className="intro__pulse" />
                   <div className="intro__text">Открываем пак…</div>
-                  <div className="intro__hint">Сборные · 1 карточка</div>
+                  <div className="intro__hint">{card.setKind === 'club' ? 'Клубы · 1–2 карточки' : 'Сборные · 1 карточка'}</div>
                 </div>
 
                 <div className={`slots${phase === 'intro' ? ' slots--hidden' : ''}`} aria-live="polite">
@@ -364,11 +365,11 @@ export function PackOpenReveal({ card, collectionComplete, variant = 'fut', pale
                     return (
                       <>
                         <Reel
-                          label="Сборная"
+                          label={card.setKind === 'club' ? 'Клуб' : 'Сборная'}
                           show={phase !== 'intro'}
                           spinning={countrySpinning}
                           locked={countryDone}
-                          text={countryDone ? (card.nationalTeam || '—') : countryText}
+                          text={countryDone ? (card.clubName || card.nationalTeam || '—') : countryText}
                         />
                         <Reel
                           label="Роль / позиция"

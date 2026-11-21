@@ -1,6 +1,7 @@
 import { db } from '@/lib/db';
 import { AppError } from '@/lib/errors';
 import { canSlotCard, type LineupSlotKind } from '@/lib/game/cards';
+import { getLineupCardMatchSide, isClubContestMatch } from '@/lib/game/lineup-eligibility';
 import { teamDisplay } from '@/lib/data/team-names';
 import { gameDateOf } from '@/lib/time';
 import type { LineupSlotView, MatchLineupView, MatchView, OwnedCardView } from '@/lib/types';
@@ -17,6 +18,7 @@ type MatchRow = {
   away_name: string;
   home_score: number | null;
   away_score: number | null;
+  league_code: string | null;
   league_title: string | null;
   provider: string | null;
 };
@@ -28,8 +30,12 @@ type SlotRow = {
   slot: LineupSlotKind;
   card_instance_id: string;
   card_id: string;
+  set_id: string;
+  set_kind: string;
   player_name: string;
   nationality: string | null;
+  club_name: string | null;
+  club_id: string | null;
   national_team_name: string | null;
   national_team_slug: string | null;
   role_group: string | null;
@@ -47,8 +53,12 @@ type CardInstanceRow = {
   owner_id: string;
   season_id: string;
   card_id: string;
+  set_id: string;
+  set_kind: string;
   player_name: string;
   nationality: string | null;
+  club_name: string | null;
+  club_id: string | null;
   role_group: string | null;
   rating: number | string | null;
   photo_url: string | null;
@@ -62,6 +72,7 @@ type MatchContextRow = {
   id: string;
   season_id: string;
   matchday_id: string;
+  league_code: string | null;
   kickoff_utc: string | Date;
   status: string;
   home_name: string;
@@ -134,38 +145,61 @@ function setsIntersect(a: Set<string>, b: Set<string>): boolean {
 }
 
 /**
- * Deterministic team matcher for national cards vs match sides.
- * Fail closed: reject when no confident match or ambiguous (both sides match).
- * Uses normalized raw names and teamDisplay canonical aliases from lib/data/team-names.ts.
- * Limitations: relies on available name/slug/nationality strings; unknown aliases not in
- * team-names map may fail to match if raw strings differ materially.
+ * Deterministic card-to-side matcher for lineups.
+ * Stage 4 MVP (D4.1=A): club contests match club cards by club entity/whitelist aliases;
+ * national contests keep existing national team matching. Fail closed.
  */
 export function matchCardToMatchSide(params: {
   homeName: string;
   awayName: string;
+  leagueCode?: string | null;
   card: {
+    setKind?: 'national' | 'club' | string | null;
     nationalTeamName: string | null;
     nationalTeamSlug: string | null;
     nationality: string | null;
+    clubId?: string | null;
+    clubName?: string | null;
   };
 }): 'home' | 'away' {
+  const side = getLineupCardMatchSide(
+    {
+      setKind:
+        params.card.setKind === 'club'
+          ? 'club'
+          : params.card.setKind === 'national'
+            ? 'national'
+            : params.card.clubId || params.card.clubName
+              ? 'club'
+              : 'national',
+      nationalTeam: params.card.nationalTeamName ?? '',
+      nationalTeamSlug: params.card.nationalTeamSlug,
+      nationality: params.card.nationality,
+      clubId: params.card.clubId ?? null,
+      clubName: params.card.clubName ?? null,
+    },
+    { homeName: params.homeName, awayName: params.awayName, leagueCode: params.leagueCode ?? null },
+  );
+
+  if (side) return side;
+
+  if (isClubContestMatch({ leagueCode: params.leagueCode ?? null })) {
+    throw new AppError('INVALID_INPUT', 'Карточка клуба не подходит к этому матчу');
+  }
+
   const home = teamCandidates([params.homeName]);
   const away = teamCandidates([params.awayName]);
-  const card = teamCandidates([
+  const cardTeams = teamCandidates([
     params.card.nationalTeamName,
     params.card.nationality,
     params.card.nationalTeamSlug,
   ]);
-
-  const homeMatch = setsIntersect(card, home);
-  const awayMatch = setsIntersect(card, away);
-
-  if (homeMatch && !awayMatch) return 'home';
-  if (awayMatch && !homeMatch) return 'away';
+  const homeMatch = setsIntersect(cardTeams, home);
+  const awayMatch = setsIntersect(cardTeams, away);
   if (homeMatch && awayMatch) {
-    throw new AppError('INVALID_INPUT', 'Не удалось однозначно сопоставить сборную карточки с матчем');
+    throw new AppError('INVALID_INPUT', 'Название команды карточки совпадает с обеими командами матча');
   }
-  throw new AppError('INVALID_INPUT', 'Карточка сборной не участвует в этом матче');
+  throw new AppError('INVALID_INPUT', 'Карточка не подходит к этому матчу');
 }
 
 function isLockedKickoff(kickoffUtc: string | Date): boolean {
@@ -193,8 +227,12 @@ function mapOwnedCardFromSlot(row: SlotRow): OwnedCardView {
     instanceId: row.card_instance_id,
     obtainedAt: toIso(row.obtained_at),
     playerName: row.player_name,
-    nationalTeam: row.national_team_name ?? row.nationality ?? '',
+    nationalTeam: row.national_team_name ?? row.club_name ?? row.nationality ?? '',
     nationalTeamSlug: row.national_team_slug,
+    clubId: row.club_id,
+    clubName: row.club_name,
+    setId: row.set_id,
+    setKind: row.set_kind === 'club' ? 'club' : 'national',
     roleGroup: asRoleGroup(row.role_group),
     rating: toNumber(row.rating),
     photoUrl: row.photo_url,
@@ -223,6 +261,7 @@ export async function listLineupMatches(
            m.away_name,
            m.home_score,
            m.away_score,
+           m.league_code,
            m.league_title,
            m.provider
       from matchday_matches mm
@@ -236,6 +275,7 @@ export async function listLineupMatches(
   return rows.map((row) => ({
     matchId: row.id,
     matchdayId: row.matchday_id,
+    leagueCode: row.league_code,
     homeName: row.home_name,
     awayName: row.away_name,
     kickoffUtc: toIso(row.kickoff_utc),
@@ -258,8 +298,12 @@ export async function getMyLineup(
            ls.slot,
            ls.card_instance_id,
            c.id as card_id,
+           c.set_id,
+           cs.kind as set_kind,
            c.player_name,
            c.nationality,
+           c.club_name,
+           c.club_id,
            nt.name as national_team_name,
            nt.slug as national_team_slug,
            c.role_group,
@@ -273,6 +317,7 @@ export async function getMyLineup(
       from lineup_slots ls
       join card_instances ci on ci.id = ls.card_instance_id
       join cards c on c.id = ci.card_id
+      join card_sets cs on cs.id = c.set_id
       left join national_teams nt on nt.id = c.national_team_id
       left join lineup_card_results lcr on lcr.lineup_slot_id = ls.id
      where ls.match_id = ${matchId}
@@ -310,7 +355,7 @@ export async function upsertLineupSlot(
   sql: DbClient = db(),
 ): Promise<LineupSlotView[]> {
   if (!LINEUP_SLOTS.includes(input.slot)) {
-    throw new AppError('INVALID_INPUT', 'Недопустимый слот состава');
+    throw new AppError('INVALID_INPUT', 'Некорректный слот состава');
   }
 
   await sql.begin(async (tx) => {
@@ -320,6 +365,7 @@ export async function upsertLineupSlot(
       select m.id,
              mm.matchday_id,
              md.season_id,
+             m.league_code,
              m.kickoff_utc,
              m.status,
              m.home_name,
@@ -334,7 +380,7 @@ export async function upsertLineupSlot(
        for update of m
     `;
     if (!match) {
-      throw new AppError('NOT_FOUND', 'Матч не найден в сезоне');
+      throw new AppError('NOT_FOUND', 'Матч не найден в матчдэе');
     }
 
     if (isLockedKickoff(match.kickoff_utc)) {
@@ -346,8 +392,12 @@ export async function upsertLineupSlot(
              ci.owner_id,
              ci.season_id,
              c.id as card_id,
+             c.set_id,
+             cs.kind as set_kind,
              c.player_name,
              c.nationality,
+             c.club_name,
+             c.club_id,
              c.role_group,
              c.rating,
              c.photo_url,
@@ -357,6 +407,7 @@ export async function upsertLineupSlot(
              nt.slug as national_team_slug
         from card_instances ci
         join cards c on c.id = ci.card_id
+        join card_sets cs on cs.id = c.set_id
         left join national_teams nt on nt.id = c.national_team_id
        where ci.id = ${input.cardInstanceId}
        for update of ci
@@ -367,7 +418,7 @@ export async function upsertLineupSlot(
       throw new AppError('INVALID_INPUT', 'Карточка должна принадлежать тому же сезону, что и матч');
     }
     if (input.seasonId && card.season_id !== input.seasonId) {
-      throw new AppError('INVALID_INPUT', 'Карточка не относится к указанному сезону');
+      throw new AppError('INVALID_INPUT', 'Карточка не относится к активному сезону');
     }
 
     const roleGroup = asRoleGroup(card.role_group);
@@ -378,10 +429,14 @@ export async function upsertLineupSlot(
     matchCardToMatchSide({
       homeName: match.home_name,
       awayName: match.away_name,
+      leagueCode: match.league_code,
       card: {
+        setKind: card.set_kind,
         nationalTeamName: card.national_team_name,
         nationalTeamSlug: card.national_team_slug,
         nationality: card.nationality,
+        clubId: card.club_id,
+        clubName: card.club_name,
       },
     });
 

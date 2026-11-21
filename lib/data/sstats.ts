@@ -125,7 +125,10 @@ function cleanName(name: unknown, fallback: string): string {
   return value.length > 0 ? value : fallback;
 }
 
-export function normalizeSstatsUnlGame(game: SstatsGame): NormalizedMatch | null {
+export function normalizeSstatsGame(
+  game: SstatsGame,
+  opts: { leagueCode: string; leagueTitle: string },
+): NormalizedMatch | null {
   const kickoffUtc = parseUtc(game.dateUtc ?? game.date ?? null);
   if (!kickoffUtc) return null;
 
@@ -153,8 +156,8 @@ export function normalizeSstatsUnlGame(game: SstatsGame): NormalizedMatch | null
   return {
     provider: 'sstats',
     externalId: String(game.id),
-    leagueCode: 'UNL',
-    leagueTitle: 'Лига наций',
+    leagueCode: opts.leagueCode,
+    leagueTitle: opts.leagueTitle,
     homeName,
     homeLogo: null,
     awayName,
@@ -171,27 +174,29 @@ export function normalizeSstatsUnlGame(game: SstatsGame): NormalizedMatch | null
   };
 }
 
+export function normalizeSstatsUnlGame(game: SstatsGame): NormalizedMatch | null {
+  return normalizeSstatsGame(game, { leagueCode: 'UNL', leagueTitle: 'Лига Наций' });
+}
+
 /**
- * Загружает матчи Лиги наций за период. From/To — даты YYYY-MM-DD.
- * Используем LeagueId=5, Year=2026 (сезон Лиги наций 2026/27, финальная стадия в ноябре 2026).
+ * Загружает матчи лиги sstats за период. From/To — даты YYYY-MM-DD.
  */
-export async function fetchSstatsUnlFixtures(input: {
+export async function fetchSstatsFixtures(input: {
+  leagueId: number;
+  year: number;
+  leagueCode: string;
+  leagueTitle: string;
   from: string;
   to: string;
   apiKey?: string | null;
-  leagueId?: number;
-  year?: number;
   fetchImpl?: typeof fetch;
   timeoutMs?: number;
 }): Promise<SstatsFixtureFetch> {
-  const leagueId = input.leagueId ?? 5;
-  const year = input.year ?? 2026;
   const url = new URL(`${BASE_URL}/games/list`);
-  url.searchParams.set('LeagueId', String(leagueId));
-  url.searchParams.set('Year', String(year));
+  url.searchParams.set('LeagueId', String(input.leagueId));
+  url.searchParams.set('Year', String(input.year));
   url.searchParams.set('From', input.from);
   url.searchParams.set('To', toSstatsToParam(input.to));
-  // Явно задаём TZ=3 (МСК) для date-only параметров; по умолчанию в API тоже 3.
   url.searchParams.set('TimeZone', '3');
   if (input.apiKey) url.searchParams.set('apikey', input.apiKey);
 
@@ -212,7 +217,7 @@ export async function fetchSstatsUnlFixtures(input: {
       signal: AbortSignal.timeout(Math.max(1000, input.timeoutMs ?? TIMEOUT_MS)),
     });
   } catch (error) {
-    throw new AppError('SYNC_PROVIDER_DOWN', `Источник матчей не ответил: ${(error as Error).message}`);
+    throw new AppError('SYNC_PROVIDER_DOWN', `Получение матчей не отвечает: ${(error as Error).message}`);
   }
 
   const durationMs = Date.now() - startedAt;
@@ -221,14 +226,14 @@ export async function fetchSstatsUnlFixtures(input: {
     throw new AppError('SYNC_QUOTA_EXCEEDED');
   }
   if (!response.ok) {
-    throw new AppError('SYNC_PROVIDER_DOWN', `Источник матчей вернул ${response.status}`);
+    throw new AppError('SYNC_PROVIDER_DOWN', `Получение матчей вернуло ${response.status}`);
   }
 
   let payload: unknown;
   try {
     payload = await response.json();
   } catch {
-    throw new AppError('SYNC_PROVIDER_DOWN', 'Источник матчей вернул не JSON');
+    throw new AppError('SYNC_PROVIDER_DOWN', 'Получение матчей вернуло не JSON');
   }
 
   const games: SstatsGame[] = Array.isArray(payload)
@@ -240,7 +245,7 @@ export async function fetchSstatsUnlFixtures(input: {
         : [];
 
   const matches = games
-    .map(normalizeSstatsUnlGame)
+    .map((g) => normalizeSstatsGame(g, { leagueCode: input.leagueCode, leagueTitle: input.leagueTitle }))
     .filter((m): m is NormalizedMatch => m !== null)
     .sort((a, b) => a.kickoffUtc.getTime() - b.kickoffUtc.getTime());
 
@@ -251,6 +256,32 @@ export async function fetchSstatsUnlFixtures(input: {
     durationMs,
     requestsUsed: 1,
   };
+}
+
+/**
+ * Загружает матчи Лиги Наций за период. From/To — даты YYYY-MM-DD.
+ * Используем LeagueId=5, Year=2026.
+ */
+export async function fetchSstatsUnlFixtures(input: {
+  from: string;
+  to: string;
+  apiKey?: string | null;
+  leagueId?: number;
+  year?: number;
+  fetchImpl?: typeof fetch;
+  timeoutMs?: number;
+}): Promise<SstatsFixtureFetch> {
+  return fetchSstatsFixtures({
+    leagueId: input.leagueId ?? 5,
+    year: input.year ?? 2026,
+    leagueCode: 'UNL',
+    leagueTitle: 'Лига Наций',
+    from: input.from,
+    to: input.to,
+    apiKey: input.apiKey,
+    fetchImpl: input.fetchImpl,
+    timeoutMs: input.timeoutMs,
+  });
 }
 
 function toStatNumber(value: unknown): number | null {

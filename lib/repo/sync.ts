@@ -1,20 +1,21 @@
 /**
- * Синк футбольных данных и переходы статусов дня.
+ * Слой футбольных данных: общий оркестратор синка.
  *
- * Всё, что здесь происходит, запускается cron-роутами и админкой, а не браузером.
- * Источники могут не ответить — прогон пишется в `sync_runs`, а игра
- * продолжает жить на том, что уже лежит в БД.
+ * Вход: cron-эндпоинты (ручной/расписание).
+ * Выход: актуальные матчи/матчдэи/вопросы в БД + sync_runs.
+ * Важно: не бросать 500 наружу — нормализовать ответы и логировать ошибки.
  */
 
 import { db } from '@/lib/db';
 import { hasDatabase, serverEnv } from '@/lib/env';
 import { fetchFixtures } from '@/lib/data/footballData';
-import { enrichSstatsMatchesWithStats, fetchSstatsUnlFixtures } from '@/lib/data/sstats';
+import { enrichSstatsMatchesWithStats, fetchSstatsFixtures, fetchSstatsUnlFixtures } from '@/lib/data/sstats';
 import { normalizeMatches, type NormalizedMatch } from '@/lib/data/normalize';
 import { generateMatchQuestions } from '@/lib/data/questions';
 import { syncWindow } from '@/lib/data/sync-window';
 import { isAppError } from '@/lib/errors';
-import { grantPacksForResolvedNationalMatchday } from '@/lib/repo/cards-grants';
+import { grantPacksForResolvedMatchday } from '@/lib/repo/cards-grants';
+import { CLUB_COMPETITIONS, isWhitelistedClubMatch } from '@/lib/data/club-phase';
 import {
   allMatchesFinal,
   nextMatchdayStatus,
@@ -46,9 +47,9 @@ export type SyncFixturesReport = {
 
 export type SyncFixturesOptions = {
   now?: Date;
-  /** Разовый прогон за выбранные игровые даты (ГГГГ-ММ-ДД), вместо обычного окна. */
+  /** Окно дат (YYYY-MM-DD), перекрывает авто-окно. */
   window?: { from: GameDate; to: GameDate };
-  /** Лимит времени прогона в мс (для cron/частичных прогонов). По умолчанию 80с. */
+  /** Лимит времени sync в мс (для cron/прокси). По умолчанию 80с. */
   budgetMs?: number;
 };
 
@@ -85,12 +86,13 @@ async function logSyncRun(entry: SyncRunEntry): Promise<void> {
       )
     `;
   } catch (error) {
-    // Лог не должен ломать синк: пишем в консоль, матчам это не мешает.
+    // Лог не должен ломать sync: ошибка в логах, данные от этого не теряются.
     console.error('Не удалось записать sync_runs:', error);
   }
 }
 
 function mergeMatches(groups: NormalizedMatch[][]): NormalizedMatch[] {
+  // Last write wins by provider:externalId; callers should push lower-priority groups first.
   const map = new Map<string, NormalizedMatch>();
   for (const group of groups) {
     for (const match of group) {
@@ -100,12 +102,44 @@ function mergeMatches(groups: NormalizedMatch[][]): NormalizedMatch[] {
   return [...map.values()].sort((a, b) => a.kickoffUtc.getTime() - b.kickoffUtc.getTime());
 }
 
+function getRawTeamNames(raw: unknown): { home: string[]; away: string[] } {
+  const r = raw as any;
+  const home = [r?.homeTeam?.name, r?.homeTeam?.shortName].filter((v): v is string => typeof v === 'string' && v.trim().length > 0);
+  const away = [r?.awayTeam?.name, r?.awayTeam?.shortName].filter((v): v is string => typeof v === 'string' && v.trim().length > 0);
+  return { home, away };
+}
+
+function clubMatchInWhitelistScope(match: NormalizedMatch): boolean {
+  const rawNames = getRawTeamNames(match.raw);
+  const homeCandidates = [match.homeName, ...rawNames.home];
+  const awayCandidates = [match.awayName, ...rawNames.away];
+  for (const h of homeCandidates) {
+    for (const a of awayCandidates) {
+      if (isWhitelistedClubMatch(h, a)) return true;
+    }
+  }
+  // Also check single-side candidates against whitelist (either side may match)
+  for (const h of homeCandidates) {
+    if (isWhitelistedClubMatch(h, '')) return true;
+  }
+  for (const a of awayCandidates) {
+    if (isWhitelistedClubMatch('', a)) return true;
+  }
+  return false;
+}
+
+function isQuotaError(error: unknown): boolean {
+  if (isAppError(error) && error.code === 'SYNC_QUOTA_EXCEEDED') return true;
+  const msg = error instanceof Error ? error.message.toLowerCase() : String(error).toLowerCase();
+  return msg.includes('quota') || msg.includes('429');
+}
+
 export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<SyncFixturesReport> {
   const now = options.now ?? new Date();
   const startedAt = Date.now();
   const budgetMs = Math.max(10_000, Math.min(options.budgetMs ?? 80_000, 120_000));
   const deadlineMs = startedAt + budgetMs;
-  // Резерв под запись в БД/advance, чтобы sync успевал сохранить прогресс.
+  // Резерв под DB/advance, чтобы sync успел завершить запись.
   const dbReserveMs = 5_000;
   const processingDeadlineMs = deadlineMs - dbReserveMs;
   const env = serverEnv();
@@ -134,10 +168,6 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
   if (!hasDatabase()) return finish('CONFIG_MISSING');
 
   const hasFootballData = Boolean(env.footballDataToken);
-  if (!hasFootballData) {
-    // Лигу наций попробуем подтянуть из запасного источника ниже; если и он не даст матчей,
-    // вернём понятную причину как раньше.
-  }
 
   const sql = db();
 
@@ -161,16 +191,17 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
   let requestsUsed = 0;
   let httpStatus: number | null = null;
   const errors: string[] = [];
-  const groups: NormalizedMatch[][] = [];
+  const fdGroups: NormalizedMatch[][] = [];
+  const sstatsGroups: NormalizedMatch[][] = [];
+  let unlMatches: NormalizedMatch[] = [];
   let tListMs = 0;
   let tEnrichMs = 0;
   let tDbStartMs = 0;
 
-  // Лига наций: берём из запасного источника (основной тариф её не отдаёт).
-  // Запускаем до football-data, чтобы детализация/статистика UNL успевала в бюджет прогона.
+  // 1) UNL (national contour, sstats) — как раньше.
   try {
     if (!env.sstatsEnabled) {
-      errors.push('Лига наций: источник sstats отключён (SSTATS_ENABLED=false)');
+      errors.push('Лига Наций: источник sstats отключён (SSTATS_ENABLED=false)');
     } else {
       const remainingMs = processingDeadlineMs - Date.now();
       if (remainingMs > 6_000) {
@@ -184,9 +215,9 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
         fetchedTotal += unl.fetched;
         requestsUsed += unl.requestsUsed;
         if (httpStatus === null) httpStatus = unl.httpStatus;
+        unlMatches = unl.matches;
 
-        // Если в БД уже есть статистика для этих матчей (любой провайдер по тому же external_id
-        // или по совпадению команды/времени в окне), не тратим бюджет на повторную детализацию.
+        // Попытка переиспользовать уже сохранённую статистику (по external_id/матчу) из БД.
         try {
           const extIds = unl.matches.map((m) => m.externalId);
           const existing = extIds.length
@@ -220,7 +251,7 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
             }
           }
         } catch {
-          // не критично — просто попробуем обогатить как обычно
+          // Не критично: просто без переиспользования статистики.
         }
 
         tListMs = Date.now() - startedAt;
@@ -237,36 +268,94 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
         });
         tEnrichMs = Date.now() - tEnrichStart;
         requestsUsed += enriched.requestsUsed;
-        groups.push(enriched.matches);
+        unlMatches = enriched.matches;
+        sstatsGroups.push(unlMatches);
       } else {
-        errors.push('Лига наций: пропущено из-за лимита времени прогона');
+        errors.push('Лига Наций: недостаточно бюджета на fetch');
       }
     }
   } catch (error) {
-    const message = error instanceof Error ? error.message : 'Источник Лиги наций недоступен';
-    errors.push(`Лига наций: ${message}`);
+    const message = error instanceof Error ? error.message : 'Ошибка получения Лиги Наций';
+    errors.push(`Лига Наций: ${message}`);
   }
 
+  // 2) Club competitions (Stage 3 B, Y4): sstats primary, all comps best-effort, euro-cups priority.
+  let clubFetched = 0;
+  let clubKept = 0;
+  let clubSkippedNoBudget = 0;
+  if (env.sstatsEnabled) {
+    const clubPriority = [...CLUB_COMPETITIONS].sort((a, b) => {
+      const pa = a.kind === 'europe_cup' ? 0 : 1;
+      const pb = b.kind === 'europe_cup' ? 0 : 1;
+      return pa - pb;
+    });
+
+    for (const comp of clubPriority) {
+      const remainingMs = processingDeadlineMs - Date.now();
+      if (remainingMs <= 4_000) {
+        clubSkippedNoBudget += 1;
+        continue;
+      }
+
+      try {
+        const listTimeoutMs = Math.min(10_000, Math.max(3_000, remainingMs - 1_500));
+        const res = await fetchSstatsFixtures({
+          leagueId: comp.sstatsLeagueId,
+          year: comp.year,
+          leagueCode: comp.leagueCode,
+          leagueTitle: comp.short || comp.title,
+          from: window.from,
+          to: window.to,
+          apiKey: env.sstatsApiKey,
+          timeoutMs: listTimeoutMs,
+        });
+        fetchedTotal += res.fetched;
+        requestsUsed += res.requestsUsed;
+        clubFetched += res.fetched;
+        if (httpStatus === null) httpStatus = res.httpStatus;
+
+        let scoped = res.matches;
+        if (comp.scope === 'whitelist_only') {
+          scoped = scoped.filter(clubMatchInWhitelistScope);
+        }
+        clubKept += scoped.length;
+        if (scoped.length > 0) sstatsGroups.push(scoped);
+      } catch (error) {
+        if (isQuotaError(error)) {
+          errors.push(`club/${comp.key}: quota exceeded`);
+          break;
+        }
+        const message = error instanceof Error ? error.message : String(error);
+        errors.push(`club/${comp.key}: ${message}`);
+      }
+    }
+
+    if (clubSkippedNoBudget > 0) {
+      errors.push(`club: пропущено comps из-за бюджета: ${clubSkippedNoBudget}`);
+    }
+  }
+
+  // 3) football-data (reserve/existing source). Pushed as lower-priority group.
   if (hasFootballData && Date.now() < processingDeadlineMs - 4_000) {
     try {
       const fixtures = await fetchFixtures({ token: env.footballDataToken!, from: window.from, to: window.to });
       fetchedTotal += fixtures.matches.length;
       requestsUsed += fixtures.requestsUsed;
       httpStatus = fixtures.httpStatus;
-      groups.push(normalizeMatches(fixtures.matches));
+      fdGroups.push(normalizeMatches(fixtures.matches));
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Источник матчей недоступен';
+      const message = error instanceof Error ? error.message : 'Ошибка получения матчей';
       errors.push(message);
-      // 429 фиксируем отдельно, но даём шанс запасному источнику (Лига наций) отработать.
-      if (isAppError(error) && error.code === 'SYNC_QUOTA_EXCEEDED') {
-        // не прерываем сразу
+      if (isQuotaError(error)) {
+        // quota отмечена в errors; ниже обработается как reason при отсутствии данных
       }
     }
   } else if (hasFootballData) {
-    errors.push('football-data: пропущено из-за лимита времени прогона (приоритет UNL)');
+    errors.push('football-data: недостаточно бюджета на fetch');
   }
 
-  const normalized = mergeMatches(groups);
+  // Merge with sstats priority on provider:externalId conflicts.
+  const normalized = mergeMatches([...fdGroups, ...sstatsGroups]);
 
   if (normalized.length === 0) {
     if (errors.length === 0) {
@@ -297,8 +386,6 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
       return finish(reason, { fetched: fetchedTotal, kept: 0, httpStatus, error: errors.join('; ') || null });
     }
 
-    // Источники могли частично отвалиться/вернуть пусто: не валим весь синк,
-    // фиксируем ошибку в отчёте и даём следующему прогону повторить попытку.
     const errorText = errors.join('; ').slice(0, 500);
     await logSyncRun({
       endpoint: 'sync-fixtures',
@@ -323,10 +410,18 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
     };
   }
 
+  // 3.1=A: dates with national (UNL) in-scope matches are national-only; exclude club matches on those dates.
+  const clubLeagueCodes = new Set(CLUB_COMPETITIONS.map((c) => c.leagueCode));
+  const nationalDates = new Set<GameDate>();
+  for (const m of normalized) {
+    if (m.leagueCode === 'UNL') nationalDates.add(gameDateOf(m.kickoffUtc));
+  }
+
   const matchdayIds = new Map<string, string>();
   let savedMatches = 0;
   let createdQuestions = 0;
   let partial = false;
+  let excludedClubOnNationalDate = 0;
 
   const maxMatchesPerRun = 50;
   const finalStatuses = new Set(['FT', 'PST', 'CANC', 'ABD']);
@@ -335,7 +430,6 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
     const priority = (m: NormalizedMatch): number => {
       if (m.status === 'LIVE' || m.status === 'HT') return 0;
       const started = m.kickoffUtc.getTime() <= nowMsSort;
-      // Матчи, которые уже должны идти/завершиться, но ещё NS/нефинальны — подтягиваем раньше будущих.
       if (started && (m.status === 'NS' || !finalStatuses.has(m.status))) return 1;
       if (finalStatuses.has(m.status)) return 2;
       return 3; // будущие NS
@@ -343,15 +437,29 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
     const aScore = priority(a);
     const bScore = priority(b);
     if (aScore !== bScore) return aScore - bScore;
-    // Для live/ht и начавшихся — более ранние первыми; для финальных — более свежие первыми.
     if (aScore <= 1) return a.kickoffUtc.getTime() - b.kickoffUtc.getTime();
     if (aScore === 2) return b.kickoffUtc.getTime() - a.kickoffUtc.getTime();
     return a.kickoffUtc.getTime() - b.kickoffUtc.getTime();
   });
-  const matchesToProcess = prioritized.slice(0, maxMatchesPerRun);
-  if (prioritized.length > maxMatchesPerRun) {
+
+  const eligibleForProcessing: NormalizedMatch[] = [];
+  for (const match of prioritized) {
+    const gameDate = gameDateOf(match.kickoffUtc);
+    const isClubMatch = clubLeagueCodes.has(match.leagueCode);
+    if (isClubMatch && nationalDates.has(gameDate)) {
+      excludedClubOnNationalDate += 1;
+      continue;
+    }
+    eligibleForProcessing.push(match);
+  }
+  if (excludedClubOnNationalDate > 0) {
+    errors.push(`3.1=A: исключено club-матчей на national-даты: ${excludedClubOnNationalDate}`);
+  }
+
+  const matchesToProcess = eligibleForProcessing.slice(0, maxMatchesPerRun);
+  if (eligibleForProcessing.length > maxMatchesPerRun) {
     partial = true;
-    errors.push(`Обработано ${maxMatchesPerRun} из ${prioritized.length} матчей за прогон, остаток — в следующем запуске`);
+    errors.push(`обработано ${maxMatchesPerRun} из ${eligibleForProcessing.length} матчей за проход, остаток — в следующем прогоне`);
   }
 
   tDbStartMs = Date.now();
@@ -377,7 +485,7 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
     for (const match of matchesToProcess) {
       if (Date.now() >= deadlineMs - 2_000) {
         partial = true;
-        errors.push('Время прогона почти вышло: сохранён частичный прогресс, остаток будет обработан в следующем запуске');
+        errors.push('Таймаут sync: достигнут лимит, остаток будет обработан в следующем прогоне');
         break;
       }
 
@@ -392,7 +500,7 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
           on conflict (season_id, game_date) do update set game_date = excluded.game_date
           returning id
         `;
-        if (!matchday) throw new Error('Не удалось создать игровой день');
+        if (!matchday) throw new Error('Не удалось создать/получить матчдэй');
         matchdayId = matchday.id;
         matchdayIds.set(gameDate, matchdayId);
       }
@@ -467,8 +575,7 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
 
       if (!saved) continue;
 
-      // Если этот же матч уже привязан к дню под другой записью (другой провайдер/id),
-      // обновляем каноническую запись, чтобы вопросы/предикты получили актуальные счёт и статистику.
+      // Поиск канонического матча в матчдэе (тот же матч, другой provider/id) для дедупа.
       const linked = await tx<{ id: string; provider: string; external_id: string; home_name: string; away_name: string; kickoff_utc: Date }[]>`
         select m.id, m.provider, m.external_id, m.home_name, m.away_name, m.kickoff_utc
         from matchday_matches mm
@@ -508,13 +615,19 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
             best = { m, score: total, dt };
           }
         }
-        if (best && best.score >= 12) canonical = best.m; // good name match or name+close time
-        else if (best && best.score >= 2) canonical = best.m; // fallback (e.g. exact kickoff, weak names)
+        if (best && best.score >= 12) canonical = best.m;
+        else if (best && best.score >= 2) canonical = best.m;
       }
 
       const targetMatchId = canonical?.id ?? saved.id;
 
-      if (canonical && canonical.id !== saved.id) {
+      // Приоритет sstats при конфликте: не перезаписывать sstats-каноникал данными другого провайдера.
+      const shouldOverwriteCanonical =
+        canonical &&
+        canonical.id !== saved.id &&
+        !(canonical.provider === 'sstats' && match.provider !== 'sstats');
+
+      if (shouldOverwriteCanonical) {
         await tx`
           update matches set
             league_code = ${match.leagueCode},
@@ -541,7 +654,7 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
             shots_on_target_home = coalesce(${match.stats.shotsOnTargetHome}, shots_on_target_home),
             shots_on_target_away = coalesce(${match.stats.shotsOnTargetAway}, shots_on_target_away),
             raw = ${tx.json(match.raw as any)}
-          where id = ${canonical.id}
+          where id = ${canonical!.id}
         `;
       }
 
@@ -553,7 +666,7 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
         on conflict do nothing
       `;
 
-      // Вопросы для прогнозов: создаём один раз на матч в этом игровом дне.
+      // Вопросы генерируем один раз на матч в матчдэе.
       if (!(await questionExists(matchdayId, targetMatchId))) {
         const seed = Math.abs(hashString(`${match.provider}:${match.externalId}`));
         const generated = generateMatchQuestions({ homeName: match.homeName, awayName: match.awayName }, seed, 4);
@@ -574,7 +687,7 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
       }
     }
 
-    // Обновляем количество вопросов дня (для отображения).
+    // Обновить q_total матчдэев.
     for (const [gameDate, matchdayId] of matchdayIds.entries()) {
       const totals = await tx<{ total: string }[]>`
         select count(*)::text as total from questions q
@@ -589,8 +702,7 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
   if (matchdayIds.size > 0) {
     const affectedMatchdayIds = [...new Set(matchdayIds.values())];
 
-    // Если день уже был резолвнут без статистики, дозаполняем correct_option/is_correct
-    // для вопросов, которые теперь можно вычислить по обновлённым данным матча.
+    // Backfill correct_option/is_correct для уже завершённых матчей, если пропущено.
     try {
       await sql`
         with computed as (
@@ -618,8 +730,6 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
       errors.push(`regrade: ${error instanceof Error ? error.message : String(error)}`);
     }
 
-    // После обновления матчей/статистики двигаем дни вперёд и резолвим готовые,
-    // чтобы предикты получили correct_option/is_correct и очки/кубики.
     try {
       const advanced = await advanceMatchdays(now);
       if (!advanced.ok && advanced.errors.length > 0) {
@@ -630,7 +740,7 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
     }
   }
 
-  const timingInfo = `[timing:list=${tListMs}ms,enrich=${tEnrichMs}ms,db=${tDbStartMs ? Date.now() - tDbStartMs : 0}ms]`;
+  const timingInfo = `[timing:list=${tListMs}ms,enrich=${tEnrichMs}ms,db=${tDbStartMs ? Date.now() - tDbStartMs : 0}ms,clubFetched=${clubFetched},clubKept=${clubKept}]`;
   const errorText = (errors.length ? `${errors.join('; ')} ${timingInfo}` : timingInfo).slice(0, 500);
   await logSyncRun({
     endpoint: 'sync-fixtures',
@@ -677,8 +787,8 @@ type DayMatchRow = {
 };
 
 /**
- * Сдвигает статусы дней и резолвит те, где все матчи финальные.
- * Закрытие — вызов `rpc_resolve_matchday`; он идемпотентен на `resolved_at`.
+ * Продвигает статусы матчдэев по времени и состоянию матчей.
+ * Резолвит через `rpc_resolve_matchday`; после успеха триггерит гранты паков (Stage 2).
  */
 export async function advanceMatchdays(now = new Date()): Promise<AdvanceReport> {
   if (!hasDatabase()) {
@@ -734,7 +844,7 @@ export async function advanceMatchdays(now = new Date()): Promise<AdvanceReport>
 
     if (next !== 'resolving') continue;
 
-    // Матч завис не финально — гасим по нему вопросы, чтобы день мог закрыться.
+    // Если есть не-финальные матчи — не блокируем, но void незакрытые вопросы.
     if (!allMatchesFinal(matches)) {
       await sql`
         update questions q
@@ -754,7 +864,16 @@ export async function advanceMatchdays(now = new Date()): Promise<AdvanceReport>
       if (result?.result?.ok) {
         report.resolved += 1;
         try {
-          await grantPacksForResolvedNationalMatchday(day.id, day.season_id, sql);
+          const grantResult = await grantPacksForResolvedMatchday(day.id, day.season_id, sql);
+          if (
+            grantResult.contour === 'ambiguous' ||
+            (grantResult.contour === 'none' && grantResult.reason && grantResult.reason !== 'cards_disabled')
+          ) {
+            // Fail-safe (Stage 2 B): no auto-grant on ambiguous/unclassified matchday.
+            console.info(
+              `[advanceMatchdays] pack grant skipped for ${day.id}: contour=${grantResult.contour} reason=${grantResult.reason ?? 'n/a'}`,
+            );
+          }
         } catch (error) {
           report.errors.push(
             `${day.id}: pack grants failed: ${error instanceof Error ? error.message : String(error)}`,

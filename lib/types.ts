@@ -15,6 +15,8 @@ export type PackGrantSource = 'admin' | 'matchday' | 'cell';
 
 export type QuestionOptionView = { key: string; label: string };
 
+export type CardSetKind = 'national' | 'club';
+
 export type FavoriteRef = {
   id: string;
   name: string;
@@ -192,8 +194,13 @@ export type SeasonSnapshot = {
 export type CardTemplateView = {
   id: string;
   playerName: string;
+  /** Display team label (national team name or club name). */
   nationalTeam: string;
   nationalTeamSlug?: string | null;
+  clubId?: string | null;
+  clubName?: string | null;
+  setId: string;
+  setKind: CardSetKind;
   roleGroup: CardRoleGroup;
   rating: number;
   photoUrl: string | null;
@@ -207,6 +214,9 @@ export type OwnedCardView = CardTemplateView & {
 
 export type PackGrantView = {
   id: string;
+  packId: string;
+  setId: string;
+  setKind: CardSetKind;
   packTitle: string;
   source: PackGrantSource;
   createdAt: string;
@@ -214,8 +224,10 @@ export type PackGrantView = {
 
 export type PackOpenResultView = {
   grantId: string;
+  /** Cards received in this opening (1–2 for A+; empty when none left). */
+  cards: OwnedCardView[];
+  /** Legacy convenience: first card or null. */
   card: OwnedCardView | null;
-  /** Явный исход: null card + collectionComplete когда новых шаблонов не осталось. */
   collectionComplete?: boolean;
 };
 
@@ -231,6 +243,7 @@ export type LineupSlotView = {
 export type MatchLineupView = {
   matchId: string;
   matchdayId?: string | null;
+  leagueCode?: string | null;
   homeName: string;
   awayName: string;
   kickoffUtc: string;

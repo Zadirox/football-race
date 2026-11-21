@@ -4,6 +4,8 @@
  * что и в SQL-функции `fn_question_answer`.
  */
 
+import { teamDisplay } from '@/lib/data/team-names';
+
 export type QuestionRule =
   | { type: 'winner' }
   | { type: 'total_over'; line: number }
@@ -139,7 +141,8 @@ function homeDrawAway(homeName: string, awayName: string): QuestionOption[] {
  * Тексты вопросов. Один источник для админки, предиктов и предпросмотра.
  */
 export function questionFor(rule: QuestionRule, match: MatchForQuestions): GeneratedQuestion {
-  const { homeName, awayName } = match;
+  const homeName = teamDisplay(match.homeName).name;
+  const awayName = teamDisplay(match.awayName).name;
 
   switch (rule.type) {
     case 'winner':

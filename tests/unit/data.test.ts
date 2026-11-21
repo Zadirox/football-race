@@ -71,8 +71,8 @@ describe('normalizeMatch', () => {
     const match = normalizeMatch(providerMatch());
     expect(match).not.toBeNull();
     expect(match?.leagueCode).toBe('PL');
-    expect(match?.homeName).toBe('Arsenal');
-    expect(match?.awayName).toBe('Chelsea');
+    expect(match?.homeName).toBe('Арсенал');
+    expect(match?.awayName).toBe('Челси');
     expect(match?.status).toBe('NS');
     expect(match?.kickoffUtc.toISOString()).toBe('2026-11-12T20:00:00.000Z');
   });
@@ -99,8 +99,8 @@ describe('normalizeMatch', () => {
   });
 
   it('чистит суффиксы, если нет shortName', () => {
-    expect(displayTeamName({ name: 'Liverpool FC' }, 'X')).toBe('Liverpool');
-    expect(displayTeamName({ name: 'Real Madrid CF' }, 'X')).toBe('Real Madrid');
+    expect(displayTeamName({ name: 'Liverpool FC' }, 'X')).toBe('Ливерпуль');
+    expect(displayTeamName({ name: 'Real Madrid CF' }, 'X')).toBe('Реал Мадрид');
     expect(displayTeamName({ name: null }, 'Гости')).toBe('Гости');
   });
 });

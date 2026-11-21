@@ -71,8 +71,6 @@ export const CLUB_WHITELIST: readonly ClubWhitelistEntry[] = [
   { slug: 'borussia-dortmund', nameRu: 'Боруссия Дортмунд', country: 'Германия', leagueKey: 'bundesliga', inCardPool: true, sstatsAliases: ['Borussia Dortmund'] },
   { slug: 'rb-leipzig', nameRu: 'РБ Лейпциг', country: 'Германия', leagueKey: 'bundesliga', inCardPool: true, sstatsAliases: ['RB Leipzig', 'RasenBallsport Leipzig'] },
   { slug: 'stuttgart', nameRu: 'Штутгарт', country: 'Германия', leagueKey: 'bundesliga', inCardPool: false, sstatsAliases: ['VfB Stuttgart', 'Stuttgart'] },
-  { slug: 'bayer-leverkusen', nameRu: 'Байер Леверкузен', country: 'Германия', leagueKey: 'bundesliga', inCardPool: false, sstatsAliases: ['Bayer Leverkusen', 'Bayer 04 Leverkusen'] },
-  { slug: 'hoffenheim', nameRu: 'Хоффенхайм', country: 'Германия', leagueKey: 'bundesliga', inCardPool: false, sstatsAliases: ['1899 Hoffenheim', 'TSG Hoffenheim', 'Hoffenheim', 'TSG 1899 Hoffenheim'] },
 
   // Италия (Serie A)
   { slug: 'inter', nameRu: 'Интер', country: 'Италия', leagueKey: 'serie-a', inCardPool: true, sstatsAliases: ['Inter', 'Inter Milan', 'Internazionale', 'FC Internazionale Milano'] },
@@ -86,20 +84,14 @@ export const CLUB_WHITELIST: readonly ClubWhitelistEntry[] = [
   { slug: 'psg', nameRu: 'ПСЖ', country: 'Франция', leagueKey: 'ligue-1', inCardPool: true, sstatsAliases: ['Paris Saint Germain', 'Paris Saint-Germain', 'PSG', 'Paris SG'] },
   { slug: 'lens', nameRu: 'Ланс', country: 'Франция', leagueKey: 'ligue-1', inCardPool: false, sstatsAliases: ['Lens', 'RC Lens'] },
   { slug: 'lille', nameRu: 'Лилль', country: 'Франция', leagueKey: 'ligue-1', inCardPool: true, sstatsAliases: ['Lille', 'LOSC Lille', 'LOSC'] },
-  { slug: 'marseille', nameRu: 'Марсель', country: 'Франция', leagueKey: 'ligue-1', inCardPool: false, sstatsAliases: ['Marseille', 'Olympique de Marseille', 'Olympique Marseille', 'OM'] },
   { slug: 'lyon', nameRu: 'Лион', country: 'Франция', leagueKey: 'ligue-1', inCardPool: false, sstatsAliases: ['Lyon', 'Olympique Lyonnais', 'Olympique Lyon'] },
   { slug: 'monaco', nameRu: 'Монако', country: 'Франция', leagueKey: 'ligue-1', inCardPool: false, sstatsAliases: ['Monaco', 'AS Monaco'] },
-  { slug: 'rennes', nameRu: 'Ренн', country: 'Франция', leagueKey: 'ligue-1', inCardPool: false, sstatsAliases: ['Rennes', 'Stade Rennais', 'Stade Rennais FC'] },
 
   // Нидерланды (Eredivisie — дом. лига убрана в Y4, клубы остаются для еврокубков)
   { slug: 'psv', nameRu: 'ПСВ', country: 'Нидерланды', leagueKey: 'eredivisie', inCardPool: false, sstatsAliases: ['PSV Eindhoven', 'PSV'] },
-  { slug: 'feyenoord', nameRu: 'Фейеноорд', country: 'Нидерланды', leagueKey: 'eredivisie', inCardPool: false, sstatsAliases: ['Feyenoord'] },
   { slug: 'ajax', nameRu: 'Аякс', country: 'Нидерланды', leagueKey: 'eredivisie', inCardPool: false, sstatsAliases: ['Ajax', 'AFC Ajax'] },
 
   // Португалия (Primeira Liga — дом. лига убрана в Y4)
-  { slug: 'porto', nameRu: 'Порту', country: 'Португалия', leagueKey: 'primeira-liga', inCardPool: false, sstatsAliases: ['FC Porto', 'Porto'] },
-  { slug: 'sporting-cp', nameRu: 'Спортинг', country: 'Португалия', leagueKey: 'primeira-liga', inCardPool: false, sstatsAliases: ['Sporting CP', 'Sporting Lisbon', 'Sporting', 'Sporting Clube de Portugal'] },
-  { slug: 'benfica', nameRu: 'Бенфика', country: 'Португалия', leagueKey: 'primeira-liga', inCardPool: false, sstatsAliases: ['Benfica', 'SL Benfica', 'Sport Lisboa e Benfica'] },
 
   // Турция (Süper Lig)
   { slug: 'galatasaray', nameRu: 'Галатасарай', country: 'Турция', leagueKey: 'super-lig-tr', inCardPool: true, sstatsAliases: ['Galatasaray'] },
@@ -119,16 +111,12 @@ export const CLUB_WHITELIST: readonly ClubWhitelistEntry[] = [
   { slug: 'aek-athens', nameRu: 'АЕК Афины', country: 'Греция', leagueKey: 'super-league-gr', inCardPool: false, sstatsAliases: ['AEK Athens FC', 'AEK Athens', 'AEK'] },
 
   // Чехия (Czech Liga — убрана в Y4)
-  { slug: 'slavia-prague', nameRu: 'Славия Прага', country: 'Чехия', leagueKey: 'czech-liga', inCardPool: false, sstatsAliases: ['Slavia Praha', 'Slavia Prague', 'SK Slavia Praha', 'SK Slavia Prague'] },
 
   // Словакия (Super Liga SK — убрана в Y4)
-  { slug: 'slovan-bratislava', nameRu: 'Слован Братислава', country: 'Словакия', leagueKey: 'super-liga-sk', inCardPool: false, sstatsAliases: ['Slovan Bratislava', 'ŠK Slovan Bratislava'] },
 
   // Украина (UPL — дом. лига убрана в Y4)
-  { slug: 'shakhtar-donetsk', nameRu: 'Шахтёр Донецк', country: 'Украина', leagueKey: 'upl', inCardPool: false, sstatsAliases: ['Shakhtar Donetsk', 'Shakhtar', 'FC Shakhtar Donetsk'] },
 
   // Азербайджан (Premyer Liqa — дом. лига убрана в Y4)
-  { slug: 'sabah', nameRu: 'Сабах', country: 'Азербайджан', leagueKey: 'premyer-liqa-az', inCardPool: false, sstatsAliases: ['Sabah FA', 'Sabah', 'Sabah FK', 'Sabah Baku', 'Sabah Masazir'] },
 ] as const;
 
 export const CLUB_LEAGUE_CODE_BY_KEY: Readonly<Record<string, string>> = Object.fromEntries(

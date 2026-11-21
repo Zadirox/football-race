@@ -7,7 +7,7 @@ import { CardTile } from '@/components/cards/CardTile';
 import { Notice } from '@/components/ui/Panel';
 import { teamDisplay } from '@/lib/data/team-names';
 import { LINEUP_POINTS } from '@/lib/game/cards';
-import { canLineupCardPlayMatch, lineupCardTeamLabel } from '@/lib/game/lineup-eligibility';
+import { canLineupCardPlayMatch, isClubContestMatch, lineupCardTeamLabel } from '@/lib/game/lineup-eligibility';
 import { RARITY_LABEL_RU, ROLE_LABEL_RU, teamFlag } from '@/lib/game/cards-ui';
 import type { LineupSlotKind, MatchLineupView, OwnedCardView } from '@/lib/types';
 
@@ -45,6 +45,19 @@ function cardShort(card: OwnedCardView): string {
   return `${card.playerName} · ${ROLE_LABEL_RU[card.roleGroup]} · ${card.rating}${team ? ` · ${team}` : ''}`;
 }
 
+
+function teamInitials(name: string): string {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  const letters = parts.slice(0, 2).map((p) => p[0]?.toUpperCase() ?? '').join('');
+  return letters || 'FC';
+}
+
+function TeamBadge({ name, logo }: { name: string; logo: string | null }) {
+  if (logo) {
+    return <img src={logo} alt="" className="team-badge" loading="lazy" />;
+  }
+  return <span className="team-badge team-badge--fallback" aria-hidden="true">{teamInitials(name)}</span>;
+}
 export function LineupsClient({ matches, ownedCards }: Props) {
   const router = useRouter();
   const [pending, startTransition] = useTransition();
@@ -154,18 +167,26 @@ export function LineupsClient({ matches, ownedCards }: Props) {
           const home = teamDisplay(match.homeName);
           const away = teamDisplay(match.awayName);
           const locked = match.locked || new Date(match.kickoffUtc).getTime() <= Date.now();
-          const homeFlag = teamFlag(home.name, null);
-          const awayFlag = teamFlag(away.name, null);
+          const clubContest = isClubContestMatch({ leagueCode: match.leagueCode ?? null });
+          const homeMark = clubContest ? null : teamFlag(home.name, null);
+          const awayMark = clubContest ? null : teamFlag(away.name, null);
 
           return (
             <section key={match.matchId} className="match-card-wrap card">
               <div className="match-head">
                 <div className="match-head__teams">
-                  <span className="team-pill"><span aria-hidden="true">{homeFlag}</span> {home.name}</span>
+                  <span className="team-pill">
+                    {clubContest ? <TeamBadge name={home.name} logo={match.homeLogo ?? null} /> : <span aria-hidden="true">{homeMark}</span>}
+                    {home.name}
+                  </span>
                   <span className="vs">vs</span>
-                  <span className="team-pill"><span aria-hidden="true">{awayFlag}</span> {away.name}</span>
+                  <span className="team-pill">
+                    {clubContest ? <TeamBadge name={away.name} logo={match.awayLogo ?? null} /> : <span aria-hidden="true">{awayMark}</span>}
+                    {away.name}
+                  </span>
                 </div>
                 <div className="match-head__meta">
+                  <span className="contest-chip">{clubContest ? 'Клубный матч' : 'Матч сборных'}</span>
                   <span>{kickoffLabel(match.kickoffUtc)} МСК</span>
                   <span className={`status-chip ${locked ? 'status-chip--locked' : 'status-chip--open'}`}>
                     {locked ? 'Состав заблокирован' : 'Можно менять'}
@@ -317,6 +338,35 @@ export function LineupsClient({ matches, ownedCards }: Props) {
           border-radius: 999px;
           background: rgba(255,255,255,0.06);
           border: 1px solid rgba(255,255,255,0.14);
+        }
+        .team-badge {
+          width: 22px;
+          height: 22px;
+          border-radius: 50%;
+          object-fit: contain;
+          flex: 0 0 22px;
+          background: rgba(255,255,255,0.08);
+        }
+        .team-badge--fallback {
+          display: inline-flex;
+          align-items: center;
+          justify-content: center;
+          font-size: 9px;
+          font-weight: 800;
+          letter-spacing: .02em;
+          color: var(--lime, #c8f25a);
+          border: 1px solid rgba(200,242,90,0.35);
+          background: rgba(200,242,90,0.08);
+        }
+        .contest-chip {
+          padding: 3px 8px;
+          border-radius: 999px;
+          font-size: 11px;
+          font-weight: 800;
+          letter-spacing: .04em;
+          border: 1px solid rgba(255,255,255,0.18);
+          background: rgba(255,255,255,0.05);
+          color: var(--text-dim, #e8e2d8);
         }
         .vs { color: var(--text-faint, #cfc6b8); font-size: 13px; text-transform: uppercase; letter-spacing: .08em; }
         .match-head__meta {

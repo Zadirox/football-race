@@ -15,7 +15,9 @@ type MatchRow = {
   kickoff_utc: string | Date;
   status: string;
   home_name: string;
+  home_logo: string | null;
   away_name: string;
+  away_logo: string | null;
   home_score: number | null;
   away_score: number | null;
   league_code: string | null;
@@ -258,7 +260,9 @@ export async function listLineupMatches(
            m.kickoff_utc,
            m.status,
            m.home_name,
+           m.home_logo,
            m.away_name,
+           m.away_logo,
            m.home_score,
            m.away_score,
            m.league_code,
@@ -277,7 +281,9 @@ export async function listLineupMatches(
     matchdayId: row.matchday_id,
     leagueCode: row.league_code,
     homeName: row.home_name,
+    homeLogo: row.home_logo,
     awayName: row.away_name,
+    awayLogo: row.away_logo,
     kickoffUtc: toIso(row.kickoff_utc),
     status: toMatchStatus(row.status),
     locked: isLockedKickoff(row.kickoff_utc),

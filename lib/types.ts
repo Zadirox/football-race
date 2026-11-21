@@ -245,7 +245,9 @@ export type MatchLineupView = {
   matchdayId?: string | null;
   leagueCode?: string | null;
   homeName: string;
+  homeLogo?: string | null;
   awayName: string;
+  awayLogo?: string | null;
   kickoffUtc: string;
   status: MatchView['status'];
   locked: boolean;

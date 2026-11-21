@@ -87,6 +87,7 @@ export function MatchesClient({ matches }: { matches: MatchView[] }) {
           {visible.map((match) => {
             const finished = match.status === 'FT';
             const live = match.status === 'LIVE' || match.status === 'HT';
+            const acceptanceClosed = match.status !== 'NS';
             const home = teamDisplay(match.homeName);
             const away = teamDisplay(match.awayName);
             return (
@@ -135,7 +136,7 @@ export function MatchesClient({ matches }: { matches: MatchView[] }) {
                   <span>
                     {match.myAnswered} из {match.questionCount} ответов
                   </span>
-                  <span>{finished ? 'ответы закрыты' : 'приём открыт'}</span>
+                  <span>{acceptanceClosed ? 'приём закрыт' : 'приём открыт'}</span>
                 </div>
                 <div className="progress" aria-hidden="true">
                   <div

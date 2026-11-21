@@ -15,7 +15,7 @@ import { generateMatchQuestions } from '@/lib/data/questions';
 import { syncWindow } from '@/lib/data/sync-window';
 import { isAppError } from '@/lib/errors';
 import { grantPacksForResolvedMatchday } from '@/lib/repo/cards-grants';
-import { CLUB_COMPETITIONS, isWhitelistedClubMatch } from '@/lib/data/club-phase';
+import { CLUB_COMPETITIONS, CLUB_COMPETITION_BY_LEAGUE_CODE, isWhitelistedClubMatch } from '@/lib/data/club-phase';
 import {
   allMatchesFinal,
   nextMatchdayStatus,
@@ -410,10 +410,33 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
     };
   }
 
-  // 3.1=A: dates with national (UNL) in-scope matches are national-only; exclude club matches on those dates.
+  // Scope filter (B): attach only UNL + in-scope club comps. Whitelist-only comps require whitelist team.
   const clubLeagueCodes = new Set(CLUB_COMPETITIONS.map((c) => c.leagueCode));
-  const nationalDates = new Set<GameDate>();
+  const inScopeNormalized: NormalizedMatch[] = [];
+  let excludedOutOfScope = 0;
   for (const m of normalized) {
+    if (m.leagueCode === 'UNL') {
+      inScopeNormalized.push(m);
+      continue;
+    }
+    const comp = CLUB_COMPETITION_BY_LEAGUE_CODE[m.leagueCode];
+    if (!comp) {
+      excludedOutOfScope += 1;
+      continue;
+    }
+    if (comp.scope === 'whitelist_only' && !clubMatchInWhitelistScope(m)) {
+      excludedOutOfScope += 1;
+      continue;
+    }
+    inScopeNormalized.push(m);
+  }
+  if (excludedOutOfScope > 0) {
+    errors.push(`scope: исключено матчей вне whitelist/scope: ${excludedOutOfScope}`);
+  }
+
+  // 3.1=A: dates with national (UNL) in-scope matches are national-only; exclude club matches on those dates.
+  const nationalDates = new Set<GameDate>();
+  for (const m of inScopeNormalized) {
     if (m.leagueCode === 'UNL') nationalDates.add(gameDateOf(m.kickoffUtc));
   }
 
@@ -425,7 +448,7 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
 
   const maxMatchesPerRun = 50;
   const finalStatuses = new Set(['FT', 'PST', 'CANC', 'ABD']);
-  const prioritized = [...normalized].sort((a, b) => {
+  const prioritized = [...inScopeNormalized].sort((a, b) => {
     const nowMsSort = now.getTime();
     const priority = (m: NormalizedMatch): number => {
       if (m.status === 'LIVE' || m.status === 'HT') return 0;

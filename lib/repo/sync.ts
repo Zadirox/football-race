@@ -491,10 +491,14 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
         and md.game_date <= ${window.to}::date
     `;
     const attachedByKey = new Set(attachedRows.map((r) => r.match_id));
+    const providers = eligibleForProcessing.map((m) => m.provider);
+    const extIds = eligibleForProcessing.map((m) => m.externalId);
     const idRows = await sql<{ id: string; provider: string; external_id: string }[]>`
       select m.id, m.provider, m.external_id
       from matches m
-      where (m.provider, m.external_id) in ${sql(eligibleForProcessing.map((m) => [m.provider, m.externalId]))}
+      where (m.provider, m.external_id) in (
+        select * from unnest(${providers}::text[], ${extIds}::text[])
+      )
     `;
     const matchIdByKey = new Map(idRows.map((r) => [`${r.provider}:${r.external_id}`, r.id]));
     const head: NormalizedMatch[] = [];

@@ -301,8 +301,11 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
       const pb = b.kind === 'europe_cup' ? 0 : 1;
       return pa - pb;
     });
+    const rotateBy = Math.floor(Date.now() / 60_000) % Math.max(1, clubPriority.length);
+    const rotatedClubPriority = [...clubPriority.slice(rotateBy), ...clubPriority.slice(0, rotateBy)];
 
-    for (const comp of clubPriority) {
+    let clubConsecutiveFailures = 0;
+    for (const comp of rotatedClubPriority) {
       const remainingMs = processingDeadlineMs - Date.now();
       if (remainingMs <= 4_000) {
         clubSkippedNoBudget += 1;
@@ -310,7 +313,8 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
       }
 
       try {
-        const listTimeoutMs = Math.min(10_000, Math.max(3_000, remainingMs - 1_500));
+        const baseTimeout = clubConsecutiveFailures >= 2 ? 5_000 : 10_000;
+        const listTimeoutMs = Math.min(baseTimeout, Math.max(2_500, remainingMs - 1_500));
         const res = await fetchSstatsFixtures({
           leagueId: comp.sstatsLeagueId,
           year: comp.year,
@@ -332,13 +336,19 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
         }
         clubKept += scoped.length;
         if (scoped.length > 0) sstatsGroups.push(scoped);
+        clubConsecutiveFailures = 0;
       } catch (error) {
+        clubConsecutiveFailures += 1;
         if (isQuotaError(error)) {
           errors.push(`club/${comp.key}: quota exceeded`);
           break;
         }
         const message = error instanceof Error ? error.message : String(error);
         errors.push(`club/${comp.key}: ${message}`);
+        if (clubConsecutiveFailures >= 3 && remainingMs < 20_000) {
+          errors.push('club: sstats нестабилен, пропускаю оставшиеся comps в этом прогоне');
+          break;
+        }
       }
     }
 
@@ -556,6 +566,13 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
         matchdayIds.set(gameDate, matchdayId);
       }
 
+      const fallbackMinute = match.minute ?? (
+        match.status === 'HT' ? 45 :
+        match.status === 'FT' ? 90 :
+        match.status === 'LIVE' ? Math.max(1, Math.min(130, Math.floor((Date.now() - match.kickoffUtc.getTime()) / 60000))) :
+        null
+      );
+
       const [saved] = await tx<{ id: string }[]>`
         insert into matches (
           provider, external_id, league_code, league_title,
@@ -579,7 +596,7 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
           ${match.awayLogo},
           ${match.kickoffUtc},
           ${match.status},
-          ${match.minute},
+          ${fallbackMinute},
           ${match.homeScore},
           ${match.awayScore},
           ${match.htHomeScore},
@@ -606,26 +623,27 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
           kickoff_utc = excluded.kickoff_utc,
           status = case
             when matches.status in ('FT','PST','CANC','ABD') and excluded.status in ('NS','LIVE','HT') then matches.status
+            when matches.status in ('LIVE','HT') and excluded.status = 'NS' then matches.status
             else excluded.status
           end,
           minute = case
-            when excluded.status = 'NS' then excluded.minute
+            when excluded.status = 'NS' then matches.minute
             else coalesce(excluded.minute, matches.minute)
           end,
           home_score = case
-            when excluded.status = 'NS' then excluded.home_score
+            when excluded.status = 'NS' then matches.home_score
             else coalesce(excluded.home_score, matches.home_score)
           end,
           away_score = case
-            when excluded.status = 'NS' then excluded.away_score
+            when excluded.status = 'NS' then matches.away_score
             else coalesce(excluded.away_score, matches.away_score)
           end,
           ht_home_score = case
-            when excluded.status = 'NS' then excluded.ht_home_score
+            when excluded.status = 'NS' then matches.ht_home_score
             else coalesce(excluded.ht_home_score, matches.ht_home_score)
           end,
           ht_away_score = case
-            when excluded.status = 'NS' then excluded.ht_away_score
+            when excluded.status = 'NS' then matches.ht_away_score
             else coalesce(excluded.ht_away_score, matches.ht_away_score)
           end,
           corners_home = coalesce(excluded.corners_home, matches.corners_home),
@@ -708,13 +726,14 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
             kickoff_utc = ${match.kickoffUtc},
             status = case
               when status in ('FT','PST','CANC','ABD') and ${match.status} in ('NS','LIVE','HT') then status
+              when status in ('LIVE','HT') and ${match.status} = 'NS' then status
               else ${match.status}
             end,
-            minute = case when ${match.status} = 'NS' then ${match.minute} else coalesce(${match.minute}, minute) end,
-            home_score = case when ${match.status} = 'NS' then ${match.homeScore} else coalesce(${match.homeScore}, home_score) end,
-            away_score = case when ${match.status} = 'NS' then ${match.awayScore} else coalesce(${match.awayScore}, away_score) end,
-            ht_home_score = case when ${match.status} = 'NS' then ${match.htHomeScore} else coalesce(${match.htHomeScore}, ht_home_score) end,
-            ht_away_score = case when ${match.status} = 'NS' then ${match.htAwayScore} else coalesce(${match.htAwayScore}, ht_away_score) end,
+            minute = case when ${match.status} = 'NS' then minute else coalesce(${fallbackMinute}, minute) end,
+            home_score = case when ${match.status} = 'NS' then home_score else coalesce(${match.homeScore}, home_score) end,
+            away_score = case when ${match.status} = 'NS' then away_score else coalesce(${match.awayScore}, away_score) end,
+            ht_home_score = case when ${match.status} = 'NS' then ht_home_score else coalesce(${match.htHomeScore}, ht_home_score) end,
+            ht_away_score = case when ${match.status} = 'NS' then ht_away_score else coalesce(${match.htAwayScore}, ht_away_score) end,
             corners_home = coalesce(${match.stats.cornersHome}, corners_home),
             corners_away = coalesce(${match.stats.cornersAway}, corners_away),
             yellow_cards_home = coalesce(${match.stats.yellowCardsHome}, yellow_cards_home),

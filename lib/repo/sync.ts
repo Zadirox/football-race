@@ -279,7 +279,26 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
     errors.push(`Лига Наций: ${message}`);
   }
 
-  // 2) Club competitions (Stage 3 B, Y4): sstats primary, all comps best-effort, euro-cups priority.
+  // 2) football-data first (B): reserve/guarantee FD before slow sstats club comp loop, so FD is not starved.
+  if (hasFootballData && Date.now() < processingDeadlineMs - 4_000) {
+    try {
+      const fixtures = await fetchFixtures({ token: env.footballDataToken!, from: window.from, to: window.to });
+      fetchedTotal += fixtures.matches.length;
+      requestsUsed += fixtures.requestsUsed;
+      httpStatus = fixtures.httpStatus;
+      fdGroups.push(normalizeMatches(fixtures.matches));
+    } catch (error) {
+      const message = error instanceof Error ? error.message : 'Ошибка получения матчей';
+      errors.push(message);
+      if (isQuotaError(error)) {
+        // quota отмечена в errors; ниже обработается как reason при отсутствии данных
+      }
+    }
+  } else if (hasFootballData) {
+    errors.push('football-data: недостаточно бюджета на fetch');
+  }
+
+  // 3) Club competitions (Stage 3 B, Y4): sstats primary, all comps best-effort, euro-cups priority.
   let clubFetched = 0;
   let clubKept = 0;
   let clubSkippedNoBudget = 0;
@@ -333,25 +352,6 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
     if (clubSkippedNoBudget > 0) {
       errors.push(`club: пропущено comps из-за бюджета: ${clubSkippedNoBudget}`);
     }
-  }
-
-  // 3) football-data (reserve/existing source). Pushed as lower-priority group.
-  if (hasFootballData && Date.now() < processingDeadlineMs - 4_000) {
-    try {
-      const fixtures = await fetchFixtures({ token: env.footballDataToken!, from: window.from, to: window.to });
-      fetchedTotal += fixtures.matches.length;
-      requestsUsed += fixtures.requestsUsed;
-      httpStatus = fixtures.httpStatus;
-      fdGroups.push(normalizeMatches(fixtures.matches));
-    } catch (error) {
-      const message = error instanceof Error ? error.message : 'Ошибка получения матчей';
-      errors.push(message);
-      if (isQuotaError(error)) {
-        // quota отмечена в errors; ниже обработается как reason при отсутствии данных
-      }
-    }
-  } else if (hasFootballData) {
-    errors.push('football-data: недостаточно бюджета на fetch');
   }
 
   // Merge with sstats priority on provider:externalId conflicts.

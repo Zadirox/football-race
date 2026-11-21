@@ -111,7 +111,9 @@ export const loadSeasonSnapshot = cache(async (): Promise<SeasonSnapshot> => {
     .catch((err) => {
       if (hit) {
         console.error('Не удалось обновить снапшот, отдаём устаревший кэш:', err);
-        // оставляем старый кэш, не затираем его неудачной попыткой
+        // Держим stale на один TTL, чтобы не долбить БД на каждом запросе, но и не залипать навсегда.
+        hit.at = Date.now();
+        snapshotCache.set(key, hit);
         return hit.value;
       }
       snapshotCache.delete(key);

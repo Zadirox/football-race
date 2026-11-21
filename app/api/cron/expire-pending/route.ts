@@ -8,6 +8,7 @@
 
 import { NextResponse } from 'next/server';
 import { cronAuthorized } from '@/lib/cron/auth';
+import { closeDb } from '@/lib/db';
 import { expirePending } from '@/lib/repo/pending';
 
 export const dynamic = 'force-dynamic';
@@ -18,16 +19,20 @@ async function run(request: Request): Promise<Response> {
     return NextResponse.json({ ok: false, error: 'UNAUTHORIZED' }, { status: 401 });
   }
 
-  const report = await expirePending();
+  try {
+    const report = await expirePending();
 
-  if (report.errors.includes('CONFIG_MISSING')) {
-    return NextResponse.json(report, { status: 503 });
-  }
-  if (!report.ok) {
-    return NextResponse.json(report, { status: 500 });
-  }
+    if (report.errors.includes('CONFIG_MISSING')) {
+      return NextResponse.json(report, { status: 503 });
+    }
+    if (!report.ok) {
+      return NextResponse.json(report, { status: 500 });
+    }
 
-  return NextResponse.json(report);
+    return NextResponse.json(report);
+  } finally {
+    await closeDb().catch(() => {});
+  }
 }
 
 export async function GET(request: Request): Promise<Response> {

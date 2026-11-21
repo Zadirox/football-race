@@ -23,8 +23,8 @@ export function db(): Db {
       // В serverless держим мало соединений, чтобы не упираться в лимиты pooler/Supabase.
       max: 1,
       prepare: false,
-      idle_timeout: 10,
-      max_lifetime: 60 * 2,
+      idle_timeout: 5,
+      max_lifetime: 60,
       connect_timeout: 10,
       keep_alive: 30,
       // Не даём запросам зависать бесконечно; keepalive помогает быстрее обнаружить мёртвого клиента.

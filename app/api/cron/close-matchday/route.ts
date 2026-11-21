@@ -6,6 +6,7 @@
 
 import { NextResponse } from 'next/server';
 import { cronAuthorized } from '@/lib/cron/auth';
+import { closeDb } from '@/lib/db';
 import { advanceMatchdays } from '@/lib/repo/sync';
 
 export const dynamic = 'force-dynamic';
@@ -16,17 +17,21 @@ async function run(request: Request): Promise<Response> {
     return NextResponse.json({ ok: false, error: 'UNAUTHORIZED' }, { status: 401 });
   }
 
-  const report = await advanceMatchdays();
+  try {
+    const report = await advanceMatchdays();
 
-  if (report.errors.includes('CONFIG_MISSING')) {
-    return NextResponse.json(report, { status: 503 });
-  }
-  if (!report.ok) {
-    console.error('[close-matchday] failed', JSON.stringify(report));
-    return NextResponse.json(report, { status: 500 });
-  }
+    if (report.errors.includes('CONFIG_MISSING')) {
+      return NextResponse.json(report, { status: 503 });
+    }
+    if (!report.ok) {
+      console.error('[close-matchday] failed', JSON.stringify(report));
+      return NextResponse.json(report, { status: 500 });
+    }
 
-  return NextResponse.json(report);
+    return NextResponse.json(report);
+  } finally {
+    await closeDb().catch(() => {});
+  }
 }
 
 export async function GET(request: Request): Promise<Response> {

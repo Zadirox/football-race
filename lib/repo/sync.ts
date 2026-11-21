@@ -479,10 +479,38 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
     errors.push(`3.1=A: исключено club-матчей на national-даты: ${excludedClubOnNationalDate}`);
   }
 
-  const matchesToProcess = eligibleForProcessing.slice(0, maxMatchesPerRun);
-  if (eligibleForProcessing.length > maxMatchesPerRun) {
+  // Prefer matches not yet attached in window to avoid starving the tail of the queue.
+  let prioritizedProcessing = eligibleForProcessing;
+  if (eligibleForProcessing.length > 0) {
+    const attachedRows = await sql<{ match_id: string }[]>`
+      select mm.match_id
+      from matchday_matches mm
+      join matchdays md on md.id = mm.matchday_id
+      where md.season_id = ${season.id}
+        and md.game_date >= ${window.from}::date
+        and md.game_date <= ${window.to}::date
+    `;
+    const attachedByKey = new Set(attachedRows.map((r) => r.match_id));
+    const idRows = await sql<{ id: string; provider: string; external_id: string }[]>`
+      select m.id, m.provider, m.external_id
+      from matches m
+      where (m.provider, m.external_id) in ${sql(eligibleForProcessing.map((m) => [m.provider, m.externalId]))}
+    `;
+    const matchIdByKey = new Map(idRows.map((r) => [`${r.provider}:${r.external_id}`, r.id]));
+    const head: NormalizedMatch[] = [];
+    const tail: NormalizedMatch[] = [];
+    for (const m of eligibleForProcessing) {
+      const mid = matchIdByKey.get(`${m.provider}:${m.externalId}`);
+      if (mid && attachedByKey.has(mid)) tail.push(m);
+      else head.push(m);
+    }
+    prioritizedProcessing = [...head, ...tail];
+  }
+
+  const matchesToProcess = prioritizedProcessing.slice(0, maxMatchesPerRun);
+  if (prioritizedProcessing.length > maxMatchesPerRun) {
     partial = true;
-    errors.push(`обработано ${maxMatchesPerRun} из ${eligibleForProcessing.length} матчей за проход, остаток — в следующем прогоне`);
+    errors.push(`обработано ${maxMatchesPerRun} из ${prioritizedProcessing.length} матчей за проход, остаток — в следующем прогоне`);
   }
 
   tDbStartMs = Date.now();

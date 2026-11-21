@@ -370,13 +370,14 @@ async function loadFromDatabase(viewer: SeasonViewer): Promise<SeasonSnapshot> {
     lastClosedDayTop = closedForViewer.top;
   }
 
+  const inScopeMatchIds = new Set(matchRows.filter((r) => r.in_scope).map((r) => r.id));
   return {
     season: toSeasonView(season),
     players,
     cells,
     matchday: toMatchdayView(matchday),
-    matches: matchRows.map(toMatchView),
-    questions: questionRows.map(toQuestionView),
+    matches: matchRows.filter((r) => r.in_scope).map(toMatchView),
+    questions: questionRows.filter((q) => inScopeMatchIds.has(q.match_id)).map(toQuestionView),
     activity: toActivityViews(activityRows),
     ratingsSeed: toRatingsSeed(players),
     me: toMeView(playerRows, viewer),
@@ -494,9 +495,10 @@ export async function loadMatchdayPredictions(matchdayId: string): Promise<Match
     `,
   ]);
 
+  const inScopeMatchIds = new Set(matchRows.filter((r) => r.in_scope).map((r) => r.id));
   return {
     matchday,
-    matches: matchRows.map(toMatchView),
-    questions: questionRows.map(toQuestionView),
+    matches: matchRows.filter((r) => r.in_scope).map(toMatchView),
+    questions: questionRows.filter((q) => inScopeMatchIds.has(q.match_id)).map(toQuestionView),
   };
 }

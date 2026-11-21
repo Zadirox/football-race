@@ -118,13 +118,6 @@ function clubMatchInWhitelistScope(match: NormalizedMatch): boolean {
       if (isWhitelistedClubMatch(h, a)) return true;
     }
   }
-  // Also check single-side candidates against whitelist (either side may match)
-  for (const h of homeCandidates) {
-    if (isWhitelistedClubMatch(h, '')) return true;
-  }
-  for (const a of awayCandidates) {
-    if (isWhitelistedClubMatch('', a)) return true;
-  }
   return false;
 }
 

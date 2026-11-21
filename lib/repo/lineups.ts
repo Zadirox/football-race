@@ -273,6 +273,7 @@ export async function listLineupMatches(
       join matches m on m.id = mm.match_id
      where md.season_id = ${seasonId}
        and md.game_date = ${targetDate}::date
+       and mm.in_scope
      order by m.kickoff_utc asc, m.id asc
   `;
 
@@ -377,7 +378,7 @@ export async function upsertLineupSlot(
              m.home_name,
              m.away_name
         from matches m
-        join matchday_matches mm on mm.match_id = m.id
+        join matchday_matches mm on mm.match_id = m.id and mm.in_scope
         join matchdays md on md.id = mm.matchday_id
        where m.id = ${input.matchId}
          ${input.seasonId ? client`and md.season_id = ${input.seasonId}` : client``}

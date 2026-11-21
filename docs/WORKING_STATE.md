@@ -57,12 +57,13 @@
 - **Админка паки:** добавлена выдача клубных паков как для сборных. `packGrantSchema` получил `packKind: 'national'|'club'` (default national). `grantPackToProfile` выбирает active pack (`getActiveNationalPack`/`getActiveClubPack`), пишет audit с `packKind`. UI AdminTools получил селектор типа пака и нейтральные подписи.
 - **Проверки:** `npx tsc --noEmit --pretty false` — OK; `npm run test:run` — 31 files / 339 tests PASS.
 
-## Обновление 2026-11-21 (UI карточек/пака клубов, локально)
+## Обновление 2026-11-21 (UI карточек/пака клубов, деплой 8d35ac1)
 - **Причина 1 (выглядят хуже):** `FutCard.tsx` был заточен под сборные: всегда показывал `teamFlag(nationalTeam)` и `nationalTeam` как команду. Для клубных карт (`setKind==='club'`, `clubName` есть, `nationalTeam/nationality` часто null) получались белый флаг и "Команда"/неверная команда. Исправлено: для клубов показывается `clubName` и SVG-щит (club mark) вместо флага страны; сборные без изменений.
 - **Причина 2 (крутятся сборные вместо клубов):** `PackOpenReveal.tsx` для клубов использовал пул `[teamLabel, ...COUNTRY_POOL.slice(0,12)]`, поэтому в ротации появлялись страны. Исправлено: добавлен `CLUB_POOL`, для `setKind==='club'` используется только клубный пул.
-- **Размеры карточек:** grid/размеры `FutCard` md 204x304 одинаковы для сборных и клубов; явного расхождения размеров не найдено. Если имелся в виду другой контекст (раскрытие/конкретный экран), нужно уточнить.
-- **Проверки:** `npx tsc --noEmit --pretty false` — OK; `npm run test:run` — 31 files / 339 tests PASS. Код не закоммичен/не задеплоен.
-- **Ожидает согласования. Реализация не задеплоена:** задеплоить фикс на prod и проверить через browse? На prod нет выданных/открытых клубных паков/инстансов (только каталог), для проверки reveal может понадобиться выдать тестовый клубный пак админом.
+- **Портреты слишком маленькие:** увеличен `portraitWrap` в `fut-card.module.css` (md/sm/lg), портрет заходит под нижнюю плашку, визуально занимает заметно больше карточки.
+- **Spinazzola/сломанные фото клубов:** `/cards/clubs/napoli/leonardo-spinazzola.webp` отсутствовал в public. Проверка БД показала 127 missing club photo_url; все 127 восстановлены конвертацией из `клубы/` в `public/cards/clubs/**/*.webp` (sharp, quality 82). Источник `клубы/` не коммитился.
+- **Дубли в Составах:** `lib/repo/lineups.ts` в `listLineupMatches` и `upsertLineupSlot` не фильтровал `mm.in_scope`, из-за чего скрытые дубли матчей могли попадать в Составы. Добавлен фильтр `mm.in_scope`.
+- **Проверки:** `npx tsc --noEmit --pretty false` — OK; `npm run test:run` — 31 files / 339 tests PASS.
 
 ## Следующий безопасный шаг
 - Задеплоить кодовые фиксы (admin pack kind + sync name canonicalization), затем проверить на prod: админка выдаёт клубный пак, новые sync прогоны не создают EN/RU дубли. Мониторить cron-job.org. При повторных CONNECTION_ENDED — согласовать infra-решение.

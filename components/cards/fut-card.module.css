@@ -382,7 +382,7 @@
 
 .portraitWrap {
   position: absolute;
-  inset: 6px 4px 76px 34px;
+  inset: 4px 0 14px 28px;
   z-index: 3;
   display: flex;
   align-items: flex-end;
@@ -617,7 +617,7 @@
 .sizeSm .pos { font-size: 9.5px; letter-spacing: 0.1em; }
 .sizeSm .flag { font-size: 14px; }
 .sizeSm .clubMark { width: 15px; height: 15px; }
-.sizeSm .portraitWrap { inset: 6px 4px 64px 30px; }
+.sizeSm .portraitWrap { inset: 4px 0 12px 24px; }
 .sizeSm .bottom { left: 7px; right: 7px; bottom: 7px; padding: 7px 6px 6px; gap: 2px; }
 .sizeSm .name { font-size: 12.5px; letter-spacing: 0.02em; }
 .sizeSm .meta { font-size: 8.5px; letter-spacing: 0.06em; }
@@ -633,7 +633,7 @@
 .sizeLg .pos { font-size: 11px; }
 .sizeLg .flag { font-size: 20px; }
 .sizeLg .clubMark { width: 22px; height: 22px; }
-.sizeLg .portraitWrap { inset: 8px 6px 94px 40px; }
+.sizeLg .portraitWrap { inset: 6px 0 18px 34px; }
 .sizeLg .bottom { left: 10px; right: 10px; bottom: 10px; padding: 11px 10px 10px; gap: 4px; }
 .sizeLg .name { font-size: 18px; }
 .sizeLg .meta { font-size: 10.5px; letter-spacing: 0.08em; }

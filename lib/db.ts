@@ -20,12 +20,12 @@ export function db(): Db {
 
   if (!client) {
     client = postgres(url, {
-      // В serverless держим мало соединений, чтобы не упираться в лимиты pooler/Supabase.
+      // Supavisor session mode has tight pool_size; release slots fast in serverless.
       max: 1,
       prepare: false,
-      idle_timeout: 5,
-      max_lifetime: 60,
-      connect_timeout: 10,
+      idle_timeout: 2,
+      max_lifetime: 15,
+      connect_timeout: 5,
       keep_alive: 30,
       // Не даём запросам зависать бесконечно; keepalive помогает быстрее обнаружить мёртвого клиента.
       connection: {

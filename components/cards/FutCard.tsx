@@ -50,6 +50,7 @@ export function FutCard({
   className,
 }: Props) {
   const [flipped, setFlipped] = useState(false);
+  const [portraitRatio, setPortraitRatio] = useState<'tall' | 'square'>('tall');
   const isClub = card.setKind === 'club';
   const team = isClub
     ? (card.clubName || card.nationalTeam || 'Клуб')
@@ -114,7 +115,20 @@ export function FutCard({
           <div className={styles.portraitWrap}>
             {card.photoUrl ? (
               // eslint-disable-next-line @next/next/no-img-element
-              <img className={styles.portrait} src={card.photoUrl} alt="" loading="lazy" decoding="async" />
+              <img
+                className={styles.portrait}
+                src={card.photoUrl}
+                alt=""
+                loading="lazy"
+                decoding="async"
+                data-ratio={portraitRatio}
+                onLoad={(e) => {
+                  const img = e.currentTarget;
+                  if (img.naturalWidth > 0 && img.naturalHeight > 0) {
+                    setPortraitRatio(img.naturalHeight / img.naturalWidth < 1.2 ? 'square' : 'tall');
+                  }
+                }}
+              />
             ) : (
               <div className={styles.portraitPlaceholder} aria-hidden="true" />
             )}

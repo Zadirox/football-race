@@ -410,6 +410,11 @@
   transform: translateZ(14px);
 }
 
+.portrait[data-ratio='square'] {
+  object-fit: cover;
+  object-position: center 12%;
+}
+
 .portraitPlaceholder {
   width: 68%;
   height: 70%;

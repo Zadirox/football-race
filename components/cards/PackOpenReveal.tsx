@@ -36,6 +36,14 @@ const COUNTRY_POOL = [
   'Сербия', 'Украина', 'Аргентина', 'Бразилия', 'Уругвай', 'США', 'Япония',
 ];
 
+const CLUB_POOL = [
+  'Арсенал', 'Челси', 'Ливерпуль', 'Манчестер Сити', 'Тоттенхэм',
+  'Барселона', 'Реал Мадрид', 'Атлетико Мадрид', 'Бавария', 'Боруссия Д',
+  'Ювентус', 'Милан', 'Интер', 'Наполи', 'ПСЖ',
+  'Бенфика', 'Порту', 'Аякс', 'Байер', 'Аталанта',
+  'Рома', 'Лацио', 'Севилья', 'Валенсия', 'Марсель',
+];
+
 const ROLE_POOL = ['Вратарь', 'Защитник', 'Полузащитник', 'Нападающий'];
 
 const NAME_POOL = [
@@ -172,7 +180,7 @@ export function PackOpenReveal({ card, collectionComplete, variant = 'fut', pale
       const teamLabel = card.clubName || card.nationalTeam || '—';
       runSlot({
         duration: DUR.country,
-        pool: card.setKind === 'club' ? [teamLabel, ...COUNTRY_POOL.slice(0, 12)] : COUNTRY_POOL,
+        pool: card.setKind === 'club' ? CLUB_POOL : COUNTRY_POOL,
         target: teamLabel,
         onTick: (v) => setCountryText(String(v)),
         onDone: () => {

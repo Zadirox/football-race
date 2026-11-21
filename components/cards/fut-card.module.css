@@ -367,6 +367,17 @@
   font-size: 16px;
   line-height: 1;
   filter: drop-shadow(0 2px 2px rgba(0, 0, 0, 0.35));
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.clubMark {
+  width: 18px;
+  height: 18px;
+  display: block;
+  color: var(--accent);
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.45));
 }
 
 .portraitWrap {
@@ -605,6 +616,7 @@
 .sizeSm .rating { font-size: 25px; }
 .sizeSm .pos { font-size: 9.5px; letter-spacing: 0.1em; }
 .sizeSm .flag { font-size: 14px; }
+.sizeSm .clubMark { width: 15px; height: 15px; }
 .sizeSm .portraitWrap { inset: 6px 4px 64px 30px; }
 .sizeSm .bottom { left: 7px; right: 7px; bottom: 7px; padding: 7px 6px 6px; gap: 2px; }
 .sizeSm .name { font-size: 12.5px; letter-spacing: 0.02em; }
@@ -620,6 +632,7 @@
 .sizeLg .rating { font-size: 38px; }
 .sizeLg .pos { font-size: 11px; }
 .sizeLg .flag { font-size: 20px; }
+.sizeLg .clubMark { width: 22px; height: 22px; }
 .sizeLg .portraitWrap { inset: 8px 6px 94px 40px; }
 .sizeLg .bottom { left: 10px; right: 10px; bottom: 10px; padding: 11px 10px 10px; gap: 4px; }
 .sizeLg .name { font-size: 18px; }

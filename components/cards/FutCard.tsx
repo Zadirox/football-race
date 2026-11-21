@@ -50,10 +50,13 @@ export function FutCard({
   className,
 }: Props) {
   const [flipped, setFlipped] = useState(false);
-  const flag = teamFlag(card.nationalTeam, card.nationalTeamSlug);
+  const isClub = card.setKind === 'club';
+  const team = isClub
+    ? (card.clubName || card.nationalTeam || 'Клуб')
+    : (card.nationalTeam || 'Сборная');
+  const flag = isClub ? null : teamFlag(card.nationalTeam, card.nationalTeamSlug);
   const pos = ROLE_LABEL_RU[card.roleGroup] ?? card.roleGroup;
-  const rarityLabel = RARITY_LABEL_RU[card.rarity];
-  const team = card.nationalTeam || 'Сборная';
+  const rarityLabel = RARITY_LABEL_RU[card.rarity];;
 
   const toggleFlip = () => {
     if (interactive) setFlipped((v) => !v);
@@ -98,7 +101,13 @@ export function FutCard({
             <div className={styles.pos}>{pos}</div>
             <div className={styles.divider} aria-hidden="true" />
             <div className={styles.flag} title={team} aria-label={team}>
-              {flag}
+              {isClub ? (
+                <svg className={styles.clubMark} viewBox="0 0 24 24" aria-hidden="true" focusable="false">
+                  <path d="M12 2l7 3v5c0 5-3 8.5-7 10-4-1.5-7-5-7-10V5l7-3z" fill="currentColor" opacity="0.22" />
+                  <path d="M12 2l7 3v5c0 5-3 8.5-7 10-4-1.5-7-5-7-10V5l7-3z" fill="none" stroke="currentColor" strokeWidth="1.6" strokeLinejoin="round" />
+                  <path d="M8.2 12.1l2.4 2.5 5.2-5.3" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+                </svg>
+              ) : flag}
             </div>
           </div>
 

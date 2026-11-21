@@ -509,8 +509,11 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
       if (mid && attachedByKey.has(mid)) tail.push(m);
       else head.push(m);
     }
-    unattachedCount = head.length;
-    prioritizedProcessing = [...head, ...tail];
+    // Rotate head so budget breaks don't starve the same tail matches every run.
+    const rotateBy = head.length > 0 ? (Math.floor(startedAt / 60_000) % head.length) : 0;
+    const rotatedHead = rotateBy > 0 ? [...head.slice(rotateBy), ...head.slice(0, rotateBy)] : head;
+    unattachedCount = rotatedHead.length;
+    prioritizedProcessing = [...rotatedHead, ...tail];
   }
 
   // Process all eligible in priority order; deadline break inside loop prevents overruns.

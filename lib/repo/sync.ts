@@ -673,8 +673,8 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
             best = { m, score: total, dt };
           }
         }
-        if (best && best.score >= 12) canonical = best.m;
-        else if (best && best.score >= 2) canonical = best.m;
+        // Require at least some team-name overlap; time-only proximity must not merge different matches.
+        if (best && best.score >= 10) canonical = best.m;
       }
 
       const targetMatchId = canonical?.id ?? saved.id;

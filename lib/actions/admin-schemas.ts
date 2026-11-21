@@ -56,6 +56,7 @@ export type RoleChangeInput = z.infer<typeof roleChangeSchema>;
 export const packGrantSchema = z.object({
   profileId: z.uuid(),
   count: z.coerce.number().int().min(1).max(20).default(1),
+  packKind: z.enum(['national', 'club']).default('national'),
 });
 
 export type PackGrantInput = z.infer<typeof packGrantSchema>;

@@ -25,7 +25,7 @@ import { AppError } from '@/lib/errors';
 import { LINEUP_POINTS, type CardRarity } from '@/lib/game/cards';
 import { DICE_SIDES } from '@/lib/game/dice';
 import { expiryDecision, isExpirableKind } from '@/lib/game/pending-expiry';
-import { getActiveNationalPack, grantNationalPack, NATIONAL_PACK_ID } from '@/lib/repo/cards';
+import { CLUB_PACK_ID, getActiveClubPack, getActiveNationalPack, grantNationalPack, NATIONAL_PACK_ID } from '@/lib/repo/cards';
 import { lockAnyPending, lockPlayer } from '@/lib/repo/game-tx';
 import { applyExpiryDecision } from '@/lib/repo/pending';
 
@@ -232,7 +232,7 @@ function toNum(value: number | string | null | undefined): number {
   return 0;
 }
 
-/** Ручная выдача паков сборных игроку активного сезона (один грант = один пак). */
+/** Ручная выдача паков (сборные/клубные) игроку активного сезона (один грант = один пак). */
 export async function grantPackToProfile(actorId: string, input: PackGrantInput): Promise<void> {
   const sql = db();
 
@@ -261,18 +261,20 @@ export async function grantPackToProfile(actorId: string, input: PackGrantInput)
     }
 
     const client = tx as unknown as ReturnType<typeof db>;
-    const pack = await getActiveNationalPack(season.id, client);
+    const isClub = input.packKind === 'club';
+    const pack = isClub ? await getActiveClubPack(season.id, client) : await getActiveNationalPack(season.id, client);
     if (!pack) {
-      throw new AppError('CONFIG_MISSING', 'Активный пак сборных не найден');
+      throw new AppError('CONFIG_MISSING', isClub ? 'Активный клубный пак не найден' : 'Активный пак сборных не найден');
     }
 
+    const fallbackPackId = isClub ? CLUB_PACK_ID : NATIONAL_PACK_ID;
     const grantedIds: string[] = [];
     for (let i = 0; i < input.count; i += 1) {
       const grant = await grantNationalPack(
         {
           seasonId: season.id,
           profileId: input.profileId,
-          packId: pack.id ?? NATIONAL_PACK_ID,
+          packId: pack.id ?? fallbackPackId,
           source: 'admin',
           grantIndex: i + 1,
         },
@@ -284,6 +286,7 @@ export async function grantPackToProfile(actorId: string, input: PackGrantInput)
     await audit(tx, actorId, 'pack.grant', 'profile', input.profileId, null, {
       seasonId: season.id,
       packId: pack.id,
+      packKind: input.packKind,
       count: input.count,
       grantIds: grantedIds,
     });

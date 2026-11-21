@@ -12,6 +12,7 @@ import { fetchFixtures } from '@/lib/data/footballData';
 import { enrichSstatsMatchesWithStats, fetchSstatsFixtures, fetchSstatsUnlFixtures } from '@/lib/data/sstats';
 import { normalizeMatches, type NormalizedMatch } from '@/lib/data/normalize';
 import { generateMatchQuestions } from '@/lib/data/questions';
+import { teamNameRu } from '@/lib/data/team-names';
 import { syncWindow } from '@/lib/data/sync-window';
 import { isAppError } from '@/lib/errors';
 import { grantPacksForResolvedMatchday } from '@/lib/repo/cards-grants';
@@ -541,7 +542,7 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
     };
 
     const normalizeName = (s: string): string =>
-      s.toLowerCase().replace(/ё/g, 'е').replace(/[^a-zа-я0-9]+/gi, ' ').trim();
+      teamNameRu(s).toLowerCase().replace(/ё/g, 'е').replace(/[^a-zа-я0-9]+/gi, ' ').trim();
 
     for (const match of matchesToProcess) {
       if (Date.now() >= deadlineMs - 2_000) {

@@ -214,7 +214,7 @@ export async function changeRoleAction(input: unknown): Promise<AdminRunResult> 
   }
 }
 
-/** Ручная выдача паков сборных активного сезона. */
+/** Ручная выдача паков (сборные/клубные) активного сезона. */
 export async function grantPackAction(input: unknown): Promise<AdminRunResult> {
   if (!hasDatabase()) return demoOnly();
   if (!serverEnv().cardsEnabled) return { ok: false, message: 'Раздел карточек и паков временно недоступен' };
@@ -229,7 +229,8 @@ export async function grantPackAction(input: unknown): Promise<AdminRunResult> {
     revalidatePath('/collection');
     revalidatePath('/lineups');
     const n = parsed.data.count;
-    return { ok: true, message: `Выдано паков сборных: ${n}` };
+    const label = parsed.data.packKind === 'club' ? 'клубных паков' : 'паков сборных';
+    return { ok: true, message: `Выдано ${label}: ${n}` };
   } catch (error) {
     return toResult(error);
   }

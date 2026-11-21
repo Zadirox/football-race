@@ -1,107 +1,61 @@
 # Текущее рабочее состояние
 
-Краткая актуальная сводка для продолжения работы (в т.ч. после `/compact` и в новой сессии). Расширенная история, планы и бэклог — в `docs/PROJECT_TRACKER.md`. Правила работы агента и восстановления контекста — в `AGENTS.md`.
+Краткая актуальная сводка для продолжения работы (в т.ч. после `/compact` и в новой сессии). Расширенная история/планы/бэклог — `docs/PROJECT_TRACKER.md`. Правила агента — `AGENTS.md`.
 
 ## Текущая цель
-- Подготовить и реализовать клубный этап (ЛЧ/ЛЕ/ЛК + whitelist-матчи топ-лиг, отдельные клубные паки/карточки) при сохранении совместимости основы. **Этапы 1–3 (C)** и **Stage 4 MVP (шаг 1 варианта C, D4.1–D4.4=A)** реализованы локально в согласованном объёме. Релиз/деплой/коммиты не выполнялись. Базовый коммит: `4a291b2` (`feat: make lineup bonuses fully manual`, ветка `frontend-finish`). Дальше — валидация и возврат к **D4.4 / Stage 4 шаг 2** по отдельному согласованию (пользователь просил запомнить).
+- Стабилизировать клубный контур winter-2026: cron/sync, live счёт/минута, закрытие матчдэя, live-индикаторы в предиктах, логи Vercel. Не ломать работающее поведение. Кодовые фиксы задеплоены в `frontend-finish` (последний `78ebeaf`).
 
-## Что выполнено (подтверждённые факты)
-- **Код/ветка:** `frontend-finish`, HEAD `4a291b2` (коммиты/пуш не выполнялись). В рабочем дереве есть локальные uncommitted изменения (runtime Этапы 1–3, data/config/tests/docs/migration/script, `tmp/`, ассеты и др.) — см. git status.
-- **Этап 1 (C, подтверждён 2026-11-21) — карточный runtime-фундамент, реализован локально:**
-  - `lib/game/cards.ts`: параметризованные odds (`NATIONAL_RARITY_ODDS`, `CLUB_RARITY_ODDS` 55/28/13/4), `CLUB_BONUS_SECOND_CHANCE=10`, `rollRarity(random, odds)`, A+ (1 гарант. + 10% шанс 2-й, независимые роллы), совместимость national сохранена.
-  - `lib/types.ts`, `lib/repo/cards.ts`: multi-set/pack/club поля, `pack_opening_cards`, открытие 1–2 карт без дублей, коллекция/прогресс по сетам, legacy-совместимость.
-  - `lib/repo/lineups.ts`, `app/(game)/collection/*`, `components/cards/PackOpenReveal.tsx`, actions: multi-set данные, **последовательный ревил 2 карт (1A)** и **вкладки Сборные/Клубы (2A)**. Без T1, без sync club-phase, без клубных линеек. Миграция 0015 и 491 карта в prod были загружены ранее (2C.5b/c).
-- **Этап 2 (C, вариант B, подтверждён 2026-11-21) — T1-гранты и классификация матчдэев, реализован локально (fail-safe):**
-  - `lib/repo/cards-grants.ts`: config-driven классификация in-scope матчей — `national` (UNL/`league_code=UNL`) → `a001`; `club` (все однозначно в клубных comps config, по sstats league id в `raw` и/или `league_code`) → T1 в `a002`; `none`/`ambiguous`/mixed/unknown → **без авто-гранта** (причина/лог). Идемпотентность `(matchday_id,profile_id,grant_index)`, gold→2 пака. Коды/ид derived из `CLUB_COMPETITIONS`.
-  - `lib/repo/sync.ts`: `advanceMatchdays` использует обобщённый grant hook; безопасные пропуски логируются, реальные сбои гранта попадают в report.
-  - Границы: без sync-интеграции Этапа 3 и без клубных линеек Этапа 4. UNL-дни классифицируются как national.
-- **Этап 3 (C, вариант B, подтверждён и реализован локально 2026-11-21) — sync-интеграция клубного этапа (Y4, без Stage 4):**
-  - **3.1=A:** даты, где есть national (UNL) in-scope матчи, считаются national-only — club in-scope матчи на этих датах **исключаются** из прикрепления к матчдэю (логируются), mixed матчдэи не создаются, схема БД не менялась.
-  - **3.2=A:** канонический `league_code` per included comp + `sstatsLeagueId` сохраняется в `raw`; маппинг из `CLUB_COMPETITIONS`.
-  - **3.3=A:** все included comps прогоняются за запуск, **best-effort** в пределах budget/deadline (еврокубки приоритетнее), идемпотентно.
-  - **Y4 scope sync comps (9):** `CL`(2), `EL`(3), `ECL`(848), `PL`(39), `PD`(140), `BL1`(78), `SA`(135), `FL1`(61), `SLTR`(203), Year=2026, sstats primary / FD reserve. Домашние лиги Eredivisie, Primeira, Eliteserien, Jupiler Pro BE, Bundesliga AT, Super League GR, Czech Liga, Super Liga SK, UPL, Premyer Liqa AZ **убраны из comps/sync**, но их клубы **остаются в `CLUB_WHITELIST`** для UEL/UECL (whitelist-only); UCL — все матчи.
-  - **Реализация:**
-    - `lib/data/club-phase.ts`: Y4 `CLUB_COMPETITIONS` с `leagueCode`, whitelist 54 сохранён, добавлены нормализация/матчинг алиасов (`matchWhitelistClub`, `isWhitelistedClubMatch`).
-    - `lib/data/sstats.ts`: обобщённый fetch/normalize (`normalizeSstatsGame`, `fetchSstatsFixtures`) + UNL-обёртки для совместимости.
-    - `lib/repo/sync.ts`: интеграция club comps (sstats) с whitelist-only фильтром (по нормализованным alias/name), 3.1=A exclusion, merge групп с **приоритетом sstats** (no FD overwrite sstats canonical, merge + coalesce), дедуп provider+external_id + существующая time/team эвристика, best-effort/budget, переиспользование сохранённой статистики/обогащение и advance/grants flow сохранены.
-    - `lib/repo/cards-grants.ts`, `tests/unit/cards-grants-classification.test.ts`: выровнены под Y4 (removed comps/codes/ids → unknown/fail-safe).
-  - Границы: без миграций БД, без Stage 4 (клубные линейки/правила), без деплоя.
-- **Stage 4 MVP (C, шаг 1, D4.1–D4.4=A, подтверждён 2026-11-21) — клубные линейки «как у сборных», реализовано локально:**
-  - **D4.1=A:** матчинг клубной карточки к стороне матча по клубной сущности/whitelist-алиасам (`lib/data/club-phase.ts`) в клубных contest-матчах (league_code из club comps); national-матчинг сохранён.
-  - **D4.2=A:** матчи показываются в составах при наличии ≥1 подходящей карты (как ранее).
-  - **D4.3=A / D4.4=A:** единый флоу/UI без разделения national/club, минимальные необходимые правки (без миграций, без UX-полировки).
-  - **Реализация:** `lib/game/lineup-eligibility.ts` (общая eligibility/side/match helpers), `lib/repo/lineups.ts` (league_code в контексте, club-aware валидация/матчинг в upsert, корректные сообщения), `lib/types.ts` (`MatchLineupView.leagueCode`), `app/(game)/lineups/page.tsx` и `app/(game)/lineups/LineupsClient.tsx` (подбор допустимых карт/лейблы с учётом club).
-  - Границы: без миграций БД, без изменения бонусных правил/спец-логики, без отдельного club-UI. **Вернуться позже к D4.4** (UX/объём) — по запросу пользователя.
-- **Файловая память проекта (docs):** `AGENTS.md`, `docs/ARCHITECTURE.md`, `docs/WORKING_STATE.md`, `docs/decisions/README.md`, `docs/decisions/0001-club-phase-source-sync-cards-direction.md` поддерживаются; в `AGENTS.md` зафиксированы протоколы, правило согласования и использование `impeccable`/`taste-skill` (A+C) для UI/фронтенда.
-- **2C.1–2C.5 и операционные шаги (ранее, подтверждено):** whitelist-конфиг/алиасы, решения 2C.2–2C.4 (A, B/sstats primary, scopes, Year=2026, M1/T1/A+/C odds, 24 клуба/491), 2C.5a мастер `data/club-cards.master.json`, 2C.5b/c migration 0015 применена и `scripts/load-club-cards.ts` выполнен в **PROD** (491, c002/a002). План B для матчдэя `2026-11-20` выполнен в проде (закрыт/skipped). Ассеты/портреты/SoFIFA/rembg работы — см. историю ниже и `docs/PROJECT_TRACKER.md`.
-- **Клубный объём:** 54 клуба для матчей/предиктов (UCL все; UEL/UECL и дом. лиги — только матчи с участием whitelist 54; дом. лиги в sync по Y4), 24 клуба для карточек (491 игрок), 1 дата = 1 матчдэй, ~4 вопроса/матч.
+## Что сделано в этой сессии (подтверждённые факты)
+- **Базовый контекст:** prod Supabase `aotjinjlhetutqfvznow`, Vercel prod `football-race-delta.vercel.app` (`zadirox1/football-race`), ветка `frontend-finish`, сезон `winter-2026` `09ffe9e4-5fb6-4f9b-9f56-505032c2c10f`. Внешний cron: cron-job.org `sync-fixtures` #8872379, Vercel Cron пустой.
+- **DB-фиксы (prod, аккуратно, точечно):**
+  - Como duplicate: оставлен реальный FD `558525` (`8d4e94b6-fd8a-4dc0-8d7e-9230cc742038`, Комо vs Кальяри, in_scope). Повреждённый FD `558528` (`ccf14104-021e-4762-8cf5-a8767495c68f`, фактически Lazio vs Lecce) выведен из scope/voided (0 ответов).
+  - Galatasaray vs Samsunspor (`fc421bb8-a2c3-499b-92ed-8d27f7ff65ac`) исправлен вручную на `FT 2:1, 90'`, provider/manual external_id, т.к. FD `564755` маппился на другой матч (Alavés vs La Coruña); TSL не в `CLUB_COMPETITIONS`.
+  - Newcastle-Arsenal дубль: sstats `4d581abd-c716-41fc-be39-d8315c39100d` (0 ответов) скрыт `in_scope=false`, questions voided, q_total пересчитан; оставлен FD `4613cd37-81f2-4742-9bb4-fd6285e6b445` (5 ответов).
+  - Минуты 21.11 для LIVE/HT/FT с `minute=null` временно заполнены вычисленным fallback (real-clock diff, capped) — до прихода точной минуты от провайдера.
+- **Кодовые фиксы (задеплоены):**
+  - `lib/repo/sync.ts`: защита от регрессии/обнуления — не даём входящему `NS` перетирать LIVE/HT/FT статус и не обнуляем minute/score/HT на `NS`; terminal не регрессирует в NS/LIVE/HT. Fallback minute для LIVE/HT/FT при `minute=null`. Ротация club comps (`Date.now()/60s % N`) + consecutive-failure break, чтобы sstats таймауты не сжигали весь бюджет и не голодали хвосты.
+  - `app/api/cron/sync-fixtures/route.ts`: `CRON_BUDGET_MS` снижен до `35000` (под типичный внешний cron timeout), catch исключений → JSON 500 с логом.
+  - `app/api/cron/close-matchday/route.ts`: catch исключений → JSON 500 с логом.
+  - `app/(game)/matches/MatchesClient.tsx`: 30s `router.refresh()` при LIVE/HT; статус приёма «приём закрыт» при `match.status !== 'NS'`.
+  - `instrumentation.ts`: `onRequestError` подавляет только шумной stale Server Action `Failed to find Server Action...` (старые клиенты после деплоя); остальные ошибки логируются.
+- **Коммиты/деплой:** `ae71771` (harden cron/sync stability, protect live scores, refresh matches), `78ebeaf` (prevent live score regression, add minute fallback, rotate club sync) — оба в `origin/frontend-finish`, Vercel prod Ready.
+- **Проверки:**
+  - `npx tsc --noEmit --pretty false` — OK.
+  - `npm run test:run` — **31 files / 339 tests PASS** (после каждого коммита).
+  - Ручной вызов prod cron с `CRON_SECRET`: `close-matchday` → `200 {"ok":true,...}`; `sync-fixtures` → `200 {"ok":true,...,"durationMs":34820,...}` (успевает в бюджет; sstats comps частично таймаутятся, но run завершается штатно с ошибками в report).
+  - Prod browse: `/matches` показывает минуты/счета/статусы (Man City FT 1:1 90′, Como LIVE 2:0 122′ в момент проверки; позже Como стал FT 2:0 90′). `/predictions` показывает автообновление и live-индикаторы «сейчас: …» для score-based вопросов (проверено на Union Berlin vs RB Leipzig: «сейчас: Да», «сейчас: РБ Лейпциг», «сейчас: 1:2»).
 
-## Что выполнено/наблюдалось ранее (по трекеру — требует перепроверки при эксплуатации)
-- Прод-окружение (Supabase/Vercel), состояние сезона `winter-2026`, миграции до `0013` (по трекеру, плюс 0015 по факту 2C.5b/c), внешнее расписание sync (cron-job.org), ограничения по таймаутам и ручные правки прод-БД описаны в `docs/PROJECT_TRACKER.md`. **В этой сессии напрямую не перепроверялись.**
+## Статус по 7 заявленным проблемам
+1. **sync-fixtures timeout / close-matchday 500** — смягчено: бюджет 35s, ротация/early-break, catch handlers. Ручные prod вызовы дают 200. В логах остаются transient DB `CONNECTION_ENDED ... pooler.supabase.com:5432` (Supavisor/инфра) — это вне кода приложения; catch делает ответ контролируемым, следующий прогон обычно ок. Нужен мониторинг cron-job.org.
+2. **Счёт иногда пропадает в Матчах** — корневая причина: NS-ответ провайдера перетирал LIVE/FT данные; исправлено защитой в sync + точечный ремонт данных. Повторно не воспроизвелось после фикса.
+3. **Live счёт/минута не обновляются оперативно** — 30s refresh на Matches/Predictions уже был/добавлен; sync protection + fallback minute + budget/rotation. FD не отдаёт minute — fallback вычисляет; точная минута появится если придёт от источника. Обновление ограничено частотой cron и качеством источника.
+4. **В предиктах не все вопросы показывают «Пока да/нет»** — механизм работает (проверено на prod). Для stat-based вопросов (угловые/карточки/владение/удары в створ) индикатор не показывается, если в матче нет stat-данных (`answerFor` возвращает null). Это ограничение данных, не UI-баг.
+5. **Vercel жёлтые логи Server Action not found** — добавлен `instrumentation.ts` `onRequestError`, фильтрующий только этот stale-client кейс. Полностью убрать невозможно для уже открытых старых вкладок/старых деплоев; новые запросы текущего деплоя не должны генерировать этот шум по той же причине.
+6. **Минуты sstats-матчей** — отображение минут есть (`minute !== null ? N′ : kickoff`). Для sstats elapsed маппится в minute; для FD/live без minute добавлен fallback. Проверить на ближайшем живом sstats-матче.
+7. **Проверка на prod** — выполнена: tsc/tests, ручные cron вызовы, browse Matches/Predictions, DB выборки. Остались внешние ограничения (sstats таймауты, Supavisor transient CONNECTION_ENDED, FD minute отсутствие).
 
-## Какие файлы затронуты
-- **Stage 4 MVP (agent, локально, uncommitted):** `lib/game/lineup-eligibility.ts`, `lib/repo/lineups.ts`, `lib/types.ts`, `app/(game)/lineups/page.tsx`, `app/(game)/lineups/LineupsClient.tsx`, `docs/WORKING_STATE.md`, `docs/decisions/0001-club-phase-source-sync-cards-direction.md`.
-- **Этап 3 (ранее, локально, uncommitted):** `lib/data/club-phase.ts`, `lib/data/sstats.ts`, `lib/repo/sync.ts`, `lib/repo/cards-grants.ts`, `tests/unit/cards-grants-classification.test.ts`.
-- **Этапы 1–2 (ранее в этой цепочке, локально uncommitted):** `lib/game/cards.ts`, `lib/types.ts`, `lib/repo/cards.ts`, `app/(game)/collection/*`, `components/cards/PackOpenReveal.tsx`, связанные actions/tests.
-- **Конфиг (подтверждённое изменение):** `tsconfig.json` — `tmp` добавлен в `exclude` (согласовано, вариант A), чтобы pre-existing tmp-скрипты не блокировали build/typecheck.
-- **Ранее/прочее (не коммитить без отдельного решения):** `data/club-cards.master.json`, `supabase/migrations/0015_club_cards_mvp.sql`, `scripts/load-club-cards.ts`, docs/решения, `players_champions.txt`, `tmp/portrait-prompts-clubs.md`, `public/cards/clubs/**`, `tmp/**`, `.playwright-mcp/`, `сборные/`, `клубы/`, `пример.webp`, возможны `.env.local` и др. (см. `docs/PROJECT_TRACKER.md`).
+## Остаточные риски/наблюдения
+- **sstats нестабилен:** club comps регулярно дают timeout/не JSON; sync завершается 200, но часть comps пропускается до следующего прогона. Ротация снижает голодание, но не устраняет источник.
+- **FD minute:** football-data часто не отдаёт `minute` для LIVE/FINISHED; используем fallback (оценка). Это лучше, чем скрывать минуту, но может немного отличаться от матчевых минут.
+- **Supavisor CONNECTION_ENDED:** transient ошибки на pooler; в коде есть catch. Если участятся — рассмотреть Supavisor transaction mode / serverless-safe DB настройки (отдельное решение).
+- **Дубликаты при расхождении имён провайдеров:** Newcastle/Arsenal вручную исправлен; общий дедуп по name overlap может не ловить EN/RU расхождения. Нужна осторожность при новых sstats/FD дублях.
 
-## Что осталось
-- **Stage 4 шаг 2 (ожидает согласования позже):** возврат к **D4.4** и уточнение/расширение клубных линеек (UX: эмблемы/визуал/разделение, продуктовые правила бонусов/матчинга/ограничений) — после валидации MVP.
-- **Проверки/валидация:** ручная/интеграционная проверка клубного sync, классификации, грантов (в т.ч. 3.1=A) и **клубных линеек (D4.1=A)** на реальных/тестовых данных; деградации/budget/конфликтов источников; `npm run build` не запускался; `npm run lint` в текущем окружении падает из-за интерактивного/устаревшего `next lint` (не исправлялось).
-- **Опционально:** выборочная проверка выреза портретов, актуализация SoFIFA-артефактов с учётом удалённых игроков.
-- **Эксплуатация:** подтверждение прод-деплоя (Vercel), актуальность cron-job.org, состояние матчдэев/БД, поведение sync/грантов/линеек на проде после выката кода.
+## Уже согласованные решения/границы (не менять без согласования)
+- Никаких коммитов/пушей/деплоев/отката чужих изменений без явного запроса; не коммитить `tmp/`, `.playwright-mcp/`, `клубы/`, `сборные/`, `.env.local`, незавершённые ассеты.
+- Sync incremental/idempotent/budgeted, cron-gated `CRON_SECRET`; внешний cron cron-job.org, Vercel Cron пустой. Lineup card bonuses fully manual.
+- Scope: 1 calendar date = 1 matchday; ~4 вопроса/матч; UCL все матчи; UEL/UECL и дом. лиги — матчи с хотя бы одной whitelist-командой, без мусорных лиг. 12 клубов удалены из whitelist ранее (1A/2C/3A) — не возвращать без согласования.
+- UI/фронтенд задачи: использовать `impeccable`/`taste-skill` по характеру задачи (см. AGENTS.md).
 
-## Уже согласованные решения и границы согласования
-- **Структура файловой памяти, правило согласования вариантов, UI-скиллы `impeccable`/`taste-skill` (A+C)** — зафиксированы в `AGENTS.md`.
-- **2C.1:** whitelist 54 клубов — конфиг в репо (`lib/data/club-phase.ts`), алиасы подтверждены; финальные правила матчинга/дедупа при sync уточняются при необходимости.
-- **2C.2:** окно синка **`[-1, +1]`**.
-- **2C.3:** sstats primary (FD reserve), приоритет sstats при конфликте, Year=2026; scope UCL все, UEL/UECL и дом. лиги — whitelist-only. **Этап 3 (подтверждено 2026-11-21): 3.1=A, 3.2=A, 3.3=A**. **Y4:** sync comps = 9 (CL/EL/ECL/PL/PD/BL1/SA/FL1/SLTR); 10 дом. лиг удалены из sync, их клубы остаются в whitelist для UEL/UECL.
-- **2C.4 (B, подтверждено 2026-11-21):** общий клубный пак, 24 клуба, пороги 88+/84–87/80–83/≤79, odds C 55/28/13/4, **A+** 1 гарант + 10% на 2-ю (независимые роллы), **T1** гранты по resolved клубному матчдэю (gold→2), **M1** единый club set c002 / pack a002.
-- **2C.5:** 2C.5a мастер принят; 2C.5b/c migration 0015 и загрузка 491 карт в **PROD** выполнены по явным подтверждениям (2026-11-21). Runtime-интеграция — по этапам C.
-- **Этап 1 (подтверждено, выполнен локально):** A+ 1–2, `pack_opening_cards`, odds a002, multi-set UI/progress; UX **1A** (последовательно) и **2A** (вкладки).
-- **Этап 2 (подтверждено, вариант B, выполнен локально):** config-driven классификация + fail-safe, T1 a002, идемпотентность, без sync Stage 3 и без линеек Stage 4.
-- **Этап 3 (подтверждено, вариант B, выполнен локально):** Y4 comps, 3.1=A/3.2=A/3.3=A, sstats primary + merge priority, whitelist-only фильтр, без миграций и без Stage 4.
-- **Stage 4 MVP (C, шаг 1, подтверждено 2026-11-21, выполнен локально):** **D4.1=A, D4.2=A, D4.3=A, D4.4=A** — 3 слота на матч клуба «как у сборных», матчинг клубных карт по клубной сущности/whitelist-алиасам, показ матчей при ≥1 подходящей карте, единый флоу/UI, минимальный объём без миграций/UX-полировки.
-- **D1-A (подтверждено 2026-11-21, реализован локально, uncommitted):** минимальный UX-polish составов — для клубных матчей бейдж/эмблема клуба (logo или initials fallback) вместо нейтрального флага, метка «Клубный матч/Матч сборных», `homeLogo/awayLogo` в `MatchLineupView`; без изменений логики/правил, без миграций. **D4.4/D1-B/D2** остаются для отдельного согласования.
-- **Портреты/SoFIFA/списки/План B:** см. предыдущие записи; решения применялись в согласованных границах. Исторические D1–D13 — `docs/DECISIONS.md`.
+## Вопросы, ожидающие ответа (блокируют реализацию соответствующей части)
+- Нужен ли переход DB на Supavisor **transaction mode** / отдельный serverless-safe connection string при повторении CONNECTION_ENDED? (изменение env/infra — требует отдельного согласования).
+- Нужна ли отдельная стратегия для точных минут FD-матчей (доп. источник/обогащение), или fallback-minute приемлем?
+- Нужна ли нормализация/дедуп EN↔RU имён команд в sync для предотвращения дублей типа Newcastle/Ньюкасл? (затрагивает sync-логику — нужно согласование подхода).
 
-## Вопросы, ожидающие моего ответа
-- **Stage 4, шаг 2 (после MVP, ожидает согласования позже):** возврат к **D4.4** и уточнение клубных правил/UX линеек (разделение UI, бейджи/визуал, спец-правила бонусов/матчинга, продуктовые требования) — **реализация не разрешена до согласования**.
-- **Визуал клубной карточки (опционально):** эмблема/бейдж клуба вместо нейтрального флага — по отдельному запросу/согласованию.
-- **Прод/операции:** актуальность деплоя (Vercel, включает ли Stages 1–3/4), cron-job.org, состояние матчдэев/БД — требует проверки пользователем/по инфраструктуре.
+## Обновление 2026-11-21 (дубликаты + админ клубные паки)
+- **Дубликаты матчей (prod DB):** найдено 17 in_scope дублей FD↔sstats/ручной на 21–22.11 (EN/RU расхождения имён, плюс повреждённый FD external_id Hull/Brighton). Все 17 скрыты: `matchday_matches.in_scope=false`, open/locked questions voided; ответы удалены только где их было 0 (Parma/Roma sstats-дубль имел 5 ответов — answers сохранены, вопросы voided/скрыты). `q_total` пересчитан на затронутые дни.
+- **Root-cause в sync:** `normalizeName` в `lib/repo/sync.ts` теперь канонизирует через `teamNameRu(...)`, чтобы EN/RU названия матчились при дедупе. Это снижает повторное появление дублей; `matchday_matches` upsert остаётся `on conflict do nothing`, поэтому скрытые вручную дубли не перевключатся в in_scope.
+- **Админка паки:** добавлена выдача клубных паков как для сборных. `packGrantSchema` получил `packKind: 'national'|'club'` (default national). `grantPackToProfile` выбирает active pack (`getActiveNationalPack`/`getActiveClubPack`), пишет audit с `packKind`. UI AdminTools получил селектор типа пака и нейтральные подписи.
+- **Проверки:** `npx tsc --noEmit --pretty false` — OK; `npm run test:run` — 31 files / 339 tests PASS.
 
-## Какие действия заблокированы до согласования
-- Реализация **Stage 4 шаг 2** (возврат к D4.4, расширение UX/правил/модели сверх согласованного MVP D4.1–D4.4=A) — до явного выбора подхода и границ пользователем.
-- Коммиты/пуш/деплой, запись в БД/миграции сверх уже выполненных подтверждённых операций, правки lint-конфига/инфраструктуры — без отдельного согласования (если потребуется содержательный выбор).
-
-## Блокеры и открытые вопросы
-- Не подтверждено: фактическое состояние прод-БД/деплоя Vercel с учётом локальных Stage 1–3 изменений, актуальность cron-job.org, полнота env/ключей на деплое.
-- Технические риски: таймауты/budget sync при росте числа comps/матчей, зависимость от sstats/лимитов, корректность alias-матчинга whitelist-only, поведение при пересечениях дат/дедупе; snapshot/БД таймауты (см. `docs/PROJECT_TRACKER.md`).
-- Данные SoFIFA собраны до удаления 4 игроков и без ПСВ; при использовании потребуется актуализация/очистка соответствующих записей в `tmp/sofifa-clubs-*.json|.md`.
-
-## Выполненные проверки и результаты
-- `git status --short`, чтение ключевых файлов/структуры — выполнено.
-- **Этап 1 runtime (локально, 2026-11-21):** `npx vitest run tests/unit/cards.test.ts` — **PASS** (12). `npx vitest run tests/unit/cards.test.ts tests/unit/cards-repo-helpers.test.ts` — **PASS** (19, 2 files).
-- **Этап 2 runtime (локально, 2026-11-21):** `npx vitest run tests/unit/cards-grants-classification.test.ts tests/unit/cards.test.ts tests/unit/cards-repo-helpers.test.ts` — **PASS** (29, 3 files).
-- **Этап 3 runtime (локально, 2026-11-21):** `npx vitest run tests/unit/cards-grants-classification.test.ts` — **PASS** (12, обновлено под Y4). `npm run test:run` — **PASS** (339 tests, 31 files).
-- **Stage 4 MVP runtime (локально, 2026-11-21):** `npx tsc --noEmit --pretty false` — **ошибок в коде проекта нет** (pre-existing `tmp/fix-stats.ts` только). `npm run test:run` — **PASS** (339 tests, 31 files).
-- **D1-A (локально, 2026-11-21):** `npx tsc --noEmit --pretty false` — **OK**. `npm run test:run` — **PASS** (339/339, 31 files).
-- **Срочный prod-fix (2026-11-21, делегировано):** `npx tsc --noEmit --pretty false` — **OK**; `npm run test:run` — **PASS** (339/339, 31 files) после `bdefeb1`. Prod DB sanity (20–26.11, in_scope): 52 матча, 0 матчей whitelist_only без хотя бы одной whitelist-команды; Hull City vs Brighton Hove (`558522`) in_scope. Browse prod после деплоя `bdefeb1`: `/predictions` показывает «Твой прогресс», Como 1907 — Cagliari с корректными вопросами (без Lazio-Lecce), Newcastle/Arsenal, Man City/Fulham, Paderborn/Ipswich/Kocaelispor присутствуют. Vercel logs `bdefeb1` (5m) — без EMAXCONNSESSION.
-- **Build (локально, 2026-11-21):** первый запуск `npm run build` — **FAIL** из-за pre-existing `tmp/fix-stats.ts` (tsconfig включал `**/*.ts`). После согласованного изменения **A** (`tmp` добавлен в `tsconfig.json` exclude) повторный `npm run build` — **PASS** (Compiled successfully, typecheck/lint-in-build OK, static pages 4/4).
-- **Неуспешно/не запускалось:** `npm run lint` отдельно — **FAIL (env/tooling)**: `next lint` deprecated/интерактивная настройка ESLint (exit 1), правки не вносились. Мануальная валидация sync/грантов/клубных линеек — **не выполнялась**.
-- Исторические проверки (портреты/rembg/SoFIFA/probe/План B/2C.5b–c верификация) — см. предыдущие записи.
-
-## Известные проблемы
-- См. «Технический долг / известные проблемы» в `docs/PROJECT_TRACKER.md`.
-- Потенциальные точечные расхождения имён/сопоставлений (напр. `Savinho` не сопоставлен в SoFIFA) — требуют внимания при интеграции данных.
-- Alias-матчинг club whitelist в sync консервативный; edge-cases имён провайдеров требуют наблюдения при реальном прогоне.
-
-## Согласованный следующий шаг (актуально)
-- **Подтверждено пользователем (2026-11-21):** вариант C, Этапы 1–3 (B на 2/3, с 3.1–3.3=A, Y4), **Stage 4 MVP (шаг 1, D4.1–D4.4=A)** и **D1-A** реализованы локально. Stage 1–4 MVP закоммичен/запушен (`18293e9`, `frontend-finish`), деплой подтверждён пользователем; **D1-A пока не коммитился/не пушился/не деплоился**.
-- **Prod sync/видимость (2026-11-21, делегировано пользователем «сделай как считаешь правильным и нужным»):** задеплоены `9f62a29`, `ae3bfcf`, `aba4065`, `1d72ac4`, `82b1752`, `a0b0544`, `235e74f`, `0667984`, `9ec25f0`, `bdefeb1`. Исправлены: дедуп каноникала (team overlap, `score>=10`), starvation unattached, release/таймауты DB-пула. По срочному запросу был ошибочный промежуточный AND-scope (обе команды в whitelist) — по явной корректировке пользователя откатан на правило **хотя бы одна команда в whitelist, без мусорных лиг**; 31 one-side-whitelist матч 20–26.11 восстановлен в `in_scope=true` с регенерацией вопросов (147 удалённых ответов из промежуточной очистки не восстановимы). Como-Cagliari (`558528`) показывает корректные сгенерированные вопросы. Добавлен `bdefeb1`: `lib/db.ts` `idle_timeout:2`, `max_lifetime:15`, `connect_timeout:5` для снижения Supavisor session-mode exhaustion.
-- **Whitelist cleanup + русские названия + сброс 21.11 (2026-11-21, подтверждено пользователем 1A/2C/3A):** из `CLUB_WHITELIST` убраны 12 клубов: `hoffenheim,bayer-leverkusen,marseille,rennes,feyenoord,porto,sporting-cp,benfica,slavia-prague,slovan-bratislava,shakhtar-donetsk,sabah` (все `inCardPool=false`). 4 матча стали no-whitelist и скрыты (`in_scope=false`, open/locked void, ответы удалены, `q_total` пересчитан): 21.11 live `Bayer Leverkusen vs SC Paderborn 07`, `Frankfurt vs Hoffenheim`; 22.11 scheduled `Lorient vs Rennes`, `Marseille vs Le Mans`. Ответы winter-2026 за 21.11 удалены (114). Дубль `Leverkusen vs SC Paderborn` (FD 565857, 0 ответов) скрыт; Man City `560643` обновлён до LIVE 1:1 по FD. Добавлен UI-маппинг русских названий в `lib/data/team-names.ts`, `lib/data/questions.ts` генерирует русские промпты, 289 существующих промптов/опций русифицированы в БД.
-- **Matches статус приёма (2026-11-21):** `MatchesClient.tsx` показывал «приём открыт» для всех незавершённых матчей; исправлено на `match.status !== 'NS'` → «приём закрыт» для LIVE/HT/FT/PST/CANC/ABD. Задеплоено `18e5d47`, prod проверен: Манчестер Сити, Галатасарай, Комо — «приём закрыт».
-
-- **Следующие осмысленные шаги (без предрешения новых решений):** наблюдать prod после `bdefeb1` на повторение EMAXCONNSESSION; проверить cron/sync на новых матчах; ручная валидация клубного контура; при желании — закоммитить/запушить/задеплоить D1-A. Если exhaustion вернётся — рассмотреть переход DB URL на Supavisor transaction mode / отдельное serverless-safe подключение (требует отдельного решения по env/infra).
-- **Ожидает согласования позже:** **D1-B / D2 (Stage 4 шаг 2)** — разделение UI/фильтр, спец-правила/поведение линеек. **Реализация не разрешена до согласования.**
+## Следующий безопасный шаг
+- Задеплоить кодовые фиксы (admin pack kind + sync name canonicalization), затем проверить на prod: админка выдаёт клубный пак, новые sync прогоны не создают EN/RU дубли. Мониторить cron-job.org. При повторных CONNECTION_ENDED — согласовать infra-решение.

@@ -110,6 +110,7 @@ export function AdminTools({ enabled, players, matches, pending, manualBonusSlot
 
   const [packProfile, setPackProfile] = useState(players[0]?.profileId ?? '');
   const [packCount, setPackCount] = useState('1');
+  const [packKind, setPackKind] = useState<'national' | 'club'>('national');
 
   const [roleProfile, setRoleProfile] = useState(players[0]?.profileId ?? '');
   const [role, setRole] = useState<Role>('player');
@@ -410,10 +411,24 @@ export function AdminTools({ enabled, players, matches, pending, manualBonusSlot
 
         {cardsEnabled ? (
           <>
-            <section className="card" aria-label="Пак сборных">
-              <h3 className="card__title">Пак сборных (выдача)</h3>
-              <p className="card__meta">Ручная выдача паков национальных сборных активного сезона.</p>
+            <section className="card" aria-label="Выдача паков">
+              <h3 className="card__title">Паки (выдача)</h3>
+              <p className="card__meta">Ручная выдача паков активного сезона: сборные или клубные.</p>
               {notice('pack')}
+
+              <div className="field">
+                <label htmlFor="admin-pack-kind">Тип пака</label>
+                <select
+                  id="admin-pack-kind"
+                  className="select"
+                  value={packKind}
+                  disabled={!enabled || pendingTx}
+                  onChange={(event) => setPackKind(event.target.value as 'national' | 'club')}
+                >
+                  <option value="national">Сборные</option>
+                  <option value="club">Клубные</option>
+                </select>
+              </div>
 
               <div className="field">
                 <label htmlFor="admin-pack-profile">Игрок</label>
@@ -458,6 +473,7 @@ export function AdminTools({ enabled, players, matches, pending, manualBonusSlot
                     grantPackAction({
                       profileId: packProfile,
                       count: packCount,
+                      packKind,
                     }),
                   )
                 }

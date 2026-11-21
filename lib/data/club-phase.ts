@@ -185,5 +185,5 @@ export function matchWhitelistClub(teamName: string | null | undefined): ClubWhi
 }
 
 export function isWhitelistedClubMatch(homeName: string | null | undefined, awayName: string | null | undefined): boolean {
-  return matchWhitelistClub(homeName) !== null && matchWhitelistClub(awayName) !== null;
+  return matchWhitelistClub(homeName) !== null || matchWhitelistClub(awayName) !== null;
 }

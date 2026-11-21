@@ -37,6 +37,10 @@ async function run(request: Request): Promise<Response> {
     }
 
     return NextResponse.json(report);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error('[sync-fixtures] exception', message);
+    return NextResponse.json({ ok: false, reason: 'ERROR', error: message }, { status: 500 });
   } finally {
     await closeDb().catch(() => {});
   }

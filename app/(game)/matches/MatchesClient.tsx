@@ -1,7 +1,8 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import Link from 'next/link';
+import { useRouter } from 'next/navigation';
 import { Panel, EmptyState, Notice } from '@/components/ui/Panel';
 import { formatRuKickoffMsk } from '@/lib/format';
 import { teamDisplay } from '@/lib/data/team-names';
@@ -39,6 +40,7 @@ function Crest({ name, url }: { name: string; url: string | null }) {
 }
 
 export function MatchesClient({ matches }: { matches: MatchView[] }) {
+  const router = useRouter();
   const leagues = useMemo(() => {
     const map = new Map<string, { code: string; title: string; count: number }>();
     for (const match of matches) {
@@ -51,6 +53,15 @@ export function MatchesClient({ matches }: { matches: MatchView[] }) {
 
   const [league, setLeague] = useState<string | null>(null);
   const visible = league ? matches.filter((m) => m.leagueCode === league) : matches;
+
+  useEffect(() => {
+    const hasLive = matches.some((m) => m.status === 'LIVE' || m.status === 'HT');
+    if (!hasLive) return;
+    const id = setInterval(() => {
+      router.refresh();
+    }, 30000);
+    return () => clearInterval(id);
+  }, [matches, router]);
 
   return (
     <Panel

@@ -513,13 +513,9 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
     prioritizedProcessing = [...head, ...tail];
   }
 
-  // Guarantee all unattached matches get a chance; attached fill remaining capacity.
-  const cap = Math.min(prioritizedProcessing.length, Math.max(maxMatchesPerRun, unattachedCount));
-  const matchesToProcess = prioritizedProcessing.slice(0, cap);
-  if (prioritizedProcessing.length > matchesToProcess.length) {
-    partial = true;
-    errors.push(`обработано ${matchesToProcess.length} из ${prioritizedProcessing.length} матчей за проход, остаток — в следующем прогоне`);
-  }
+  // Process all eligible in priority order; deadline break inside loop prevents overruns.
+  // Unattached-first ordering means progress is made on missing matches each run.
+  const matchesToProcess = prioritizedProcessing;
 
   tDbStartMs = Date.now();
   await sql.begin(async (tx) => {
@@ -815,7 +811,7 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
     ok: true,
     reason: null,
     fetched: fetchedTotal,
-    kept: matchesToProcess.length,
+    kept: savedMatches,
     matches: savedMatches,
     matchdays: matchdayIds.size,
     questions: createdQuestions,

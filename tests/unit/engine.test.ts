@@ -9,6 +9,8 @@ import {
   applyFoul,
   applyPenalty,
   applySuperSub,
+  applyAttackBreak,
+  applyRedVar,
   applyVar,
   describeEffects,
   effectCharges,
@@ -490,5 +492,49 @@ describe('Phase 1 choice/risk mechanics', () => {
     expect(nothing.state.position).toBe(10);
     const penalty = applyFoul(makePlayer(10), 'dispute', () => 0.9);
     expect(penalty.state.position).toBe(7);
+  });
+});
+
+
+describe('Phase 1 global/target mechanics', () => {
+  it('31 Mass offside: all others -2 via side effect', () => {
+    const out = resolveCell(makePlayer(10), '31', 'Игрок');
+    expect(out.delta).toBe(0);
+    expect(out.state.position).toBe(10);
+    expect(out.sideEffects).toEqual([{ kind: 'move_all_others', delta: -2, minPosition: 1 }]);
+  });
+
+  it('33 Red VAR: awaiting choice', () => {
+    const out = resolveCell(makePlayer(10), '33', 'Игрок');
+    expect(out.awaiting).toBe('red_var');
+  });
+
+  it('33 Red VAR resolve: 50% target -3, 50% self -2', () => {
+    const hit = applyRedVar(makePlayer(10), () => 0.1); // <0.5 target hit
+    expect(hit.sideEffects).toEqual([{ kind: 'move_target', delta: -3 }]);
+    expect(hit.delta).toBe(0);
+    const miss = applyRedVar(makePlayer(10), () => 0.9); // self -2
+    expect(miss.state.position).toBe(8);
+    expect(miss.delta).toBe(-2);
+  });
+
+  it('34 Attack break: awaiting choice', () => {
+    const out = resolveCell(makePlayer(10), '34', 'Игрок');
+    expect(out.awaiting).toBe('attack_break');
+  });
+
+  it('34 Attack break resolve: target -2 or self +1 fallback', () => {
+    const hit = applyAttackBreak(makePlayer(10), true);
+    expect(hit.sideEffects).toEqual([{ kind: 'move_target', delta: -2 }]);
+    expect(hit.delta).toBe(0);
+    const fallback = applyAttackBreak(makePlayer(10), false);
+    expect(fallback.state.position).toBe(11);
+    expect(fallback.delta).toBe(1);
+  });
+
+  it('35 Meteorite: random chaos side effect', () => {
+    const out = resolveCell(makePlayer(10), '35', 'Игрок');
+    expect(out.delta).toBe(0);
+    expect(out.sideEffects).toEqual([{ kind: 'random_chaos', penalty: -3, bonus: 2 }]);
   });
 });

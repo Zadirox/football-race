@@ -274,7 +274,68 @@ export async function moveAndResolve(
           await persistState(tx, ctx, next);
           finalLog = `Подножка: впереди никого нет, ${ctx.nickname} получает +${effect.fallbackSelfDelta} клетку.`;
         }
-      }
+      } else if (effect.kind === 'move_target' && effect.targetProfileId) {
+        const [target] = await tx<Array<{ profile_id: string; position: number; nickname: string }>>`
+          select sp.profile_id, sp.position, p.nickname
+            from season_players sp
+            join profiles p on p.id = sp.profile_id
+           where sp.season_id = ${ctx.seasonId}
+             and sp.profile_id = ${effect.targetProfileId}
+             and sp.is_active = true
+             and sp.finished_at is null
+           limit 1
+        `;
+        if (target) {
+          const newPos = Math.max(1, Math.min(LAST_CELL, target.position + effect.delta));
+          await tx`
+            update season_players
+               set position = ${newPos},
+                   finished_at = case when ${newPos} >= ${LAST_CELL} and finished_at is null then now() else finished_at end
+             where season_id = ${ctx.seasonId}
+               and profile_id = ${target.profile_id}
+          `;
+          await logActivity(tx, ctx.seasonId, target.profile_id, effect.delta < 0 ? 'negative' : 'positive', `${ctx.nickname} сдвинул ${target.nickname} на ${effect.delta > 0 ? '+' : ''}${effect.delta}.`);
+        }
+      } else if (effect.kind === 'random_chaos') {
+        const candidates = await tx<Array<{ profile_id: string; position: number; nickname: string }>>`
+          select sp.profile_id, sp.position, p.nickname
+            from season_players sp
+            join profiles p on p.id = sp.profile_id
+           where sp.season_id = ${ctx.seasonId}
+             and sp.is_active = true
+             and sp.finished_at is null
+        `;
+        if (candidates.length >= 2) {
+          const shuffled = [...candidates].sort(() => Math.random() - 0.5);
+          const victim = shuffled[0]!;
+          const lucky = shuffled.find((c) => c.profile_id !== victim.profile_id) ?? shuffled[1]!;
+          for (const [t, delta, kind] of [[victim, effect.penalty, 'negative'] as const, [lucky, effect.bonus, 'positive'] as const]) {
+            const newPos = Math.max(1, Math.min(LAST_CELL, t.position + delta));
+            await tx`
+              update season_players
+                 set position = ${newPos},
+                     finished_at = case when ${newPos} >= ${LAST_CELL} and finished_at is null then now() else finished_at end
+               where season_id = ${ctx.seasonId}
+                 and profile_id = ${t.profile_id}
+            `;
+            await logActivity(tx, ctx.seasonId, t.profile_id, kind, `Метеорит: ${t.nickname} ${delta > 0 ? '+' : ''}${delta} клетки.`);
+            if (t.profile_id === ctx.profileId) {
+              finalState = { ...finalState, position: newPos, finished: newPos >= LAST_CELL };
+            }
+          }
+          finalLog = `Метеорит: ${victim.nickname} ${effect.penalty}, ${lucky.nickname} +${effect.bonus}.`;
+        } else if (candidates.length === 1) {
+          const t = candidates[0]!;
+          const newPos = Math.max(1, Math.min(LAST_CELL, t.position + effect.penalty));
+          await tx`
+            update season_players set position = ${newPos},
+              finished_at = case when ${newPos} >= ${LAST_CELL} and finished_at is null then now() else finished_at end
+             where season_id = ${ctx.seasonId} and profile_id = ${t.profile_id}
+          `;
+          if (t.profile_id === ctx.profileId) finalState = { ...finalState, position: newPos, finished: newPos >= LAST_CELL };
+          finalLog = `Метеорит: ${t.nickname} получает ${effect.penalty} клетки.`;
+        }
+}
     }
     if (event) {
       await tx`

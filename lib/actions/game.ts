@@ -18,12 +18,14 @@ import { AppError, isAppError } from '@/lib/errors';
 import { hasDatabase, serverEnv } from '@/lib/env';
 import { type DiceTier } from '@/lib/game/dice';
 import {
+  applyAttackBreak,
   applyCorner,
   applyDribble,
   applyFoul,
   applyLocker,
   applyPassage,
   applyPenalty,
+  applyRedVar,
   applySuperSub,
   applyVar,
   makePlayer,
@@ -591,6 +593,95 @@ export async function chooseFoulAction(input: {
       await persistState(tx, ctx, outcome.state);
       await logActivity(tx, pending.season_id, viewer.profileId, outcome.delta >= 0 ? 'neutral' : 'negative', outcome.log);
       await closePending(tx, pending, { choice: input.choice, delta: outcome.delta });
+    });
+    revalidateGame();
+    return { ok: true };
+  } catch (error) { return toResult(error); }
+}
+
+// ---------- Глобальные/таргет механики (33,34) ----------
+
+export async function chooseRedVarAction(input: {
+  pendingId: string;
+  targetProfileId: string;
+}): Promise<ActionResult> {
+  if (!hasDatabase()) return demoOnly();
+  try {
+    const viewer = await requireViewer();
+    await db().begin(async (tx) => {
+      const pending = await lockPending(tx, input.pendingId, viewer.profileId);
+      requirePendingKind(pending, 'red_var');
+      const ctx = await lockPlayer(tx, pending.season_id, viewer.profileId);
+      if (input.targetProfileId === viewer.profileId) throw new AppError('INVALID_INPUT');
+      const [target] = await tx<Array<{ profile_id: string; position: number; finished_at: Date | null }>>`
+        select sp.profile_id, sp.position, sp.finished_at
+          from season_players sp
+         where sp.season_id = ${pending.season_id}
+           and sp.profile_id = ${input.targetProfileId}
+           and sp.is_active = true
+           and sp.finished_at is null
+         limit 1
+      `;
+      if (!target) throw new AppError('INVALID_INPUT', 'Цель недоступна');
+      const outcome = applyRedVar(makePlayer(ctx.position, ctx.effects));
+      if (outcome.sideEffects?.some((e) => e.kind === 'move_target')) {
+        const newPos = Math.max(1, Math.min(LAST_CELL, target.position - 3));
+        await tx`
+          update season_players
+             set position = ${newPos},
+                 finished_at = case when ${newPos} >= ${LAST_CELL} and finished_at is null then now() else finished_at end
+           where season_id = ${pending.season_id} and profile_id = ${input.targetProfileId}
+        `;
+        await logActivity(tx, pending.season_id, input.targetProfileId, 'negative', `Красный VAR: цель откатывается на 3 клетки.`);
+      } else {
+        await persistState(tx, ctx, outcome.state);
+      }
+      await logActivity(tx, pending.season_id, viewer.profileId, outcome.delta < 0 ? 'negative' : 'positive', outcome.log);
+      await closePending(tx, pending, { targetProfileId: input.targetProfileId, delta: outcome.delta });
+    });
+    revalidateGame();
+    return { ok: true };
+  } catch (error) { return toResult(error); }
+}
+
+export async function chooseAttackBreakAction(input: {
+  pendingId: string;
+  targetProfileId: string | null;
+}): Promise<ActionResult> {
+  if (!hasDatabase()) return demoOnly();
+  try {
+    const viewer = await requireViewer();
+    await db().begin(async (tx) => {
+      const pending = await lockPending(tx, input.pendingId, viewer.profileId);
+      requirePendingKind(pending, 'attack_break');
+      const ctx = await lockPlayer(tx, pending.season_id, viewer.profileId);
+      let hasTarget = false;
+      if (input.targetProfileId) {
+        if (input.targetProfileId === viewer.profileId) throw new AppError('INVALID_INPUT');
+        const [target] = await tx<Array<{ profile_id: string; position: number }>>`
+          select sp.profile_id, sp.position
+            from season_players sp
+           where sp.season_id = ${pending.season_id}
+             and sp.profile_id = ${input.targetProfileId}
+             and sp.is_active = true
+             and sp.finished_at is null
+             and sp.position > ${ctx.position}
+           limit 1
+        `;
+        if (!target) throw new AppError('INVALID_INPUT', 'Цель недоступна');
+        hasTarget = true;
+        const newPos = Math.max(1, target.position - 2);
+        await tx`
+          update season_players set position = ${newPos},
+            finished_at = case when ${newPos} >= ${LAST_CELL} and finished_at is null then now() else finished_at end
+           where season_id = ${pending.season_id} and profile_id = ${input.targetProfileId}
+        `;
+        await logActivity(tx, pending.season_id, input.targetProfileId, 'negative', `Срыв атаки: цель откатывается на 2 клетки.`);
+      }
+      const outcome = applyAttackBreak(makePlayer(ctx.position, ctx.effects), hasTarget);
+      if (!hasTarget) await persistState(tx, ctx, outcome.state);
+      await logActivity(tx, pending.season_id, viewer.profileId, hasTarget ? 'positive' : 'neutral', outcome.log);
+      await closePending(tx, pending, { targetProfileId: input.targetProfileId, delta: outcome.delta });
     });
     revalidateGame();
     return { ok: true };

@@ -33,6 +33,7 @@ import { isMuted, play, setMuted, startAmbient } from '@/lib/audio';
 import type { ActivityView, PlayerView, SeasonSnapshot } from '@/lib/types';
 import type { ActionResult } from '@/lib/actions/game';
 import {
+  chooseAttackBreakAction,
   chooseCornerAction,
   chooseDribbleAction,
   chooseFoulAction,
@@ -40,6 +41,7 @@ import {
   choosePackChoiceAction,
   choosePassageAction,
   choosePenaltyAction,
+  chooseRedVarAction,
   chooseSuperSubAction,
   chooseTacticsAction,
   chooseVarAction,
@@ -657,6 +659,16 @@ export function GameHud({ snapshot }: { snapshot: SeasonSnapshot }) {
     if (!snapshot.demo) { if (!pendingId) return; void runServerChoice(() => chooseFoulAction({ pendingId, choice }), 'click'); return; }
     setPending(null); router.refresh();
   }, [pending, router, runServerChoice, snapshot.demo]);
+  const chooseRedVar = useCallback((targetProfileId: string) => {
+    const pendingId = pending?.kind === 'red_var' ? pending.id : undefined;
+    if (!snapshot.demo) { if (!pendingId) return; void runServerChoice(() => chooseRedVarAction({ pendingId, targetProfileId }), 'var'); return; }
+    setPending(null); router.refresh();
+  }, [pending, router, runServerChoice, snapshot.demo]);
+  const chooseAttackBreak = useCallback((targetProfileId: string | null) => {
+    const pendingId = pending?.kind === 'attack_break' ? pending.id : undefined;
+    if (!snapshot.demo) { if (!pendingId) return; void runServerChoice(() => chooseAttackBreakAction({ pendingId, targetProfileId }), 'negative'); return; }
+    setPending(null); router.refresh();
+  }, [pending, router, runServerChoice, snapshot.demo]);
 
   const toggleMute = () => {
     const next = !liveMuted;
@@ -935,6 +947,8 @@ export function GameHud({ snapshot }: { snapshot: SeasonSnapshot }) {
           onSuperSub={chooseSuperSub}
           onCorner={chooseCorner}
           onFoul={chooseFoul}
+          onRedVar={chooseRedVar}
+          onAttackBreak={chooseAttackBreak}
           onCancel={() => {
             if (!snapshot.demo) {
               setToast({ text: 'Событие нужно решить: оно держит следующий бросок', kind: 'info' });
@@ -1054,6 +1068,8 @@ function EventModal({
   onSuperSub,
   onCorner,
   onFoul,
+  onRedVar,
+  onAttackBreak,
   onCancel,
 }: {
   pending: Pending;
@@ -1069,6 +1085,8 @@ function EventModal({
   onSuperSub: (choice: 'buff' | 'shield') => void;
   onCorner: (choice: 'simple' | 'risky') => void;
   onFoul: (choice: 'defend' | 'dispute') => void;
+  onRedVar: (targetProfileId: string) => void;
+  onAttackBreak: (targetProfileId: string | null) => void;
   onCancel: () => void;
 }) {
   const others = players.filter((p) => !p.isMe && p.position < 80);
@@ -1263,6 +1281,50 @@ function EventModal({
           <div className="modal__actions">
             <button type="button" className="btn" onClick={() => onFoul('defend')}>Защититься (-1)</button>
             <button type="button" className="btn btn--primary" onClick={() => onFoul('dispute')}>Спорить (50/50)</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (pending.kind === 'red_var') {
+    const targets = players.filter((p) => !p.isMe && !p.finishedAt && p.position < 80);
+    return (
+      <div className="modal" role="dialog" aria-modal="true" aria-label="Красный VAR">
+        <div className="modal__card">
+          <div className="modal__eyebrow">Механика 33 · Красный VAR</div>
+          <h2 className="modal__title">Кого атаковать?</h2>
+          <p className="modal__text">50%: цель -3 клетки. 50%: ты -2 клетки. Новые клетки не срабатывают.</p>
+          <div className="list">
+            {targets.map((p) => (
+              <button key={p.profileId} type="button" className="list-row" onClick={() => onRedVar(p.profileId)} style={{ textAlign: 'left' }}>
+                <span className="list-row__main"><span className="list-row__title">{p.nickname}</span><span className="list-row__meta">Клетка {p.position}</span></span>
+              </button>
+            ))}
+            {targets.length === 0 && <p className="modal__text">Нет доступных целей.</p>}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (pending.kind === 'attack_break') {
+    const targets = players.filter((p) => !p.isMe && !p.finishedAt && p.position < 80 && p.position > me.position);
+    return (
+      <div className="modal" role="dialog" aria-modal="true" aria-label="Срыв атаки">
+        <div className="modal__card">
+          <div className="modal__eyebrow">Механика 34 · Срыв атаки</div>
+          <h2 className="modal__title">Кого сбить впереди?</h2>
+          <p className="modal__text">Выбранный соперник впереди получает -2 клетки. Если впереди никого нет - ты получаешь +1.</p>
+          <div className="list">
+            {targets.map((p) => (
+              <button key={p.profileId} type="button" className="list-row" onClick={() => onAttackBreak(p.profileId)} style={{ textAlign: 'left' }}>
+                <span className="list-row__main"><span className="list-row__title">{p.nickname}</span><span className="list-row__meta">Клетка {p.position}</span></span>
+              </button>
+            ))}
+            {targets.length === 0 && (
+              <button type="button" className="btn btn--primary" onClick={() => onAttackBreak(null)}>Впереди никого: +1 мне</button>
+            )}
           </div>
         </div>
       </div>

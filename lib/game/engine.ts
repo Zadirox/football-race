@@ -140,7 +140,7 @@ export type SideEffect =
   | { kind: 'move_all_others'; delta: number; minPosition?: number }
   | { kind: 'buff_all'; effectCode: EffectCode; charges: number }
   | { kind: 'move_nearest_ahead'; delta: number; fallbackSelfDelta: number }
-  | { kind: 'move_target'; delta: number }
+  | { kind: 'move_target'; delta: number; targetProfileId?: string }
   | { kind: 'random_chaos'; penalty: number; bonus: number };
 
 export type CellOutcome = {
@@ -355,6 +355,12 @@ export function resolveCell(
       );
     }
 
+    case '31':
+      return {
+        ...base(code, state, `Массовый офсайд: соперники ${who} откатываются на 2 клетки.`),
+        sideEffects: [{ kind: 'move_all_others', delta: -2, minPosition: 1 }],
+      };
+
     case '32': {
       // Global debuff: applies to everyone including self. No shield auto-spend for others; self also not shielded (chaos/global).
       const nextState = addEffect(state, 'tribune_panic', 1);
@@ -363,6 +369,18 @@ export function resolveCell(
         sideEffects: [{ kind: 'buff_all', effectCode: 'tribune_panic', charges: 1 }],
       };
     }
+
+    case '33':
+      return { ...base(code, state, `Красный VAR: ${who} выбирает соперника для рискованной атаки.`), awaiting: 'red_var' };
+
+    case '34':
+      return { ...base(code, state, `Срыв атаки: ${who} выбирает соперника впереди.`), awaiting: 'attack_break' };
+
+    case '35':
+      return {
+        ...base(code, state, `Метеорит на стадионе: случайный хаос обрушивается на поле.`),
+        sideEffects: [{ kind: 'random_chaos', penalty: -3, bonus: 2 }],
+      };
 
     case '36': {
       const negatives = state.effects.filter((e) => NEGATIVE_EFFECTS.includes(e.code) && e.charges > 0);
@@ -516,6 +534,35 @@ export function applyFoul(
   if (!bad) return base('29', state, 'Фол в штрафной: спор прошёл, последствий нет.');
   const next = moveBy(state, -3);
   return moved('29', state, state.position, next, 'Фол в штрафной: спор не удался, -3 клетки.');
+}
+
+export function applyRedVar(
+  state: PlayerState,
+  random: () => number = Math.random,
+): CellOutcome {
+  const hit = random() < 0.5;
+  if (hit) {
+    return {
+      ...base('33', state, 'Красный VAR: удар прошёл, соперник получает -3 клетки.'),
+      sideEffects: [{ kind: 'move_target', delta: -3 }],
+    };
+  }
+  const next = moveBy(state, -2);
+  return moved('33', state, state.position, next, 'Красный VAR: неудача, ты получаешь -2 клетки.');
+}
+
+export function applyAttackBreak(
+  state: PlayerState,
+  hasTarget: boolean,
+): CellOutcome {
+  if (hasTarget) {
+    return {
+      ...base('34', state, 'Срыв атаки: соперник впереди откатывается на 2 клетки.'),
+      sideEffects: [{ kind: 'move_target', delta: -2 }],
+    };
+  }
+  const next = moveBy(state, 1);
+  return moved('34', state, state.position, next, 'Срыв атаки: впереди никого нет, +1 клетка.');
 }
 export function describeEffects(state: PlayerState): Array<{ code: EffectCode; label: string; charges: number }> {
   const labels: Record<EffectCode, string> = {

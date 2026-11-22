@@ -330,3 +330,52 @@ describe('Phase 1 cell 19 pack choice', () => {
     expect(out.log).toMatch(/�����|���/i);
   });
 });
+
+
+describe('Phase 1 simple instant mechanics', () => {
+  it('24 Autogol: -3, shieldable, min cell 1', () => {
+    const out = resolveCell(makePlayer(10), '24', 'Игрок');
+    expect(out.state.position).toBe(7);
+    expect(out.delta).toBe(-3);
+    expect(out.awaiting).toBeNull();
+
+    const shielded = resolveCell(addEffect(makePlayer(10), 'shieldki', 1), '24', 'Игрок');
+    expect(shielded.preventedBy).toBe('shieldki');
+    expect(shielded.state.position).toBe(10);
+    expect(hasEffect(shielded.state, 'shieldki')).toBe(false);
+
+    expect(resolveCell(makePlayer(2), '24', 'Игрок').state.position).toBe(1);
+  });
+
+  it('30 VAR offside check: 60% -2, 40% +2 by RNG', () => {
+    const bad = resolveCell(makePlayer(10), '30', 'Игрок', () => 0.0); // < 0.6 => -2
+    expect(bad.state.position).toBe(8);
+    expect(bad.delta).toBe(-2);
+
+    const good = resolveCell(makePlayer(10), '30', 'Игрок', () => 0.9); // >=0.6 => +2
+    expect(good.state.position).toBe(12);
+    expect(good.delta).toBe(2);
+  });
+
+  it('36 Water bottle: clears all negative debuffs, or +2 if none', () => {
+    const debuffed = addEffect(addEffect(makePlayer(10), 'press_trap', 1), 'broken_boot', 2);
+    const cleared = resolveCell(addEffect(debuffed, 'tribuny', 1), '36', 'Игрок');
+    expect(cleared.state.position).toBe(10);
+    expect(hasEffect(cleared.state, 'press_trap')).toBe(false);
+    expect(hasEffect(cleared.state, 'broken_boot')).toBe(false);
+    expect(hasEffect(cleared.state, 'tribuny')).toBe(true);
+
+    const empty = resolveCell(makePlayer(10), '36', 'Игрок');
+    expect(empty.state.position).toBe(12);
+    expect(empty.delta).toBe(2);
+  });
+
+  it('37 Podnozhka: side effect targets nearest ahead, fallback self +1', () => {
+    const out = resolveCell(makePlayer(10), '37', 'Игрок');
+    expect(out.delta).toBe(0);
+    expect(out.state.position).toBe(10);
+    expect(out.sideEffects).toEqual([
+      { kind: 'move_nearest_ahead', delta: -2, fallbackSelfDelta: 1 },
+    ]);
+  });
+});

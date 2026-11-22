@@ -275,7 +275,50 @@ export function resolveCell(
       };
     }
 
-        case '19':
+        case '24': {
+      if (hasEffect(state, 'shieldki')) {
+        return {
+          ...base(code, spendCharge(state, 'shieldki'), `«Щитки» спасли ${who} от автогола.`),
+          preventedBy: 'shieldki',
+        };
+      }
+      const next = moveBy(state, -3);
+      return moved(code, state, state.position, next, `Автогол! ${who} откатывается на 3 клетки назад.`);
+    }
+
+    case '30': {
+      const lucky = random() >= 0.6;
+      const delta = lucky ? 2 : -2;
+      const next = moveBy(state, delta);
+      return moved(
+        code,
+        state,
+        state.position,
+        next,
+        lucky
+          ? `VAR проверил эпизод: гол засчитан. ${who} получает +2 клетки.`
+          : `VAR проверил эпизод: офсайд. ${who} откатывается на 2 клетки.`,
+      );
+    }
+
+    case '36': {
+      const negatives = state.effects.filter((e) => NEGATIVE_EFFECTS.includes(e.code) && e.charges > 0);
+      if (negatives.length > 0) {
+        let nextState = state;
+        for (const effect of negatives) nextState = removeEffect(nextState, effect.code);
+        return base(code, nextState, `Бутылка с водой: ${who} снял все негативные эффекты.`);
+      }
+      const next = moveBy(state, 2);
+      return moved(code, state, state.position, next, `Бутылка с водой: снимать нечего, ${who} получает +2 клетки.`);
+    }
+
+    case '37':
+      return {
+        ...base(code, state, `${who} запустил подножку: ближайший соперник впереди откатится на 2 клетки.`),
+        sideEffects: [{ kind: 'move_nearest_ahead', delta: -2, fallbackSelfDelta: 1 }],
+      };
+
+    case '19':
       return {
         ...base(code, state, `${who} может выбрать пак: Сборные или Клубы.`),
         awaiting: 'pack_choice',

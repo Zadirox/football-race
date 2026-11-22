@@ -160,7 +160,15 @@ export async function moveAndResolve(
        and idx = ${to}
   `;
   const code = cell?.mechanic_code ?? null;
-  const outcome = resolveCell(moved, code, ctx.nickname);
+  let outcome = resolveCell(moved, code, ctx.nickname);
+
+  if (outcome.awaiting === 'pack_choice' && !serverEnv().cardsEnabled) {
+    outcome = {
+      ...outcome,
+      awaiting: null,
+      log: `${ctx.nickname} попал на «Пак на выбор», но карточки отключены.`,
+    };
+  }
 
   await persistState(tx, ctx, outcome.state);
   await logActivity(tx, ctx.seasonId, ctx.profileId, activityKind(code), outcome.log);
@@ -203,36 +211,6 @@ export async function moveAndResolve(
     `;
   }
 
-  if (code === '19' && event?.id && serverEnv().cardsEnabled) {
-    try {
-      const pack = await getActiveNationalPack(ctx.seasonId, tx as never);
-      if (pack) {
-        await grantNationalPack(
-          {
-            seasonId: ctx.seasonId,
-            profileId: ctx.profileId,
-            packId: pack.id,
-            source: 'cell',
-            cellEventId: event.id,
-          },
-          tx as never,
-        );
-      } else {
-        console.warn('Mechanic 19: active national pack not found; skipping grant', {
-          seasonId: ctx.seasonId,
-          profileId: ctx.profileId,
-          eventId: event.id,
-        });
-      }
-    } catch (error) {
-      console.error('Mechanic 19: failed to grant national pack; move continues', {
-        seasonId: ctx.seasonId,
-        profileId: ctx.profileId,
-        eventId: event.id,
-        error,
-      });
-    }
-  }
 
   return { state: outcome.state, eventId: event?.id ?? null, awaiting: outcome.awaiting, log: outcome.log };
 }

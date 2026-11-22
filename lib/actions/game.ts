@@ -15,7 +15,7 @@ import { revalidatePath } from 'next/cache';
 import { db } from '@/lib/db';
 import { getViewer, type Viewer } from '@/lib/auth/session';
 import { AppError, isAppError } from '@/lib/errors';
-import { hasDatabase } from '@/lib/env';
+import { hasDatabase, serverEnv } from '@/lib/env';
 import { type DiceTier } from '@/lib/game/dice';
 import {
   applyLocker,
@@ -37,6 +37,7 @@ import {
   requirePendingKind,
   type PlayerContext,
 } from '@/lib/repo/game-tx';
+import { getActiveClubPack, getActiveNationalPack, grantNationalPack } from '@/lib/repo/cards';
 import { parseOptions } from '@/lib/repo/mappers';
 import { loadMatchdayPredictions } from '@/lib/repo/season';
 
@@ -399,6 +400,82 @@ export async function chooseLockerAction(input: {
         outcome.log,
       );
       await closePending(tx, pending, { removed: input.remove });
+    });
+
+    revalidateGame();
+    return { ok: true };
+  } catch (error) {
+    return toResult(error);
+  }
+}
+
+// ---------- Пак на выбор (19) ----------
+
+export async function choosePackChoiceAction(input: {
+  pendingId: string;
+  packKind: 'national' | 'club';
+}): Promise<ActionResult> {
+  if (!hasDatabase()) return demoOnly();
+
+  try {
+    const viewer = await requireViewer();
+    if (input.packKind !== 'national' && input.packKind !== 'club') {
+      throw new AppError('INVALID_INPUT');
+    }
+
+    await db().begin(async (tx) => {
+      const pending = await lockPending(tx, input.pendingId, viewer.profileId);
+      requirePendingKind(pending, 'pack_choice');
+
+      const ctx = await lockPlayer(tx, pending.season_id, viewer.profileId);
+      const requested = input.packKind === 'club'
+        ? await getActiveClubPack(pending.season_id, tx as never)
+        : await getActiveNationalPack(pending.season_id, tx as never);
+
+      if (!requested) {
+        const alternative = input.packKind === 'club'
+          ? await getActiveNationalPack(pending.season_id, tx as never)
+          : await getActiveClubPack(pending.season_id, tx as never);
+        if (!alternative) {
+          await logActivity(
+            tx,
+            pending.season_id,
+            viewer.profileId,
+            'neutral',
+            `${ctx.nickname} не получил пак: нет активных паков.`,
+          );
+          await closePending(tx, pending, { granted: null, reason: 'no_active_packs' });
+          return;
+        }
+        throw new AppError('INVALID_INPUT', 'Выбранный тип пака сейчас недоступен');
+      }
+
+      const granted = await grantNationalPack(
+        {
+          seasonId: pending.season_id,
+          profileId: viewer.profileId,
+          packId: requested.id,
+          source: 'cell',
+          cellEventId: pending.event_id ?? undefined,
+        },
+        tx as never,
+      );
+
+      const label = input.packKind === 'club' ? 'клубный пак' : 'пак сборных';
+      await logActivity(
+        tx,
+        pending.season_id,
+        viewer.profileId,
+        'positive',
+        granted
+          ? `${ctx.nickname} выбрал ${label} и получил «${requested.title}».`
+          : `${ctx.nickname} выбрал ${label}, но пак уже был выдан.`,
+      );
+      await closePending(tx, pending, {
+        granted: granted?.id ?? null,
+        packKind: input.packKind,
+        packId: requested.id,
+      });
     });
 
     revalidateGame();

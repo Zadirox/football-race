@@ -275,8 +275,11 @@ export function resolveCell(
       };
     }
 
-    case '19':
-      return base(code, state, `${who} попадает на клетку «Пак на выбор» и получает пак «Сборные».`);
+        case '19':
+      return {
+        ...base(code, state, `${who} может выбрать пак: Сборные или Клубы.`),
+        awaiting: 'pack_choice',
+      };
 
     case '20':
       return base(code, state, `${who} заглядывает на клетку с будущей механикой. Пока здесь спокойно.`);

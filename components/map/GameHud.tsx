@@ -15,6 +15,7 @@ import {
   hasEffect,
   makePlayer,
   moveBy,
+  NEGATIVE_EFFECTS,
   resolveCell,
   spendCharge,
   takeRollModifiers,
@@ -33,6 +34,7 @@ import type { ActivityView, PlayerView, SeasonSnapshot } from '@/lib/types';
 import type { ActionResult } from '@/lib/actions/game';
 import {
   chooseLockerAction,
+  choosePackChoiceAction,
   choosePassageAction,
   chooseTacticsAction,
   chooseVarAction,
@@ -52,7 +54,15 @@ type PendingBody =
   | { kind: 'tactics'; payload: { value: number; base: number; tier: DiceTier; from: number } }
   | { kind: 'var'; payload: Record<string, never> }
   | { kind: 'passage'; payload: Record<string, never> }
-  | { kind: 'locker'; payload: Record<string, never> };
+  | { kind: 'locker'; payload: Record<string, never> }
+  | { kind: 'pack_choice'; payload: Record<string, never> }
+  | { kind: 'penalty'; payload: Record<string, never> }
+  | { kind: 'dribble'; payload: Record<string, never> }
+  | { kind: 'super_sub'; payload: Record<string, never> }
+  | { kind: 'corner'; payload: Record<string, never> }
+  | { kind: 'foul'; payload: Record<string, never> }
+  | { kind: 'red_var'; payload: Record<string, never> }
+  | { kind: 'attack_break'; payload: Record<string, never> };
 
 /** Ожидание решения: `id` есть только у записи из БД, в демо его нет. */
 type Pending = PendingBody & { id?: string };
@@ -599,6 +609,32 @@ export function GameHud({ snapshot }: { snapshot: SeasonSnapshot }) {
     [me, pending, pushFeed, runServerChoice, snapshot.demo, syncMe],
   );
 
+  const choosePackChoice = useCallback(
+    (packKind: 'national' | 'club') => {
+      if (!me) return;
+      const pendingId = pending?.kind === 'pack_choice' ? pending.id : undefined;
+
+      if (!snapshot.demo) {
+        if (!pendingId) return;
+        void runServerChoice(
+          () => choosePackChoiceAction({ pendingId, packKind }),
+          'reward',
+        );
+        return;
+      }
+
+      pushFeed(
+        packKind === 'club' ? 'Выбран клубный пак.' : 'Выбран пак сборных.',
+        'positive',
+      );
+      setLastRoll((prev) => (prev ? { ...prev, eventText: 'Пак выбран.', awaiting: null } : prev));
+      setPending(null);
+      play('reward');
+      router.refresh();
+    },
+    [me, pending, pushFeed, router, runServerChoice, snapshot.demo],
+  );
+
   const toggleMute = () => {
     const next = !liveMuted;
     setLiveMuted(next);
@@ -870,6 +906,7 @@ export function GameHud({ snapshot }: { snapshot: SeasonSnapshot }) {
           onVar={chooseVar}
           onPassage={choosePassage}
           onLocker={chooseLocker}
+          onPackChoice={choosePackChoice}
           onCancel={() => {
             if (!snapshot.demo) {
               setToast({ text: 'Событие нужно решить: оно держит следующий бросок', kind: 'info' });
@@ -983,6 +1020,7 @@ function EventModal({
   onVar,
   onPassage,
   onLocker,
+  onPackChoice,
   onCancel,
 }: {
   pending: Pending;
@@ -992,6 +1030,7 @@ function EventModal({
   onVar: (contest: boolean) => void;
   onPassage: (targetId: string | null) => void;
   onLocker: (remove: EffectCode | 'advance') => void;
+  onPackChoice: (packKind: 'national' | 'club') => void;
   onCancel: () => void;
 }) {
   const others = players.filter((p) => !p.isMe && p.position < 80);
@@ -1072,24 +1111,46 @@ function EventModal({
   }
 
   if (pending.kind === 'locker') {
-    const negatives = me.effects.filter((e) => e.code === 'gazon' || e.code === 'yellow_card');
+    const negatives = me.effects.filter((e) => NEGATIVE_EFFECTS.includes(e.code));
     return (
       <div className="modal" role="dialog" aria-modal="true" aria-label="Раздевалка">
         <div className="modal__card">
           <div className="modal__eyebrow">Механика 07 · Раздевалка</div>
           <h2 className="modal__title">Что снимаем?</h2>
-          <p className="modal__text">Один негативный эффект можно снять. Прошлые откаты и проигрыши остаются.</p>
+          <p className="modal__text">Можно убрать один негативный эффект. Если убрать нечего - получишь шаг вперёд.</p>
           <div className="modal__actions">
             {negatives.map((effect) => (
               <button key={effect.code} type="button" className="btn" onClick={() => onLocker(effect.code)}>
-                Снять {effect.code === 'gazon' ? 'скользкий газон' : 'жёлтую карточку'}
+                Снять {effect.code === 'gazon' ? 'скользкий газон' : effect.code === 'yellow_card' ? 'жёлтую карточку' : effect.code === 'press_trap' ? 'прессинг-ловушку' : effect.code === 'dirty_time' ? 'грязное время' : effect.code === 'broken_boot' ? 'сломанный бутс' : 'панику на трибунах'}
               </button>
             ))}
             {negatives.length === 0 && (
               <button type="button" className="btn btn--primary" onClick={() => onLocker('advance')}>
-                Шаг вперёд +1
+                Нет негатива +1
               </button>
             )}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (pending.kind === 'pack_choice') {
+    return (
+      <div className="modal" role="dialog" aria-modal="true" aria-label="Пак на выбор">
+        <div className="modal__card">
+          <div className="modal__eyebrow">Механика 19 · Пак на выбор</div>
+          <h2 className="modal__title">Какой пак открыть?</h2>
+          <p className="modal__text">
+            Выбери один пак. После выбора он будет зачислен сразу. Следующий бросок откроется после выбора.
+          </p>
+          <div className="modal__actions">
+            <button type="button" className="btn btn--primary" onClick={() => onPackChoice('national')}>
+              Сборные
+            </button>
+            <button type="button" className="btn" onClick={() => onPackChoice('club')}>
+              Клубы
+            </button>
           </div>
         </div>
       </div>

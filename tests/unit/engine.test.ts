@@ -319,3 +319,14 @@ describe('Phase 1 effect foundations', () => {
     expect(labels).toEqual(expect.arrayContaining(['press_trap', 'dirty_time', 'broken_boot', 'tribune_panic', 'second_breath']));
   });
 });
+
+
+describe('Phase 1 cell 19 pack choice', () => {
+  it('returns awaiting pack_choice with no movement', () => {
+    const out = resolveCell(makePlayer(10), '19', '�����');
+    expect(out.awaiting).toBe('pack_choice');
+    expect(out.delta).toBe(0);
+    expect(out.state.position).toBe(10);
+    expect(out.log).toMatch(/�����|���/i);
+  });
+});

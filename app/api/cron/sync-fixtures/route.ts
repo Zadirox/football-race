@@ -14,8 +14,8 @@ import { syncFixtures } from '@/lib/repo/sync';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
-// Keep under typical external-cron timeout (30s) with margin for DB/connect overhead.
-const CRON_BUDGET_MS = 35_000;
+// Keep under cron-job.org 30s max timeout with margin for Vercel/DB/connect overhead.
+const CRON_BUDGET_MS = 25_000;
 
 function isConnectionEnded(error: unknown): boolean {
   const msg = error instanceof Error ? error.message : String(error);

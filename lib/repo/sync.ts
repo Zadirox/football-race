@@ -46,12 +46,16 @@ export type SyncFixturesReport = {
   error: string | null;
 };
 
+export type SyncMode = 'full' | 'live';
+
 export type SyncFixturesOptions = {
   now?: Date;
   /** Окно дат (YYYY-MM-DD), перекрывает авто-окно. */
   window?: { from: GameDate; to: GameDate };
   /** Лимит времени sync в мс (для cron/прокси). По умолчанию 80с. */
   budgetMs?: number;
+  /** live: только in-scope started/live/soon матчи (быстро, для 1-2 мин cron). full: полный sync. */
+  mode?: SyncMode;
 };
 
 export type AdvanceReport = {
@@ -131,10 +135,13 @@ function isQuotaError(error: unknown): boolean {
 export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<SyncFixturesReport> {
   const now = options.now ?? new Date();
   const startedAt = Date.now();
-  const budgetMs = Math.max(10_000, Math.min(options.budgetMs ?? 80_000, 120_000));
+  const mode: SyncMode = options.mode ?? 'full';
+  const isLiveMode = mode === 'live';
+  const endpoint = isLiveMode ? 'sync-live' : 'sync-fixtures';
+  const budgetMs = Math.max(10_000, Math.min(options.budgetMs ?? (isLiveMode ? 20_000 : 80_000), 120_000));
   const deadlineMs = startedAt + budgetMs;
   // Резерв под DB/advance, чтобы sync успел завершить запись.
-  const dbReserveMs = 5_000;
+  const dbReserveMs = isLiveMode ? 2_000 : 5_000;
   const processingDeadlineMs = deadlineMs - dbReserveMs;
   const env = serverEnv();
   const window = options.window ?? syncWindow(now);
@@ -170,7 +177,7 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
   `;
   if (!season) {
     await logSyncRun({
-      endpoint: 'sync-fixtures',
+      endpoint,
       status: 'skipped',
       httpStatus: null,
       durationMs: Date.now() - startedAt,
@@ -192,7 +199,8 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
   let tEnrichMs = 0;
   let tDbStartMs = 0;
 
-  // 1) UNL (national contour, sstats) — как раньше.
+  // 1) UNL (national contour, sstats) — как раньше. В live mode пропускаем: дорого/флейки, live in-scope дотянет targeted refresh.
+  if (!isLiveMode) {
   try {
     if (!env.sstatsEnabled) {
       errors.push('Лига Наций: источник sstats отключён (SSTATS_ENABLED=false)');
@@ -272,6 +280,7 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
     const message = error instanceof Error ? error.message : 'Ошибка получения Лиги Наций';
     errors.push(`Лига Наций: ${message}`);
   }
+  }
 
   // 2) football-data first (B): reserve/guarantee FD before slow sstats club comp loop, so FD is not starved.
   if (hasFootballData && Date.now() < processingDeadlineMs - 4_000) {
@@ -320,9 +329,9 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
         and m.status not in ('FT','PST','CANC','ABD')
         and m.kickoff_utc <= now() + interval '15 minutes'
       order by case when m.status in ('LIVE','HT') then 0 else 1 end, m.kickoff_utc asc
-      limit 8
+      limit ${isLiveMode ? 16 : 8}
     `;
-    let earlyBudget = 4;
+    let earlyBudget = isLiveMode ? 10 : 4;
     for (const row of liveRows) {
       if (earlyBudget <= 0) break;
       if (Date.now() >= processingDeadlineMs - 8_000) break;
@@ -388,7 +397,7 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
   let clubFetched = 0;
   let clubKept = 0;
   let clubSkippedNoBudget = 0;
-  if (env.sstatsEnabled) {
+  if (!isLiveMode && env.sstatsEnabled) {
     const clubPriority = [...CLUB_COMPETITIONS].sort((a, b) => {
       const pa = a.kind === 'europe_cup' ? 0 : 1;
       const pb = b.kind === 'europe_cup' ? 0 : 1;
@@ -456,7 +465,7 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
   const needsStatEnrich = allSstatsFlat.filter(
     (m) => m.provider === 'sstats' && m.status !== 'NS' && m.status !== 'PST' && m.status !== 'CANC' && !Object.values(m.stats).some((v) => v !== null),
   ).length;
-  if (needsStatEnrich > 0 && processingDeadlineMs - Date.now() > 6_000) {
+  if (!isLiveMode && needsStatEnrich > 0 && processingDeadlineMs - Date.now() > 6_000) {
     try {
       const enrichStart = Date.now();
       const enrichedSstats = await enrichSstatsMatchesWithStats({
@@ -510,7 +519,7 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
   if (normalized.length === 0) {
     if (errors.length === 0) {
       await logSyncRun({
-        endpoint: 'sync-fixtures',
+        endpoint,
         status: 'ok',
         httpStatus,
         durationMs: Date.now() - startedAt,
@@ -525,7 +534,7 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
     if (quota) {
       const reason: SyncReason = 'SYNC_QUOTA_EXCEEDED';
       await logSyncRun({
-        endpoint: 'sync-fixtures',
+        endpoint,
         status: 'error',
         httpStatus,
         durationMs: Date.now() - startedAt,
@@ -538,7 +547,7 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
 
     const errorText = errors.join('; ').slice(0, 500);
     await logSyncRun({
-      endpoint: 'sync-fixtures',
+      endpoint,
       status: 'ok',
       httpStatus,
       durationMs: Date.now() - startedAt,
@@ -1172,7 +1181,7 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
   const timingInfo = `[timing:list=${tListMs}ms,enrich=${tEnrichMs}ms,db=${tDbStartMs ? Date.now() - tDbStartMs : 0}ms,clubFetched=${clubFetched},clubKept=${clubKept}]`;
   const errorText = (errors.length ? `${errors.join('; ')} ${timingInfo}` : timingInfo).slice(0, 500);
   await logSyncRun({
-    endpoint: 'sync-fixtures',
+    endpoint,
     status: 'ok',
     httpStatus,
     durationMs: Date.now() - startedAt,

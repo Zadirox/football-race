@@ -516,14 +516,14 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
     let clubConsecutiveFailures = 0;
     for (const comp of rotatedClubPriority) {
       const remainingMs = processingDeadlineMs - Date.now();
-      if (remainingMs <= 4_000) {
+      if (remainingMs <= 8_000) {
         clubSkippedNoBudget += 1;
         continue;
       }
 
       try {
-        const baseTimeout = clubConsecutiveFailures >= 2 ? 5_000 : 10_000;
-        const listTimeoutMs = Math.min(baseTimeout, Math.max(2_500, remainingMs - 1_500));
+        const baseTimeout = clubConsecutiveFailures >= 2 ? 3_000 : 5_000;
+        const listTimeoutMs = Math.min(baseTimeout, Math.max(2_000, remainingMs - 3_000));
         const res = await fetchSstatsFixtures({
           leagueId: comp.sstatsLeagueId,
           year: comp.year,
@@ -619,8 +619,24 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
           return homeOk && awayOk;
         });
         if (donor) {
+          const donorFT = donor.status === 'FT';
+          const mFT = m.status === 'FT';
+          const donorScore = (donor.homeScore ?? 0) + (donor.awayScore ?? 0);
+          const mScore = (m.homeScore ?? 0) + (m.awayScore ?? 0);
+          const takeCore = (donorFT && !mFT) || (!mFT && !donorFT && donorScore > mScore);
           const minute = (donor.minute != null && (m.status === 'LIVE' || m.status === 'HT')) ? donor.minute : (m.minute ?? donor.minute);
-          normalized[i] = { ...m, stats: { ...m.stats, ...donor.stats }, minute };
+          normalized[i] = {
+            ...m,
+            stats: { ...m.stats, ...donor.stats },
+            minute: takeCore ? (donor.minute ?? minute) : minute,
+            ...(takeCore ? {
+              status: donor.status,
+              homeScore: donor.homeScore ?? m.homeScore,
+              awayScore: donor.awayScore ?? m.awayScore,
+              htHomeScore: donor.htHomeScore ?? m.htHomeScore,
+              htAwayScore: donor.htAwayScore ?? m.htAwayScore,
+            } : {}),
+          };
         }
       }
     }
@@ -870,8 +886,24 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
             return (sh === mh || sh.includes(mh) || mh.includes(sh)) && (sa === ma || sa.includes(ma) || ma.includes(sa));
           });
           if (donor) {
+            const donorFT = donor.status === 'FT';
+            const mFT = m.status === 'FT';
+            const donorScore = (donor.homeScore ?? 0) + (donor.awayScore ?? 0);
+            const mScore = (m.homeScore ?? 0) + (m.awayScore ?? 0);
+            const takeCore = (donorFT && !mFT) || (!mFT && !donorFT && donorScore > mScore);
             const minute = (donor.minute != null && (m.status === 'LIVE' || m.status === 'HT')) ? donor.minute : (m.minute ?? donor.minute);
-            arr[i] = { ...m, stats: { ...m.stats, ...donor.stats }, minute };
+            arr[i] = {
+              ...m,
+              stats: { ...m.stats, ...donor.stats },
+              minute: takeCore ? (donor.minute ?? minute) : minute,
+              ...(takeCore ? {
+                status: donor.status,
+                homeScore: donor.homeScore ?? m.homeScore,
+                awayScore: donor.awayScore ?? m.awayScore,
+                htHomeScore: donor.htHomeScore ?? m.htHomeScore,
+                htAwayScore: donor.htAwayScore ?? m.htAwayScore,
+              } : {}),
+            };
           }
         }
       }

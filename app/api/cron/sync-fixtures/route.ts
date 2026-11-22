@@ -15,7 +15,7 @@ export const dynamic = 'force-dynamic';
 export const maxDuration = 60;
 
 // Keep under cron-job.org 30s max timeout with margin for Vercel/DB/connect overhead.
-const CRON_BUDGET_MS = 25_000;
+const CRON_BUDGET_MS = 20_000;
 
 function isConnectionEnded(error: unknown): boolean {
   const msg = error instanceof Error ? error.message : String(error);

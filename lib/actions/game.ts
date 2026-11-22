@@ -18,8 +18,13 @@ import { AppError, isAppError } from '@/lib/errors';
 import { hasDatabase, serverEnv } from '@/lib/env';
 import { type DiceTier } from '@/lib/game/dice';
 import {
+  applyCorner,
+  applyDribble,
+  applyFoul,
   applyLocker,
   applyPassage,
+  applyPenalty,
+  applySuperSub,
   applyVar,
   makePlayer,
   type EffectCode,
@@ -483,6 +488,113 @@ export async function choosePackChoiceAction(input: {
   } catch (error) {
     return toResult(error);
   }
+}
+
+// ---------- Выбор/риск механики (21,23,27,28,29) ----------
+
+export async function choosePenaltyAction(input: {
+  pendingId: string;
+  choice: 'shoot' | 'pass';
+}): Promise<ActionResult> {
+  if (!hasDatabase()) return demoOnly();
+  try {
+    const viewer = await requireViewer();
+    await db().begin(async (tx) => {
+      const pending = await lockPending(tx, input.pendingId, viewer.profileId);
+      requirePendingKind(pending, 'penalty');
+      const ctx = await lockPlayer(tx, pending.season_id, viewer.profileId);
+      const outcome = applyPenalty(makePlayer(ctx.position, ctx.effects), input.choice);
+      await persistState(tx, ctx, outcome.state);
+      await logActivity(tx, pending.season_id, viewer.profileId, outcome.delta >= 0 ? 'positive' : 'negative', outcome.log);
+      await closePending(tx, pending, { choice: input.choice, delta: outcome.delta });
+    });
+    revalidateGame();
+    return { ok: true };
+  } catch (error) { return toResult(error); }
+}
+
+export async function chooseDribbleAction(input: {
+  pendingId: string;
+  choice: 'beat' | 'pass';
+}): Promise<ActionResult> {
+  if (!hasDatabase()) return demoOnly();
+  try {
+    const viewer = await requireViewer();
+    await db().begin(async (tx) => {
+      const pending = await lockPending(tx, input.pendingId, viewer.profileId);
+      requirePendingKind(pending, 'dribble');
+      const ctx = await lockPlayer(tx, pending.season_id, viewer.profileId);
+      const outcome = applyDribble(makePlayer(ctx.position, ctx.effects), input.choice);
+      await persistState(tx, ctx, outcome.state);
+      await logActivity(tx, pending.season_id, viewer.profileId, outcome.delta >= 0 ? 'positive' : 'negative', outcome.log);
+      await closePending(tx, pending, { choice: input.choice, delta: outcome.delta });
+    });
+    revalidateGame();
+    return { ok: true };
+  } catch (error) { return toResult(error); }
+}
+
+export async function chooseSuperSubAction(input: {
+  pendingId: string;
+  choice: 'buff' | 'shield';
+}): Promise<ActionResult> {
+  if (!hasDatabase()) return demoOnly();
+  try {
+    const viewer = await requireViewer();
+    await db().begin(async (tx) => {
+      const pending = await lockPending(tx, input.pendingId, viewer.profileId);
+      requirePendingKind(pending, 'super_sub');
+      const ctx = await lockPlayer(tx, pending.season_id, viewer.profileId);
+      const outcome = applySuperSub(makePlayer(ctx.position, ctx.effects), input.choice);
+      await persistState(tx, ctx, outcome.state);
+      await logActivity(tx, pending.season_id, viewer.profileId, 'positive', outcome.log);
+      await closePending(tx, pending, { choice: input.choice, delta: outcome.delta });
+    });
+    revalidateGame();
+    return { ok: true };
+  } catch (error) { return toResult(error); }
+}
+
+export async function chooseCornerAction(input: {
+  pendingId: string;
+  choice: 'simple' | 'risky';
+}): Promise<ActionResult> {
+  if (!hasDatabase()) return demoOnly();
+  try {
+    const viewer = await requireViewer();
+    await db().begin(async (tx) => {
+      const pending = await lockPending(tx, input.pendingId, viewer.profileId);
+      requirePendingKind(pending, 'corner');
+      const ctx = await lockPlayer(tx, pending.season_id, viewer.profileId);
+      const outcome = applyCorner(makePlayer(ctx.position, ctx.effects), input.choice);
+      await persistState(tx, ctx, outcome.state);
+      await logActivity(tx, pending.season_id, viewer.profileId, outcome.delta >= 0 ? 'positive' : 'negative', outcome.log);
+      await closePending(tx, pending, { choice: input.choice, delta: outcome.delta });
+    });
+    revalidateGame();
+    return { ok: true };
+  } catch (error) { return toResult(error); }
+}
+
+export async function chooseFoulAction(input: {
+  pendingId: string;
+  choice: 'defend' | 'dispute';
+}): Promise<ActionResult> {
+  if (!hasDatabase()) return demoOnly();
+  try {
+    const viewer = await requireViewer();
+    await db().begin(async (tx) => {
+      const pending = await lockPending(tx, input.pendingId, viewer.profileId);
+      requirePendingKind(pending, 'foul');
+      const ctx = await lockPlayer(tx, pending.season_id, viewer.profileId);
+      const outcome = applyFoul(makePlayer(ctx.position, ctx.effects), input.choice);
+      await persistState(tx, ctx, outcome.state);
+      await logActivity(tx, pending.season_id, viewer.profileId, outcome.delta >= 0 ? 'neutral' : 'negative', outcome.log);
+      await closePending(tx, pending, { choice: input.choice, delta: outcome.delta });
+    });
+    revalidateGame();
+    return { ok: true };
+  } catch (error) { return toResult(error); }
 }
 
 // ---------- ответ на вопрос ----------

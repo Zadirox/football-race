@@ -284,7 +284,10 @@ export function resolveCell(
       };
     }
 
-        case '22': {
+        case '21':
+      return { ...base(code, state, `Пенальти: ${who} выбирает удар или пас.`), awaiting: 'penalty' };
+
+    case '22': {
       if (hasEffect(state, 'shieldki')) {
         return {
           ...base(code, spendCharge(state, 'shieldki'), `«Щитки» спасли ${who} от прессинг-ловушки.`),
@@ -293,6 +296,9 @@ export function resolveCell(
       }
       return base(code, addEffect(state, 'press_trap', 1), `Прессинг-ловушка: следующий бросок ${who} получит -2 (мин. 1).`);
     }
+
+    case '23':
+      return { ...base(code, state, `Дриблинг: ${who} выбирает обыграть или сбросить.`), awaiting: 'dribble' };
 
     case '24': {
       if (hasEffect(state, 'shieldki')) {
@@ -324,6 +330,15 @@ export function resolveCell(
       }
       return base(code, addEffect(state, 'broken_boot', 2), `Сломанный бутс: ${who} получит -1 на 2 следующих броска.`);
     }
+
+    case '27':
+      return { ...base(code, state, `Суперзамена: ${who} выбирает усиление.`), awaiting: 'super_sub' };
+
+    case '28':
+      return { ...base(code, state, `Угловой розыгрыш: ${who} выбирает вариант.`), awaiting: 'corner' };
+
+    case '29':
+      return { ...base(code, state, `Фол в штрафной: ${who} выбирает, как сыграть.`), awaiting: 'foul' };
 
     case '30': {
       const lucky = random() >= 0.6;
@@ -428,6 +443,80 @@ export function applyTactics(value: number, delta: number): number {
 }
 
 /** Разбор активных эффектов для UI: что висит и сколько осталось. */
+
+export function applyPenalty(
+  state: PlayerState,
+  choice: 'shoot' | 'pass',
+  random: () => number = Math.random,
+): CellOutcome {
+  if (choice === 'pass') {
+    const next = moveBy(state, 1);
+    return moved('21', state, state.position, next, 'Пенальти: пас принят, +1 клетка.');
+  }
+  const goal = random() < 0.7;
+  if (!goal) return base('21', state, 'Пенальти: промах. Ты остался на месте.');
+  const next = moveBy(state, 3);
+  return moved('21', state, state.position, next, 'Пенальти: гол! +3 клетки.');
+}
+
+export function applyDribble(
+  state: PlayerState,
+  choice: 'beat' | 'pass',
+  random: () => number = Math.random,
+): CellOutcome {
+  if (choice === 'pass') {
+    const next = moveBy(state, 1);
+    return moved('23', state, state.position, next, 'Дриблинг: сбросил мяч, +1 клетка.');
+  }
+  const ok = random() < 0.6;
+  const delta = ok ? 2 : -1;
+  const next = moveBy(state, delta);
+  return moved('23', state, state.position, next, ok ? 'Дриблинг: обыграл! +2 клетки.' : 'Дриблинг: потеря, -1 клетка.');
+}
+
+export function applySuperSub(
+  state: PlayerState,
+  choice: 'buff' | 'shield',
+): CellOutcome {
+  if (choice === 'buff') {
+    return base('27', addEffect(state, 'second_breath', 1), 'Суперзамена: +2 к следующему броску.');
+  }
+  if (hasEffect(state, 'shieldki')) {
+    const next = moveBy(state, 1);
+    return moved('27', state, state.position, next, 'Суперзамена: щиток уже есть, получаешь +1 клетку.');
+  }
+  return base('27', addEffect(state, 'shieldki', 1), 'Суперзамена: получен щиток.');
+}
+
+export function applyCorner(
+  state: PlayerState,
+  choice: 'simple' | 'risky',
+  random: () => number = Math.random,
+): CellOutcome {
+  if (choice === 'simple') {
+    const next = moveBy(state, 1);
+    return moved('28', state, state.position, next, 'Угловой: простой розыгрыш, +1 клетка.');
+  }
+  const win = random() < 0.5;
+  const delta = win ? 3 : -1;
+  const next = moveBy(state, delta);
+  return moved('28', state, state.position, next, win ? 'Угловой: голевой розыгрыш! +3 клетки.' : 'Угловой: неудача, -1 клетка.');
+}
+
+export function applyFoul(
+  state: PlayerState,
+  choice: 'defend' | 'dispute',
+  random: () => number = Math.random,
+): CellOutcome {
+  if (choice === 'defend') {
+    const next = moveBy(state, -1);
+    return moved('29', state, state.position, next, 'Фол в штрафной: защита выбрана, -1 клетка.');
+  }
+  const bad = random() >= 0.5;
+  if (!bad) return base('29', state, 'Фол в штрафной: спор прошёл, последствий нет.');
+  const next = moveBy(state, -3);
+  return moved('29', state, state.position, next, 'Фол в штрафной: спор не удался, -3 клетки.');
+}
 export function describeEffects(state: PlayerState): Array<{ code: EffectCode; label: string; charges: number }> {
   const labels: Record<EffectCode, string> = {
     tribuny: 'Домашние трибуны',

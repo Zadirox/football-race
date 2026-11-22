@@ -4,6 +4,11 @@ import {
   applyLocker,
   applyPassage,
   applyTactics,
+  applyCorner,
+  applyDribble,
+  applyFoul,
+  applyPenalty,
+  applySuperSub,
   applyVar,
   describeEffects,
   effectCharges,
@@ -416,5 +421,74 @@ describe('Phase 1 debuff mechanics', () => {
     expect(out.sideEffects).toEqual([
       { kind: 'buff_all', effectCode: 'tribune_panic', charges: 1 },
     ]);
+  });
+});
+
+
+describe('Phase 1 choice/risk mechanics', () => {
+  it('21 Penalty: awaiting choice, shoot/pass outcomes', () => {
+    const out = resolveCell(makePlayer(10), '21', 'Игрок');
+    expect(out.awaiting).toBe('penalty');
+    expect(out.delta).toBe(0);
+
+    const goal = applyPenalty(makePlayer(10), 'shoot', () => 0.1);
+    expect(goal.state.position).toBe(13);
+    const miss = applyPenalty(makePlayer(10), 'shoot', () => 0.9);
+    expect(miss.state.position).toBe(10);
+    const pass = applyPenalty(makePlayer(10), 'pass', () => 0.9);
+    expect(pass.state.position).toBe(11);
+  });
+
+  it('23 Dribble: awaiting choice, beat/pass outcomes', () => {
+    const out = resolveCell(makePlayer(10), '23', 'Игрок');
+    expect(out.awaiting).toBe('dribble');
+
+    const beat = applyDribble(makePlayer(10), 'beat', () => 0.1);
+    expect(beat.state.position).toBe(12);
+    const fail = applyDribble(makePlayer(10), 'beat', () => 0.9);
+    expect(fail.state.position).toBe(9);
+    const pass = applyDribble(makePlayer(10), 'pass', () => 0.0);
+    expect(pass.state.position).toBe(11);
+  });
+
+  it('27 Super sub: awaiting choice, buff or shield', () => {
+    const out = resolveCell(makePlayer(10), '27', 'Игрок');
+    expect(out.awaiting).toBe('super_sub');
+
+    const buff = applySuperSub(makePlayer(10), 'buff');
+    expect(effectCharges(buff.state, 'second_breath')).toBe(1);
+    expect(buff.state.position).toBe(10);
+
+    const shield = applySuperSub(makePlayer(10), 'shield');
+    expect(effectCharges(shield.state, 'shieldki')).toBe(1);
+
+    const hasShield = addEffect(makePlayer(10), 'shieldki', 1);
+    const fallback = applySuperSub(hasShield, 'shield');
+    expect(effectCharges(fallback.state, 'shieldki')).toBe(1);
+    expect(fallback.state.position).toBe(11);
+  });
+
+  it('28 Corner: awaiting choice, simple/risky outcomes', () => {
+    const out = resolveCell(makePlayer(10), '28', 'Игрок');
+    expect(out.awaiting).toBe('corner');
+
+    const simple = applyCorner(makePlayer(10), 'simple', () => 0.0);
+    expect(simple.state.position).toBe(11);
+    const win = applyCorner(makePlayer(10), 'risky', () => 0.1);
+    expect(win.state.position).toBe(13);
+    const lose = applyCorner(makePlayer(10), 'risky', () => 0.9);
+    expect(lose.state.position).toBe(9);
+  });
+
+  it('29 Foul in box: awaiting choice, defend/dispute outcomes', () => {
+    const out = resolveCell(makePlayer(10), '29', 'Игрок');
+    expect(out.awaiting).toBe('foul');
+
+    const defend = applyFoul(makePlayer(10), 'defend', () => 0.0);
+    expect(defend.state.position).toBe(9);
+    const nothing = applyFoul(makePlayer(10), 'dispute', () => 0.1);
+    expect(nothing.state.position).toBe(10);
+    const penalty = applyFoul(makePlayer(10), 'dispute', () => 0.9);
+    expect(penalty.state.position).toBe(7);
   });
 });

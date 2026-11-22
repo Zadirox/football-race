@@ -33,9 +33,14 @@ import { isMuted, play, setMuted, startAmbient } from '@/lib/audio';
 import type { ActivityView, PlayerView, SeasonSnapshot } from '@/lib/types';
 import type { ActionResult } from '@/lib/actions/game';
 import {
+  chooseCornerAction,
+  chooseDribbleAction,
+  chooseFoulAction,
   chooseLockerAction,
   choosePackChoiceAction,
   choosePassageAction,
+  choosePenaltyAction,
+  chooseSuperSubAction,
   chooseTacticsAction,
   chooseVarAction,
   submitRollAction,
@@ -613,20 +618,12 @@ export function GameHud({ snapshot }: { snapshot: SeasonSnapshot }) {
     (packKind: 'national' | 'club') => {
       if (!me) return;
       const pendingId = pending?.kind === 'pack_choice' ? pending.id : undefined;
-
       if (!snapshot.demo) {
         if (!pendingId) return;
-        void runServerChoice(
-          () => choosePackChoiceAction({ pendingId, packKind }),
-          'reward',
-        );
+        void runServerChoice(() => choosePackChoiceAction({ pendingId, packKind }), 'reward');
         return;
       }
-
-      pushFeed(
-        packKind === 'club' ? 'Выбран клубный пак.' : 'Выбран пак сборных.',
-        'positive',
-      );
+      pushFeed(packKind === 'club' ? 'Выбран клубный пак.' : 'Выбран пак сборных.', 'positive');
       setLastRoll((prev) => (prev ? { ...prev, eventText: 'Пак выбран.', awaiting: null } : prev));
       setPending(null);
       play('reward');
@@ -634,6 +631,32 @@ export function GameHud({ snapshot }: { snapshot: SeasonSnapshot }) {
     },
     [me, pending, pushFeed, router, runServerChoice, snapshot.demo],
   );
+
+  const choosePenalty = useCallback((choice: 'shoot' | 'pass') => {
+    const pendingId = pending?.kind === 'penalty' ? pending.id : undefined;
+    if (!snapshot.demo) { if (!pendingId) return; void runServerChoice(() => choosePenaltyAction({ pendingId, choice }), 'click'); return; }
+    setPending(null); router.refresh();
+  }, [pending, router, runServerChoice, snapshot.demo]);
+  const chooseDribble = useCallback((choice: 'beat' | 'pass') => {
+    const pendingId = pending?.kind === 'dribble' ? pending.id : undefined;
+    if (!snapshot.demo) { if (!pendingId) return; void runServerChoice(() => chooseDribbleAction({ pendingId, choice }), 'click'); return; }
+    setPending(null); router.refresh();
+  }, [pending, router, runServerChoice, snapshot.demo]);
+  const chooseSuperSub = useCallback((choice: 'buff' | 'shield') => {
+    const pendingId = pending?.kind === 'super_sub' ? pending.id : undefined;
+    if (!snapshot.demo) { if (!pendingId) return; void runServerChoice(() => chooseSuperSubAction({ pendingId, choice }), 'reward'); return; }
+    setPending(null); router.refresh();
+  }, [pending, router, runServerChoice, snapshot.demo]);
+  const chooseCorner = useCallback((choice: 'simple' | 'risky') => {
+    const pendingId = pending?.kind === 'corner' ? pending.id : undefined;
+    if (!snapshot.demo) { if (!pendingId) return; void runServerChoice(() => chooseCornerAction({ pendingId, choice }), 'click'); return; }
+    setPending(null); router.refresh();
+  }, [pending, router, runServerChoice, snapshot.demo]);
+  const chooseFoul = useCallback((choice: 'defend' | 'dispute') => {
+    const pendingId = pending?.kind === 'foul' ? pending.id : undefined;
+    if (!snapshot.demo) { if (!pendingId) return; void runServerChoice(() => chooseFoulAction({ pendingId, choice }), 'click'); return; }
+    setPending(null); router.refresh();
+  }, [pending, router, runServerChoice, snapshot.demo]);
 
   const toggleMute = () => {
     const next = !liveMuted;
@@ -907,6 +930,11 @@ export function GameHud({ snapshot }: { snapshot: SeasonSnapshot }) {
           onPassage={choosePassage}
           onLocker={chooseLocker}
           onPackChoice={choosePackChoice}
+          onPenalty={choosePenalty}
+          onDribble={chooseDribble}
+          onSuperSub={chooseSuperSub}
+          onCorner={chooseCorner}
+          onFoul={chooseFoul}
           onCancel={() => {
             if (!snapshot.demo) {
               setToast({ text: 'Событие нужно решить: оно держит следующий бросок', kind: 'info' });
@@ -1021,6 +1049,11 @@ function EventModal({
   onPassage,
   onLocker,
   onPackChoice,
+  onPenalty,
+  onDribble,
+  onSuperSub,
+  onCorner,
+  onFoul,
   onCancel,
 }: {
   pending: Pending;
@@ -1031,6 +1064,11 @@ function EventModal({
   onPassage: (targetId: string | null) => void;
   onLocker: (remove: EffectCode | 'advance') => void;
   onPackChoice: (packKind: 'national' | 'club') => void;
+  onPenalty: (choice: 'shoot' | 'pass') => void;
+  onDribble: (choice: 'beat' | 'pass') => void;
+  onSuperSub: (choice: 'buff' | 'shield') => void;
+  onCorner: (choice: 'simple' | 'risky') => void;
+  onFoul: (choice: 'defend' | 'dispute') => void;
   onCancel: () => void;
 }) {
   const others = players.filter((p) => !p.isMe && p.position < 80);
@@ -1141,16 +1179,90 @@ function EventModal({
         <div className="modal__card">
           <div className="modal__eyebrow">Механика 19 · Пак на выбор</div>
           <h2 className="modal__title">Какой пак открыть?</h2>
-          <p className="modal__text">
-            Выбери один пак. После выбора он будет зачислен сразу. Следующий бросок откроется после выбора.
-          </p>
+          <p className="modal__text">Выбери один пак. После выбора он будет зачислен сразу.</p>
           <div className="modal__actions">
-            <button type="button" className="btn btn--primary" onClick={() => onPackChoice('national')}>
-              Сборные
-            </button>
-            <button type="button" className="btn" onClick={() => onPackChoice('club')}>
-              Клубы
-            </button>
+            <button type="button" className="btn btn--primary" onClick={() => onPackChoice('national')}>Сборные</button>
+            <button type="button" className="btn" onClick={() => onPackChoice('club')}>Клубы</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (pending.kind === 'penalty') {
+    return (
+      <div className="modal" role="dialog" aria-modal="true" aria-label="Пенальти">
+        <div className="modal__card">
+          <div className="modal__eyebrow">Механика 21 · Пенальти</div>
+          <h2 className="modal__title">Бить или пасовать?</h2>
+          <p className="modal__text">Бить: 70% +3, 30% 0 (риск, щитки не спасают). Пас: +1 гарантированно.</p>
+          <div className="modal__actions">
+            <button type="button" className="btn btn--primary" onClick={() => onPenalty('shoot')}>Бить (70%/+3)</button>
+            <button type="button" className="btn" onClick={() => onPenalty('pass')}>Пас (+1)</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (pending.kind === 'dribble') {
+    return (
+      <div className="modal" role="dialog" aria-modal="true" aria-label="Дриблинг">
+        <div className="modal__card">
+          <div className="modal__eyebrow">Механика 23 · Дриблинг</div>
+          <h2 className="modal__title">Обыграть или сбросить?</h2>
+          <p className="modal__text">Обыграть: 60% +2, 40% -1 (риск, щитки не спасают). Сбросить: +1.</p>
+          <div className="modal__actions">
+            <button type="button" className="btn btn--primary" onClick={() => onDribble('beat')}>Обыграть (60%/+2)</button>
+            <button type="button" className="btn" onClick={() => onDribble('pass')}>Сбросить (+1)</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (pending.kind === 'super_sub') {
+    return (
+      <div className="modal" role="dialog" aria-modal="true" aria-label="Суперзамена">
+        <div className="modal__card">
+          <div className="modal__eyebrow">Механика 27 · Суперзамена</div>
+          <h2 className="modal__title">Какое усиление взять?</h2>
+          <p className="modal__text">+2 к следующему броску (1 бросок) или Щиток. Если щиток уже есть, вместо него +1 клетка.</p>
+          <div className="modal__actions">
+            <button type="button" className="btn btn--primary" onClick={() => onSuperSub('buff')}>+2 к броску</button>
+            <button type="button" className="btn" onClick={() => onSuperSub('shield')}>Щиток</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (pending.kind === 'corner') {
+    return (
+      <div className="modal" role="dialog" aria-modal="true" aria-label="Угловой">
+        <div className="modal__card">
+          <div className="modal__eyebrow">Механика 28 · Угловой розыгрыш</div>
+          <h2 className="modal__title">Как разыграть?</h2>
+          <p className="modal__text">Простой: +1. Розыгрыш: 50% +3, 50% -1.</p>
+          <div className="modal__actions">
+            <button type="button" className="btn btn--primary" onClick={() => onCorner('risky')}>Розыгрыш (50/50)</button>
+            <button type="button" className="btn" onClick={() => onCorner('simple')}>Простой (+1)</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (pending.kind === 'foul') {
+    return (
+      <div className="modal" role="dialog" aria-modal="true" aria-label="Фол в штрафной">
+        <div className="modal__card">
+          <div className="modal__eyebrow">Механика 29 · Фол в штрафной</div>
+          <h2 className="modal__title">Как поступить?</h2>
+          <p className="modal__text">Защититься: -1. Спорить: 50% ничего, 50% -3 (щитки не спасают).</p>
+          <div className="modal__actions">
+            <button type="button" className="btn" onClick={() => onFoul('defend')}>Защититься (-1)</button>
+            <button type="button" className="btn btn--primary" onClick={() => onFoul('dispute')}>Спорить (50/50)</button>
           </div>
         </div>
       </div>

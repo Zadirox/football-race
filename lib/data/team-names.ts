@@ -118,7 +118,7 @@ const CLUB_ENTRIES: Entry[] = [
   { ru: 'Брайтон', short: 'БРА', aliases: ['Brighton', 'Brighton & Hove Albion', 'Brighton Hove'] },
   { ru: 'Борнмут', short: 'БОР', aliases: ['Bournemouth', 'AFC Bournemouth'] },
   { ru: 'Атлетико Мадрид', short: 'АТМ', aliases: ['Atletico Madrid', 'Atlético Madrid', 'Atlético de Madrid', 'Atletico'] },
-  { ru: 'Барселона', short: 'БАР', aliases: ['Barcelona', 'FC Barcelona'] },
+  { ru: 'Барселона', short: 'БАР', aliases: ['Barcelona', 'FC Barcelona', 'Barça', 'Barca'] },
   { ru: 'Реал Бетис', short: 'БЕТ', aliases: ['Real Betis', 'Betis'] },
   { ru: 'Реал Мадрид', short: 'РМА', aliases: ['Real Madrid'] },
   { ru: 'Вильярреал', short: 'ВИЛ', aliases: ['Villarreal', 'Villarreal CF'] },

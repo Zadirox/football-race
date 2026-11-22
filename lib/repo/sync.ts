@@ -292,6 +292,98 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
     errors.push('football-data: недостаточно бюджета на fetch');
   }
 
+  // 2.5) Early targeted refresh for in-scope live/started matches — must run before slow club comp loop.
+  try {
+    const liveRows = await sql<{
+      provider: string; external_id: string; league_code: string; league_title: string;
+      home_name: string; home_logo: string | null; away_name: string; away_logo: string | null;
+      kickoff_utc: Date; status: string; minute: number | null;
+      home_score: number | null; away_score: number | null; ht_home_score: number | null; ht_away_score: number | null;
+      corners_home: number | null; corners_away: number | null; yellow_cards_home: number | null; yellow_cards_away: number | null;
+      red_cards_home: number | null; red_cards_away: number | null; possession_home: number | null; possession_away: number | null;
+      shots_on_target_home: number | null; shots_on_target_away: number | null;
+    }[]>`
+      select m.provider, m.external_id, m.league_code, m.league_title,
+             m.home_name, m.home_logo, m.away_name, m.away_logo,
+             m.kickoff_utc, m.status, m.minute,
+             m.home_score, m.away_score, m.ht_home_score, m.ht_away_score,
+             m.corners_home, m.corners_away, m.yellow_cards_home, m.yellow_cards_away,
+             m.red_cards_home, m.red_cards_away, m.possession_home, m.possession_away,
+             m.shots_on_target_home, m.shots_on_target_away
+      from matchday_matches mm
+      join matchdays md on md.id = mm.matchday_id
+      join matches m on m.id = mm.match_id
+      where md.season_id = ${season.id}
+        and md.game_date >= ${window.from}::date
+        and md.game_date <= ${window.to}::date
+        and mm.in_scope = true
+        and m.status not in ('FT','PST','CANC','ABD')
+        and m.kickoff_utc <= now() + interval '15 minutes'
+      order by case when m.status in ('LIVE','HT') then 0 else 1 end, m.kickoff_utc asc
+      limit 8
+    `;
+    let earlyBudget = 4;
+    for (const row of liveRows) {
+      if (earlyBudget <= 0) break;
+      if (Date.now() >= processingDeadlineMs - 8_000) break;
+      try {
+        if (row.provider === 'football-data' && hasFootballData) {
+          earlyBudget -= 1;
+          const fd = await fetchFootballDataMatch({ token: env.footballDataToken!, matchId: row.external_id });
+          requestsUsed += fd.requestsUsed;
+          fetchedTotal += 1;
+          if (fd.httpStatus) httpStatus = fd.httpStatus;
+          if (fd.match) {
+            const nm = normalizeMatch(fd.match);
+            if (nm) fdGroups.push([nm]);
+          }
+        } else if (row.provider === 'sstats' && env.sstatsEnabled) {
+          earlyBudget -= 1;
+          requestsUsed += 1;
+          const detail = await fetchSstatsGameDetail({ id: row.external_id, apiKey: env.sstatsApiKey, timeoutMs: 8_000 });
+          const core = detail.core;
+          const nm: NormalizedMatch = {
+            provider: 'sstats',
+            externalId: row.external_id,
+            leagueCode: row.league_code,
+            leagueTitle: row.league_title,
+            homeName: row.home_name,
+            homeLogo: row.home_logo,
+            awayName: row.away_name,
+            awayLogo: row.away_logo,
+            kickoffUtc: new Date(row.kickoff_utc),
+            status: (core?.status ?? row.status) as NormalizedMatch['status'],
+            minute: core?.minute ?? row.minute,
+            homeScore: core?.homeScore ?? row.home_score,
+            awayScore: core?.awayScore ?? row.away_score,
+            htHomeScore: core?.htHomeScore ?? row.ht_home_score,
+            htAwayScore: core?.htAwayScore ?? row.ht_away_score,
+            stats: {
+              cornersHome: detail.stats.cornersHome ?? row.corners_home,
+              cornersAway: detail.stats.cornersAway ?? row.corners_away,
+              yellowCardsHome: detail.stats.yellowCardsHome ?? row.yellow_cards_home,
+              yellowCardsAway: detail.stats.yellowCardsAway ?? row.yellow_cards_away,
+              redCardsHome: detail.stats.redCardsHome ?? row.red_cards_home,
+              redCardsAway: detail.stats.redCardsAway ?? row.red_cards_away,
+              possessionHome: detail.stats.possessionHome ?? row.possession_home,
+              possessionAway: detail.stats.possessionAway ?? row.possession_away,
+              shotsOnTargetHome: detail.stats.shotsOnTargetHome ?? row.shots_on_target_home,
+              shotsOnTargetAway: detail.stats.shotsOnTargetAway ?? row.shots_on_target_away,
+            },
+            raw: { refresh: 'early-detail', externalId: row.external_id, at: now.toISOString() },
+          };
+          sstatsGroups.push([nm]);
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        errors.push(`early-refresh/${row.provider}/${row.external_id}: ${message}`);
+      }
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    errors.push(`early-refresh: ${message}`);
+  }
+
   // 3) Club competitions (Stage 3 B, Y4): sstats primary, all comps best-effort, euro-cups priority.
   let clubFetched = 0;
   let clubKept = 0;

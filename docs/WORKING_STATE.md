@@ -28,14 +28,18 @@ Board Phase 1 (Native): pack-choice cell 19 + new 41-80 mechanics (final codes 2
 - `npx tsc --noEmit --pretty false` PASS after Tasks 3,5,6,7,8.
 - `npm run test:run -- tests/unit/engine.test.ts tests/unit/board.test.ts tests/unit/cards.test.ts` PASS (92/92) final.
 
+## Decisions confirmed (this session)
+- 1. Mechanic 32: global debuff applies to all including self; no automatic shield spend for others. **Confirmed by user.**
+- 2. Mechanic 35: random_chaos uses server-side Math.random() in tx (not roll-seed deterministic). **Confirmed by user.**
+- 3. Demo-mode for new choice/risk mechanics: keep minimal refresh behavior (Option A). **Confirmed by user.**
+
 ## Not done / risks
-- No DB migrations added; side effects use existing tables (season_players, active_effects, cell_events, pending_actions). Assumes active_effects allows multiple rows/code per player? Current code does delete+insert per effect for buff_all targets.
-- 33/34 target selection UI is basic (list); no "ahead-only" hint beyond filter. 34 allows fallback when none ahead.
-- random_chaos uses Math.random() in tx (server-side) - acceptable but not seeded from roll seed.
-- Demo mode handlers for new choice/risk mechanics are minimal (refresh) vs full local simulation.
+- No DB migrations added; side effects use existing tables (season_players, active_effects, cell_events, pending_actions).
+- 33/34 target selection UI is basic (list).
+- Demo-mode local simulation for new mechanics is minimal by decision (A).
 - Phase 2+ not implemented: mechanics 11-18 (batches 15 -> 14/16/18 -> 11/12/13/17).
-- Full test suite not run in this session; only targeted tests + tsc.
-- Changes are local commits on frontend-finish, not pushed/deployed.
+- Local commits on frontend-finish, not pushed/deployed.
+- Spec/plan docs are untracked: docs/superpowers/specs/2026-11-22-board-phase1-pack-choice-and-new-mechanics-design.md, docs/superpowers/plans/2026-11-22-board-phase1-pack-choice-and-new-mechanics.md.
 
 ## Next step
 - Ask user to review Phase 1 results; if approved, run broader test suite as needed and prepare push/deploy decision (no push/deploy without explicit user request).

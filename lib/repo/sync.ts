@@ -529,9 +529,15 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
       if (refreshBudget <= 0) break;
       if (Date.now() >= processingDeadlineMs - 4_000) break;
       const key = `${row.provider}:${row.external_id}`;
+      // Refresh even if already in window listing: listing can be stale (NS/old minute/score).
       if (seen.has(key)) {
-        // already fetched in window; still allow refresh if it was NS and started long ago? skip for now
-        continue;
+        // replace stale entry so refreshed data wins in merge/processing
+        for (let i = normalized.length - 1; i >= 0; i--) {
+          if (`${normalized[i]!.provider}:${normalized[i]!.externalId}` === key) normalized.splice(i, 1);
+        }
+        for (let i = inScopeNormalized.length - 1; i >= 0; i--) {
+          if (`${inScopeNormalized[i]!.provider}:${inScopeNormalized[i]!.externalId}` === key) inScopeNormalized.splice(i, 1);
+        }
       }
       try {
         if (row.provider === 'football-data' && hasFootballData) {

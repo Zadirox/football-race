@@ -136,19 +136,28 @@ export type CellChoice =
   | 'red_var'
   | 'attack_break';
 
+export type SideEffect =
+  | { kind: 'move_all_others'; delta: number; minPosition?: number }
+  | { kind: 'buff_all'; effectCode: EffectCode; charges: number }
+  | { kind: 'move_nearest_ahead'; delta: number; fallbackSelfDelta: number }
+  | { kind: 'move_target'; delta: number }
+  | { kind: 'random_chaos'; penalty: number; bonus: number };
+
 export type CellOutcome = {
   state: PlayerState;
   /** Код механики, если событие было. */
   code: string | null;
-  /** Дополнительное перемещение, уже применённое к state. */
+  /** Численное смещение, уже применённое к state. */
   delta: number;
-  /** Что поглотило эффект. */
+  /** Что помешало эффекту. */
   preventedBy: 'shieldki' | 'yellow_card' | null;
-  /** Поглощённый эффект (для анимации «карточка сгорела»). */
+  /** Поглощённый эффект (для показа в логах). */
   absorbed: EffectCode | null;
-  /** Если нужно решение игрока — какое. Тактика решается на следующем броске. */
+  /** Если нужен выбор игрока - какой. */
   awaiting: CellChoice | null;
-  /** Строка в ленту комментатора. */
+  /** Мульти-игроковые/отложенные эффекты для tx-слоя. */
+  sideEffects?: SideEffect[];
+  /** Запись в журнал активности. */
   log: string;
 };
 
@@ -275,7 +284,17 @@ export function resolveCell(
       };
     }
 
-        case '24': {
+        case '22': {
+      if (hasEffect(state, 'shieldki')) {
+        return {
+          ...base(code, spendCharge(state, 'shieldki'), `«Щитки» спасли ${who} от прессинг-ловушки.`),
+          preventedBy: 'shieldki',
+        };
+      }
+      return base(code, addEffect(state, 'press_trap', 1), `Прессинг-ловушка: следующий бросок ${who} получит -2 (мин. 1).`);
+    }
+
+    case '24': {
       if (hasEffect(state, 'shieldki')) {
         return {
           ...base(code, spendCharge(state, 'shieldki'), `«Щитки» спасли ${who} от автогола.`),
@@ -284,6 +303,26 @@ export function resolveCell(
       }
       const next = moveBy(state, -3);
       return moved(code, state, state.position, next, `Автогол! ${who} откатывается на 3 клетки назад.`);
+    }
+
+    case '25': {
+      if (hasEffect(state, 'shieldki')) {
+        return {
+          ...base(code, spendCharge(state, 'shieldki'), `«Щитки» спасли ${who} от грязного времени.`),
+          preventedBy: 'shieldki',
+        };
+      }
+      return base(code, addEffect(state, 'dirty_time', 1), `Грязное время: следующий бросок ${who} ограничен до 3.`);
+    }
+
+    case '26': {
+      if (hasEffect(state, 'shieldki')) {
+        return {
+          ...base(code, spendCharge(state, 'shieldki'), `«Щитки» спасли ${who} от сломанного бутса.`),
+          preventedBy: 'shieldki',
+        };
+      }
+      return base(code, addEffect(state, 'broken_boot', 2), `Сломанный бутс: ${who} получит -1 на 2 следующих броска.`);
     }
 
     case '30': {
@@ -299,6 +338,15 @@ export function resolveCell(
           ? `VAR проверил эпизод: гол засчитан. ${who} получает +2 клетки.`
           : `VAR проверил эпизод: офсайд. ${who} откатывается на 2 клетки.`,
       );
+    }
+
+    case '32': {
+      // Global debuff: applies to everyone including self. No shield auto-spend for others; self also not shielded (chaos/global).
+      const nextState = addEffect(state, 'tribune_panic', 1);
+      return {
+        ...base(code, nextState, `Паника на трибунах: все игроки получат -1 к следующему броску.`),
+        sideEffects: [{ kind: 'buff_all', effectCode: 'tribune_panic', charges: 1 }],
+      };
     }
 
     case '36': {

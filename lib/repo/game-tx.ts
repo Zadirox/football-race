@@ -16,11 +16,14 @@ import { mechanic } from '@/lib/game/catalog';
 import { landingPosition } from '@/lib/game/dice';
 import {
   LAST_CELL,
+  addEffect,
+  moveBy,
   resolveCell,
   type ActiveEffect,
   type CellChoice,
   type EffectCode,
   type PlayerState,
+  type SideEffect,
 } from '@/lib/game/engine';
 import { keptEffects } from '@/lib/game/roll';
 import { serverEnv } from '@/lib/env';
@@ -211,8 +214,78 @@ export async function moveAndResolve(
     `;
   }
 
+  let finalState = outcome.state;
+  let finalLog = outcome.log;
+  if (outcome.sideEffects?.length) {
+    for (const effect of outcome.sideEffects) {
+      if (effect.kind === 'buff_all') {
+        const targets = await tx<Array<{ profile_id: string }>>`
+          select profile_id from season_players
+           where season_id = ${ctx.seasonId}
+             and is_active = true
+             and profile_id <> ${ctx.profileId}
+             and finished_at is null
+        `;
+        for (const t of targets) {
+          await tx`delete from active_effects where season_id = ${ctx.seasonId} and profile_id = ${t.profile_id} and code = ${effect.effectCode}`;
+          await tx`insert into active_effects (season_id, profile_id, code, charges) values (${ctx.seasonId}, ${t.profile_id}, ${effect.effectCode}, ${effect.charges})`;
+        }
+      } else if (effect.kind === 'move_all_others') {
+        await tx`
+          update season_players
+             set position = greatest(${effect.minPosition ?? 1}, least(${LAST_CELL}, position + ${effect.delta})),
+                 finished_at = case
+                   when greatest(${effect.minPosition ?? 1}, least(${LAST_CELL}, position + ${effect.delta})) >= ${LAST_CELL}
+                     and finished_at is null then now()
+                   else finished_at
+                 end
+           where season_id = ${ctx.seasonId}
+             and is_active = true
+             and profile_id <> ${ctx.profileId}
+             and finished_at is null
+        `;
+      } else if (effect.kind === 'move_nearest_ahead') {
+        const [target] = await tx<Array<{ profile_id: string; position: number; nickname: string }>>`
+          select sp.profile_id, sp.position, p.nickname
+            from season_players sp
+            join profiles p on p.id = sp.profile_id
+           where sp.season_id = ${ctx.seasonId}
+             and sp.is_active = true
+             and sp.profile_id <> ${ctx.profileId}
+             and sp.finished_at is null
+             and sp.position > ${finalState.position}
+           order by sp.position asc, sp.joined_at asc
+           limit 1
+        `;
+        if (target) {
+          const newPos = Math.max(1, Math.min(LAST_CELL, target.position + effect.delta));
+          await tx`
+            update season_players
+               set position = ${newPos},
+                   finished_at = case when ${newPos} >= ${LAST_CELL} and finished_at is null then now() else finished_at end
+             where season_id = ${ctx.seasonId}
+               and profile_id = ${target.profile_id}
+          `;
+          await logActivity(tx, ctx.seasonId, target.profile_id, 'negative', `Подножка от ${ctx.nickname}: ${target.nickname} откатывается на ${Math.abs(effect.delta)} клетки.`);
+          finalLog = `Подножка: ${target.nickname} впереди откатывается на ${Math.abs(effect.delta)} клетки.`;
+        } else {
+          const next = moveBy(finalState, effect.fallbackSelfDelta);
+          finalState = next;
+          await persistState(tx, ctx, next);
+          finalLog = `Подножка: впереди никого нет, ${ctx.nickname} получает +${effect.fallbackSelfDelta} клетку.`;
+        }
+      }
+    }
+    if (event) {
+      await tx`
+        update cell_events
+           set outcome = coalesce(outcome, '{}'::jsonb) || ${tx.json({ log: finalLog, sideEffects: outcome.sideEffects.length })}::jsonb
+         where id = ${event.id}
+      `;
+    }
+  }
 
-  return { state: outcome.state, eventId: event?.id ?? null, awaiting: outcome.awaiting, log: outcome.log };
+  return { state: finalState, eventId: event?.id ?? null, awaiting: outcome.awaiting, log: finalLog };
 }
 
 export type PendingRow = {

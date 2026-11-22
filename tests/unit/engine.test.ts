@@ -379,3 +379,42 @@ describe('Phase 1 simple instant mechanics', () => {
     ]);
   });
 });
+
+
+describe('Phase 1 debuff mechanics', () => {
+  it('22 Press trap: -2 next roll debuff, shield blocks', () => {
+    const out = resolveCell(makePlayer(10), '22', 'Игрок');
+    expect(effectCharges(out.state, 'press_trap')).toBe(1);
+    expect(out.delta).toBe(0);
+
+    const shielded = resolveCell(addEffect(makePlayer(10), 'shieldki', 1), '22', 'Игрок');
+    expect(shielded.preventedBy).toBe('shieldki');
+    expect(hasEffect(shielded.state, 'press_trap')).toBe(false);
+  });
+
+  it('25 Dirty time: cap next roll to 3, shield blocks', () => {
+    const out = resolveCell(makePlayer(10), '25', 'Игрок');
+    expect(effectCharges(out.state, 'dirty_time')).toBe(1);
+
+    const shielded = resolveCell(addEffect(makePlayer(10), 'shieldki', 1), '25', 'Игрок');
+    expect(shielded.preventedBy).toBe('shieldki');
+    expect(hasEffect(shielded.state, 'dirty_time')).toBe(false);
+  });
+
+  it('26 Broken boot: -1 for next 2 rolls, shield blocks', () => {
+    const out = resolveCell(makePlayer(10), '26', 'Игрок');
+    expect(effectCharges(out.state, 'broken_boot')).toBe(2);
+
+    const shielded = resolveCell(addEffect(makePlayer(10), 'shieldki', 1), '26', 'Игрок');
+    expect(shielded.preventedBy).toBe('shieldki');
+    expect(hasEffect(shielded.state, 'broken_boot')).toBe(false);
+  });
+
+  it('32 Tribune panic: -1 next roll to everyone including self', () => {
+    const out = resolveCell(makePlayer(10), '32', 'Игрок');
+    expect(effectCharges(out.state, 'tribune_panic')).toBe(1);
+    expect(out.sideEffects).toEqual([
+      { kind: 'buff_all', effectCode: 'tribune_panic', charges: 1 },
+    ]);
+  });
+});

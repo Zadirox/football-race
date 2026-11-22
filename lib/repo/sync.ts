@@ -376,8 +376,11 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
         stats,
         raw: { refresh: 'sstats-fallback', fdExternalId: row.external_id, sstatsExternalId: cand.external_id, at: now.toISOString() },
       };
-      const out: NormalizedMatch[] = [{ provider: target.provider, externalId: target.externalId, ...base }];
-      out.push({ provider: 'sstats', externalId: cand.external_id, ...base });
+      const out: NormalizedMatch[] = [];
+      out.push({ provider: target.provider, externalId: target.externalId, ...base });
+      if (!(target.provider === 'sstats' && target.externalId === cand.external_id)) {
+        out.push({ provider: 'sstats', externalId: cand.external_id, ...base });
+      }
       return out;
     } catch {
       return [];
@@ -427,7 +430,14 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
           if (fd.httpStatus) httpStatus = fd.httpStatus;
           if (fd.match) {
             const nm = normalizeMatch(fd.match);
-            if (nm) fdGroups.push([nm]);
+            if (nm) {
+              fdGroups.push([nm]);
+              if (nm.status !== 'NS' && nm.status !== 'PST' && nm.status !== 'CANC') {
+                const extras = await findSstatsFallback(row, { provider: 'football-data', externalId: row.external_id }).catch(() => [] as NormalizedMatch[]);
+                const sstatsNm = extras.find((x) => x.provider === 'sstats');
+                if (sstatsNm) sstatsGroups.push([sstatsNm]);
+              }
+            }
           }
         } else if (row.provider === 'sstats' && env.sstatsEnabled) {
           earlyBudget -= 1;
@@ -753,6 +763,11 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
                 if (comp && (comp.scope !== 'whitelist_only' || clubMatchInWhitelistScope(nm))) inScopeNormalized.push(nm);
               }
               seen.add(key);
+              if (nm.status !== 'NS' && nm.status !== 'PST' && nm.status !== 'CANC') {
+                const extras = await findSstatsFallback(row, { provider: 'football-data', externalId: row.external_id }).catch(() => [] as NormalizedMatch[]);
+                const sstatsNm = extras.find((x) => x.provider === 'sstats');
+                if (sstatsNm) { normalized.push(sstatsNm); sstatsGroups.push([sstatsNm]); }
+              }
             }
           }
         } else if (row.provider === 'sstats' && env.sstatsEnabled) {

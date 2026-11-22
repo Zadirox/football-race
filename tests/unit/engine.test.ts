@@ -11,8 +11,10 @@ import {
   makePlayer,
   moveBy,
   resolveCell,
+  NEGATIVE_EFFECTS,
   takeRollModifiers,
 } from '@/lib/game/engine';
+import { applyRollModifiers } from '@/lib/game/dice';
 
 const never = () => 0; // всегда «повезло» (< 0.5)
 const always = () => 0.99; // всегда «не повезло»
@@ -157,7 +159,7 @@ describe('Трибуны', () => {
   it('Трибуны и Газон вместе оба расходуются', () => {
     const state = addEffect(addEffect(makePlayer(10), 'tribuny', 2), 'gazon', 1);
     const { mods, state: after } = takeRollModifiers(state);
-    expect(mods).toEqual({ tribuny: true, gazon: true });
+    expect(mods).toMatchObject({ tribuny: true, gazon: true });
     expect(hasEffect(after, 'tribuny')).toBe(true);
     expect(hasEffect(after, 'gazon')).toBe(false);
   });
@@ -251,5 +253,69 @@ describe('описание эффектов', () => {
       { code: 'tribuny', label: 'Домашние трибуны', charges: 2 },
       { code: 'gazon', label: 'Скользкий газон', charges: 1 },
     ]);
+  });
+});
+
+
+describe('Phase 1 effect foundations', () => {
+  it('treats new debuffs as negative effects', () => {
+    for (const code of ['press_trap', 'dirty_time', 'broken_boot', 'tribune_panic'] as const) {
+      expect(NEGATIVE_EFFECTS).toContain(code);
+    }
+    expect(NEGATIVE_EFFECTS).not.toContain('second_breath');
+  });
+
+  it('takeRollModifiers consumes second_breath as +2 buff', () => {
+    const state = addEffect(makePlayer(10), 'second_breath', 1);
+    const { mods, state: after } = takeRollModifiers(state);
+    expect(mods).toMatchObject({ secondBreath: true });
+    expect(hasEffect(after, 'second_breath')).toBe(false);
+    expect(applyRollModifiers(3, mods).value).toBe(5);
+  });
+
+  it('press_trap gives -2 (min 1) for one roll', () => {
+    const state = addEffect(makePlayer(10), 'press_trap', 1);
+    const { mods, state: after } = takeRollModifiers(state);
+    expect(mods).toMatchObject({ pressTrap: true });
+    expect(hasEffect(after, 'press_trap')).toBe(false);
+    expect(applyRollModifiers(3, mods).value).toBe(1);
+    expect(applyRollModifiers(2, mods).value).toBe(1);
+  });
+
+  it('broken_boot gives -1 for two rolls', () => {
+    let state = addEffect(makePlayer(10), 'broken_boot', 2);
+    const first = takeRollModifiers(state);
+    expect(first.mods).toMatchObject({ brokenBoot: true });
+    expect(effectCharges(first.state, 'broken_boot')).toBe(1);
+    expect(applyRollModifiers(4, first.mods).value).toBe(3);
+    const second = takeRollModifiers(first.state);
+    expect(second.mods).toMatchObject({ brokenBoot: true });
+    expect(hasEffect(second.state, 'broken_boot')).toBe(false);
+  });
+
+  it('dirty_time caps 4+ to 3 for one roll', () => {
+    const state = addEffect(makePlayer(10), 'dirty_time', 1);
+    const { mods, state: after } = takeRollModifiers(state);
+    expect(mods).toMatchObject({ dirtyTime: true });
+    expect(hasEffect(after, 'dirty_time')).toBe(false);
+    expect(applyRollModifiers(6, mods).value).toBe(3);
+    expect(applyRollModifiers(4, mods).value).toBe(3);
+    expect(applyRollModifiers(3, mods).value).toBe(3);
+  });
+
+  it('tribune_panic gives -1 for one roll', () => {
+    const state = addEffect(makePlayer(10), 'tribune_panic', 1);
+    const { mods, state: after } = takeRollModifiers(state);
+    expect(mods).toMatchObject({ tribunePanic: true });
+    expect(hasEffect(after, 'tribune_panic')).toBe(false);
+    expect(applyRollModifiers(2, mods).value).toBe(1);
+  });
+
+  it('describeEffects labels new effect codes', () => {
+    const state = [
+      'press_trap', 'dirty_time', 'broken_boot', 'tribune_panic', 'second_breath',
+    ].reduce((s, code) => addEffect(s, code as any, 1), makePlayer(10));
+    const labels = describeEffects(state).map((e) => e.code);
+    expect(labels).toEqual(expect.arrayContaining(['press_trap', 'dirty_time', 'broken_boot', 'tribune_panic', 'second_breath']));
   });
 });

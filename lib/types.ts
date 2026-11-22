@@ -139,7 +139,7 @@ export type MeView = {
 export type PendingChoiceView = {
   id: string;
   eventId: string;
-  kind: 'var' | 'passage' | 'locker' | 'tactics';
+  kind: 'var' | 'passage' | 'locker' | 'tactics' | 'pack_choice' | 'penalty' | 'dribble' | 'super_sub' | 'corner' | 'foul' | 'red_var' | 'attack_break';
   payload: Record<string, unknown>;
   expiresAt: string;
 };

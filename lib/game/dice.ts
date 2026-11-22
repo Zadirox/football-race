@@ -99,18 +99,31 @@ export function rollValue(tier: DiceTier, random: () => number): number {
  */
 export function applyRollModifiers(
   value: number,
-  mods: { tribuny: boolean; gazon: boolean },
+  mods: {
+    tribuny: boolean;
+    gazon: boolean;
+    secondBreath?: boolean;
+    pressTrap?: boolean;
+    brokenBoot?: boolean;
+    tribunePanic?: boolean;
+    dirtyTime?: boolean;
+  },
 ): { value: number; consumed: { tribuny: boolean; gazon: boolean } } {
   let result = value;
   if (mods.tribuny) result += 1;
+  if (mods.secondBreath) result += 2;
   if (mods.gazon) result -= 1;
+  if (mods.brokenBoot) result -= 1;
+  if (mods.tribunePanic) result -= 1;
+  if (mods.pressTrap) result -= 2;
+  if (mods.dirtyTime && result >= 4) result = 3;
   return {
     value: Math.max(1, result),
     consumed: { tribuny: mods.tribuny, gazon: mods.gazon },
   };
 }
 
-/** Куда встанет игрок, с учётом границ поля. */
+/** ����� ��������� ������, � ������ ������ ����. */
 export function landingPosition(from: number, steps: number, lastCell = 80): number {
   return Math.min(lastCell, Math.max(1, from + steps));
 }

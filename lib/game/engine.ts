@@ -13,7 +13,17 @@ import { mechanicName } from './catalog';
 export const FIRST_CELL = 1;
 export const LAST_CELL = 80;
 
-export type EffectCode = 'tribuny' | 'gazon' | 'shieldki' | 'yellow_card' | 'tactics';
+export type EffectCode =
+  | 'tribuny'
+  | 'gazon'
+  | 'shieldki'
+  | 'yellow_card'
+  | 'tactics'
+  | 'press_trap'
+  | 'dirty_time'
+  | 'broken_boot'
+  | 'tribune_panic'
+  | 'second_breath';
 
 export type ActiveEffect = {
   code: EffectCode;
@@ -26,7 +36,15 @@ export type PlayerState = {
   finished: boolean;
 };
 
-export const NEGATIVE_EFFECTS: readonly EffectCode[] = ['gazon', 'yellow_card'];
+/** Debuffs removable by Раздевалка (07) / Бутылка с водой (36). */
+export const NEGATIVE_EFFECTS: readonly EffectCode[] = [
+  'gazon',
+  'yellow_card',
+  'press_trap',
+  'dirty_time',
+  'broken_boot',
+  'tribune_panic',
+];
 
 export function makePlayer(position = FIRST_CELL, effects: ActiveEffect[] = []): PlayerState {
   return { position, effects, finished: position >= LAST_CELL };
@@ -71,24 +89,52 @@ export function moveBy(state: PlayerState, delta: number): PlayerState {
 export type RollModifiers = {
   tribuny: boolean;
   gazon: boolean;
+  secondBreath: boolean;
+  pressTrap: boolean;
+  brokenBoot: boolean;
+  tribunePanic: boolean;
+  dirtyTime: boolean;
 };
 
 /**
- * Снимает заряды Трибун и Газона перед броском.
- * Оба расходуются, даже если взаимно компенсировались.
+ * �������� roll-������������ ����� �������.
+ * ����������� ������� �����������, �����-�������� ������ 1 �����.
+ * ��� �������� ������������ ����������� � ����� ������, ����� �����������.
+ * ������� ���������� � applyRollModifiers: flat buffs/debuffs, dirtyTime cap, min 1.
  */
 export function takeRollModifiers(state: PlayerState): { state: PlayerState; mods: RollModifiers } {
   const mods: RollModifiers = {
     tribuny: hasEffect(state, 'tribuny'),
     gazon: hasEffect(state, 'gazon'),
+    secondBreath: hasEffect(state, 'second_breath'),
+    pressTrap: hasEffect(state, 'press_trap'),
+    brokenBoot: hasEffect(state, 'broken_boot'),
+    tribunePanic: hasEffect(state, 'tribune_panic'),
+    dirtyTime: hasEffect(state, 'dirty_time'),
   };
   let next = state;
   if (mods.tribuny) next = spendCharge(next, 'tribuny');
   if (mods.gazon) next = spendCharge(next, 'gazon');
+  if (mods.secondBreath) next = spendCharge(next, 'second_breath');
+  if (mods.pressTrap) next = spendCharge(next, 'press_trap');
+  if (mods.brokenBoot) next = spendCharge(next, 'broken_boot');
+  if (mods.tribunePanic) next = spendCharge(next, 'tribune_panic');
+  if (mods.dirtyTime) next = spendCharge(next, 'dirty_time');
   return { state: next, mods };
 }
 
-export type CellChoice = 'var' | 'passage' | 'locker';
+export type CellChoice =
+  | 'var'
+  | 'passage'
+  | 'locker'
+  | 'pack_choice'
+  | 'penalty'
+  | 'dribble'
+  | 'super_sub'
+  | 'corner'
+  | 'foul'
+  | 'red_var'
+  | 'attack_break';
 
 export type CellOutcome = {
   state: PlayerState;
@@ -295,6 +341,11 @@ export function describeEffects(state: PlayerState): Array<{ code: EffectCode; l
     shieldki: 'Щитки',
     yellow_card: 'Жёлтая карточка',
     tactics: 'Тактическая схема',
+    press_trap: 'Прессинг-ловушка',
+    dirty_time: 'Грязное время',
+    broken_boot: 'Сломанный бутс',
+    tribune_panic: 'Паника на трибунах',
+    second_breath: 'Суперзамена: +2',
   };
   return state.effects
     .filter((e) => e.charges > 0)

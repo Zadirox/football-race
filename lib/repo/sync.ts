@@ -315,8 +315,10 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
       shots_on_target_home: number | null; shots_on_target_away: number | null;
     },
     target: { provider: 'football-data' | 'sstats'; externalId: string },
+    opts?: { timeoutMs?: number },
   ): Promise<NormalizedMatch[]> => {
     if (!env.sstatsEnabled) return [];
+    const timeoutMs = Math.max(2_000, Math.min(opts?.timeoutMs ?? 8_000, 12_000));
     const mh = normTeamKey(row.home_name);
     const ma = normTeamKey(row.away_name);
     const from = new Date(row.kickoff_utc.getTime() - 6 * 60 * 60 * 1000);
@@ -344,7 +346,7 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
     });
     if (!cand) return [];
     try {
-      const detail = await fetchSstatsGameDetail({ id: cand.external_id, apiKey: env.sstatsApiKey, timeoutMs: 8_000 });
+      const detail = await fetchSstatsGameDetail({ id: cand.external_id, apiKey: env.sstatsApiKey, timeoutMs });
       requestsUsed += 1;
       const core = detail.core;
       const stats = {
@@ -432,8 +434,8 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
             const nm = normalizeMatch(fd.match);
             if (nm) {
               fdGroups.push([nm]);
-              if (nm.status !== 'NS' && nm.status !== 'PST' && nm.status !== 'CANC') {
-                const extras = await findSstatsFallback(row, { provider: 'football-data', externalId: row.external_id }).catch(() => [] as NormalizedMatch[]);
+              if (nm.status !== 'NS' && nm.status !== 'PST' && nm.status !== 'CANC' && Date.now() < processingDeadlineMs - 3_000) {
+                const extras = await findSstatsFallback(row, { provider: 'football-data', externalId: row.external_id }, { timeoutMs: isLiveMode ? 4_000 : 8_000 }).catch(() => [] as NormalizedMatch[]);
                 const sstatsNm = extras.find((x) => x.provider === 'sstats');
                 if (sstatsNm) sstatsGroups.push([sstatsNm]);
               }
@@ -479,8 +481,8 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         let recovered = false;
-        if (row.provider === 'football-data') {
-          const fbs = await findSstatsFallback(row, { provider: 'football-data', externalId: row.external_id }).catch(() => [] as NormalizedMatch[]);
+        if (row.provider === 'football-data' && Date.now() < processingDeadlineMs - 3_000) {
+          const fbs = await findSstatsFallback(row, { provider: 'football-data', externalId: row.external_id }, { timeoutMs: isLiveMode ? 4_000 : 8_000 }).catch(() => [] as NormalizedMatch[]);
           if (fbs.length) {
             for (const fb of fbs) {
               if (fb.provider === 'football-data') fdGroups.push([fb]);
@@ -766,8 +768,8 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
                 if (comp && (comp.scope !== 'whitelist_only' || clubMatchInWhitelistScope(nm))) inScopeNormalized.push(nm);
               }
               seen.add(key);
-              if (nm.status !== 'NS' && nm.status !== 'PST' && nm.status !== 'CANC') {
-                const extras = await findSstatsFallback(row, { provider: 'football-data', externalId: row.external_id }).catch(() => [] as NormalizedMatch[]);
+              if (nm.status !== 'NS' && nm.status !== 'PST' && nm.status !== 'CANC' && Date.now() < processingDeadlineMs - 3_000) {
+                const extras = await findSstatsFallback(row, { provider: 'football-data', externalId: row.external_id }, { timeoutMs: isLiveMode ? 4_000 : 8_000 }).catch(() => [] as NormalizedMatch[]);
                 const sstatsNm = extras.find((x) => x.provider === 'sstats');
                 if (sstatsNm) { normalized.push(sstatsNm); sstatsGroups.push([sstatsNm]); }
               }
@@ -823,8 +825,8 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
         let recovered = false;
-        if (row.provider === 'football-data') {
-          const fbs = await findSstatsFallback(row, { provider: 'football-data', externalId: row.external_id }).catch(() => [] as NormalizedMatch[]);
+        if (row.provider === 'football-data' && Date.now() < processingDeadlineMs - 3_000) {
+          const fbs = await findSstatsFallback(row, { provider: 'football-data', externalId: row.external_id }, { timeoutMs: isLiveMode ? 4_000 : 8_000 }).catch(() => [] as NormalizedMatch[]);
           if (fbs.length) {
             for (const fb of fbs) {
               normalized.push(fb);

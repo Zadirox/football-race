@@ -298,7 +298,7 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
         // quota отмечена в errors; ниже обработается как reason при отсутствии данных
       }
     }
-  } else if (hasFootballData) {
+  } else if (!isLiveMode && hasFootballData) {
     errors.push('football-data: недостаточно бюджета на fetch');
   }
 

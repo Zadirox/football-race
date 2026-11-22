@@ -8,9 +8,9 @@
 
 import { db } from '@/lib/db';
 import { hasDatabase, serverEnv } from '@/lib/env';
-import { fetchFixtures } from '@/lib/data/footballData';
-import { enrichSstatsMatchesWithStats, fetchSstatsFixtures, fetchSstatsUnlFixtures } from '@/lib/data/sstats';
-import { normalizeMatches, type NormalizedMatch } from '@/lib/data/normalize';
+import { fetchFixtures, fetchFootballDataMatch } from '@/lib/data/footballData';
+import { enrichSstatsMatchesWithStats, fetchSstatsFixtures, fetchSstatsGameDetail, fetchSstatsUnlFixtures } from '@/lib/data/sstats';
+import { normalizeMatch, normalizeMatches, type NormalizedMatch } from '@/lib/data/normalize';
 import { generateMatchQuestions } from '@/lib/data/questions';
 import { teamNameRu } from '@/lib/data/team-names';
 import { syncWindow } from '@/lib/data/sync-window';
@@ -490,6 +490,124 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
   }
   if (excludedOutOfScope > 0) {
     errors.push(`scope: исключено матчей вне whitelist/scope: ${excludedOutOfScope}`);
+  }
+
+  // Targeted refresh: /matches window listing can miss updates for some comps/matches.
+  // For in-scope, not-final matches in window, fetch by provider ID (budgeted).
+  try {
+    const staleRows = await sql<{
+      id: string; provider: string; external_id: string; league_code: string; league_title: string;
+      home_name: string; home_logo: string | null; away_name: string; away_logo: string | null;
+      kickoff_utc: Date; status: string; minute: number | null;
+      home_score: number | null; away_score: number | null; ht_home_score: number | null; ht_away_score: number | null;
+      corners_home: number | null; corners_away: number | null; yellow_cards_home: number | null; yellow_cards_away: number | null;
+      red_cards_home: number | null; red_cards_away: number | null; possession_home: number | null; possession_away: number | null;
+      shots_on_target_home: number | null; shots_on_target_away: number | null;
+    }[]>`
+      select m.id, m.provider, m.external_id, m.league_code, m.league_title,
+             m.home_name, m.home_logo, m.away_name, m.away_logo,
+             m.kickoff_utc, m.status, m.minute,
+             m.home_score, m.away_score, m.ht_home_score, m.ht_away_score,
+             m.corners_home, m.corners_away, m.yellow_cards_home, m.yellow_cards_away,
+             m.red_cards_home, m.red_cards_away, m.possession_home, m.possession_away,
+             m.shots_on_target_home, m.shots_on_target_away
+      from matchday_matches mm
+      join matchdays md on md.id = mm.matchday_id
+      join matches m on m.id = mm.match_id
+      where md.season_id = ${season.id}
+        and md.game_date >= ${window.from}::date
+        and md.game_date <= ${window.to}::date
+        and mm.in_scope = true
+        and m.status not in ('FT','PST','CANC','ABD')
+        and m.kickoff_utc <= now() + interval '2 hours'
+      order by m.kickoff_utc asc
+      limit 12
+    `;
+    const seen = new Set(normalized.map((m) => `${m.provider}:${m.externalId}`));
+    let refreshBudget = 6; // protect FD quota / cron budget
+    for (const row of staleRows) {
+      if (refreshBudget <= 0) break;
+      if (Date.now() >= processingDeadlineMs - 4_000) break;
+      const key = `${row.provider}:${row.external_id}`;
+      if (seen.has(key)) {
+        // already fetched in window; still allow refresh if it was NS and started long ago? skip for now
+        continue;
+      }
+      try {
+        if (row.provider === 'football-data' && hasFootballData) {
+          refreshBudget -= 1;
+          requestsUsed += 1;
+          fetchedTotal += 1;
+          const fd = await fetchFootballDataMatch({ token: env.footballDataToken!, matchId: row.external_id });
+          if (fd.httpStatus) httpStatus = fd.httpStatus;
+          if (fd.match) {
+            const nm = normalizeMatch(fd.match);
+            if (nm) {
+              normalized.push(nm);
+              // also include in inScopeNormalized if it passes scope rules
+              if (nm.leagueCode === 'UNL') inScopeNormalized.push(nm);
+              else {
+                const comp = CLUB_COMPETITION_BY_LEAGUE_CODE[nm.leagueCode];
+                if (comp && (comp.scope !== 'whitelist_only' || clubMatchInWhitelistScope(nm))) inScopeNormalized.push(nm);
+              }
+              seen.add(key);
+            }
+          }
+        } else if (row.provider === 'sstats' && env.sstatsEnabled) {
+          refreshBudget -= 1;
+          requestsUsed += 1;
+          const detail = await fetchSstatsGameDetail({
+            id: row.external_id,
+            apiKey: env.sstatsApiKey,
+            timeoutMs: 8_000,
+          });
+          const core = detail.core;
+          const nm: NormalizedMatch = {
+            provider: 'sstats',
+            externalId: row.external_id,
+            leagueCode: row.league_code,
+            leagueTitle: row.league_title,
+            homeName: row.home_name,
+            homeLogo: row.home_logo,
+            awayName: row.away_name,
+            awayLogo: row.away_logo,
+            kickoffUtc: new Date(row.kickoff_utc),
+            status: (core?.status ?? row.status) as NormalizedMatch['status'],
+            minute: core?.minute ?? row.minute,
+            homeScore: core?.homeScore ?? row.home_score,
+            awayScore: core?.awayScore ?? row.away_score,
+            htHomeScore: core?.htHomeScore ?? row.ht_home_score,
+            htAwayScore: core?.htAwayScore ?? row.ht_away_score,
+            stats: {
+              cornersHome: detail.stats.cornersHome ?? row.corners_home,
+              cornersAway: detail.stats.cornersAway ?? row.corners_away,
+              yellowCardsHome: detail.stats.yellowCardsHome ?? row.yellow_cards_home,
+              yellowCardsAway: detail.stats.yellowCardsAway ?? row.yellow_cards_away,
+              redCardsHome: detail.stats.redCardsHome ?? row.red_cards_home,
+              redCardsAway: detail.stats.redCardsAway ?? row.red_cards_away,
+              possessionHome: detail.stats.possessionHome ?? row.possession_home,
+              possessionAway: detail.stats.possessionAway ?? row.possession_away,
+              shotsOnTargetHome: detail.stats.shotsOnTargetHome ?? row.shots_on_target_home,
+              shotsOnTargetAway: detail.stats.shotsOnTargetAway ?? row.shots_on_target_away,
+            },
+            raw: { refresh: 'detail', externalId: row.external_id, at: now.toISOString() },
+          };
+          normalized.push(nm);
+          if (nm.leagueCode === 'UNL') inScopeNormalized.push(nm);
+          else {
+            const comp = CLUB_COMPETITION_BY_LEAGUE_CODE[nm.leagueCode];
+            if (comp && (comp.scope !== 'whitelist_only' || clubMatchInWhitelistScope(nm))) inScopeNormalized.push(nm);
+          }
+          seen.add(key);
+        }
+      } catch (error) {
+        const message = error instanceof Error ? error.message : String(error);
+        errors.push(`refresh/${row.provider}/${row.external_id}: ${message}`);
+      }
+    }
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    errors.push(`targeted-refresh: ${message}`);
   }
 
   // 3.1=A: dates with national (UNL) in-scope matches are national-only; exclude club matches on those dates.

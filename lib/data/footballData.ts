@@ -75,3 +75,33 @@ export async function fetchFixtures(input: {
     requestsUsed: 1,
   };
 }
+
+/** Точечный fetch одного матча по ID (для refresh, когда /matches window не возвращает обновление). */
+export async function fetchFootballDataMatch(input: {
+  token: string;
+  matchId: string | number;
+  fetchImpl?: typeof fetch;
+}): Promise<{ match: ProviderMatch | null; httpStatus: number; requestsUsed: number }> {
+  const url = `${BASE_URL}/matches/${encodeURIComponent(String(input.matchId))}`;
+  const doFetch = input.fetchImpl ?? fetch;
+  let response: Response;
+  try {
+    response = await doFetch(url, {
+      headers: { 'X-Auth-Token': input.token },
+      cache: 'no-store',
+      signal: AbortSignal.timeout(TIMEOUT_MS),
+    });
+  } catch (error) {
+    throw new AppError('SYNC_PROVIDER_DOWN', `Провайдер не ответил: ${(error as Error).message}`);
+  }
+  if (response.status === 429) throw new AppError('SYNC_QUOTA_EXCEEDED');
+  if (!response.ok) throw new AppError('SYNC_PROVIDER_DOWN', `Провайдер вернул ${response.status}`);
+  let payload: unknown;
+  try {
+    payload = await response.json();
+  } catch {
+    throw new AppError('SYNC_PROVIDER_DOWN', 'Провайдер вернул не JSON');
+  }
+  const match = payload && typeof payload === 'object' && 'id' in (payload as any) ? (payload as ProviderMatch) : null;
+  return { match, httpStatus: response.status, requestsUsed: 1 };
+}

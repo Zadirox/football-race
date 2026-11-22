@@ -616,7 +616,10 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
           const awayOk = sa === ma || sa.includes(ma) || ma.includes(sa);
           return homeOk && awayOk;
         });
-        if (donor) normalized[i] = { ...m, stats: { ...m.stats, ...donor.stats } };
+        if (donor) {
+          const minute = (donor.minute != null && (m.status === 'LIVE' || m.status === 'HT')) ? donor.minute : (m.minute ?? donor.minute);
+          normalized[i] = { ...m, stats: { ...m.stats, ...donor.stats }, minute };
+        }
       }
     }
   }
@@ -864,7 +867,10 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
             const sa = normTeam(s.awayName);
             return (sh === mh || sh.includes(mh) || mh.includes(sh)) && (sa === ma || sa.includes(ma) || ma.includes(sa));
           });
-          if (donor) arr[i] = { ...m, stats: { ...m.stats, ...donor.stats } };
+          if (donor) {
+            const minute = (donor.minute != null && (m.status === 'LIVE' || m.status === 'HT')) ? donor.minute : (m.minute ?? donor.minute);
+            arr[i] = { ...m, stats: { ...m.stats, ...donor.stats }, minute };
+          }
         }
       }
     }
@@ -954,7 +960,17 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
 
   // Process all eligible in priority order; deadline break inside loop prevents overruns.
   // Unattached-first ordering means progress is made on missing matches each run.
-  const matchesToProcess = prioritizedProcessing;
+  // Live mode: только актуальные матчи (live/ht/скоро старт/недавно стартовали) — меньше DB работы, быстрее.
+  const matchesToProcess = isLiveMode
+    ? prioritizedProcessing.filter((m) => {
+        const nowMs = now.getTime();
+        const kickoffMs = m.kickoffUtc.getTime();
+        if (m.status === 'LIVE' || m.status === 'HT') return true;
+        if (!finalStatuses.has(m.status) && kickoffMs <= nowMs + 30 * 60_000) return true;
+        if (finalStatuses.has(m.status) && kickoffMs >= nowMs - 4 * 60 * 60_000) return true;
+        return false;
+      })
+    : prioritizedProcessing;
 
   tDbStartMs = Date.now();
   await sql.begin(async (tx) => {
@@ -999,10 +1015,11 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
         matchdayIds.set(gameDate, matchdayId);
       }
 
+      // Для LIVE не вычисляем минуту от wall-clock: это включает перерыв и даёт неверное значение (63' -> ~80'+).
+      // Если провайдер не дал minute, сохраняем null -> upsert оставит предыдущее значение из БД.
       const fallbackMinute = match.minute ?? (
         match.status === 'HT' ? 45 :
         match.status === 'FT' ? 90 :
-        match.status === 'LIVE' ? Math.max(1, Math.min(130, Math.floor((Date.now() - match.kickoffUtc.getTime()) / 60000))) :
         null
       );
 

@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { generateBoard, mulberry32, expandWeights, DEFAULT_WEIGHTS } from '@/lib/game/board';
+import { generateBoard, generateReworkedBoard, mulberry32, expandWeights, DEFAULT_WEIGHTS } from '@/lib/game/board';
 
 describe('mulberry32', () => {
   it('детерминирован для одного сида', () => {
@@ -126,5 +126,30 @@ describe('generateBoard', () => {
 
   it('индексы идут подряд от 1 до 80', () => {
     expect(board.cells.map((c) => c.idx)).toEqual(Array.from({ length: 80 }, (_, i) => i + 1));
+  });
+});
+
+
+describe('generateReworkedBoard (Phase 1 41-80)', () => {
+  const board = generateReworkedBoard();
+  const byIdx = new Map(board.cells.map((c) => [c.idx, c]));
+
+  it('keeps 80 cells with start/finish', () => {
+    expect(board.cells).toHaveLength(80);
+    expect(byIdx.get(1)?.kind).toBe('start');
+    expect(byIdx.get(80)?.kind).toBe('finish');
+  });
+
+  it('maps 41-80 event slots to new mechanics with no 20 placeholders', () => {
+    const expected = new Map([
+      [42, '21'], [44, '22'], [46, '23'], [48, '19'], [50, '24'], [52, '25'], [54, '26'], [56, '27'], [58, '28'], [60, '29'],
+      [62, '19'], [64, '30'], [66, '31'], [68, '32'], [70, '33'], [72, '34'], [74, '35'], [76, '36'], [78, '37'],
+    ]);
+    for (const [idx, code] of expected) {
+      expect(byIdx.get(idx)).toMatchObject({ idx, kind: 'event', mechanicCode: code });
+    }
+    const tailEvents = board.cells.filter((c) => c.idx >= 41 && c.idx <= 79 && c.kind === 'event');
+    expect(tailEvents).toHaveLength(expected.size);
+    expect(tailEvents.some((c) => c.mechanicCode === '20')).toBe(false);
   });
 });

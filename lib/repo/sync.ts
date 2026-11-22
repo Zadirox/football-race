@@ -283,7 +283,8 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
   }
 
   // 2) football-data first (B): reserve/guarantee FD before slow sstats club comp loop, so FD is not starved.
-  if (hasFootballData && Date.now() < processingDeadlineMs - 4_000) {
+  // В live mode пропускаем широкий FD listing: экономим квоту (10 req/min), live обновится через targeted ID refresh.
+  if (!isLiveMode && hasFootballData && Date.now() < processingDeadlineMs - 4_000) {
     try {
       const fixtures = await fetchFixtures({ token: env.footballDataToken!, from: window.from, to: window.to });
       fetchedTotal += fixtures.matches.length;
@@ -331,7 +332,7 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
       order by case when m.status in ('LIVE','HT') then 0 else 1 end, m.kickoff_utc asc
       limit ${isLiveMode ? 16 : 8}
     `;
-    let earlyBudget = isLiveMode ? 10 : 4;
+    let earlyBudget = isLiveMode ? 4 : 4;
     for (const row of liveRows) {
       if (earlyBudget <= 0) break;
       if (Date.now() >= processingDeadlineMs - 8_000) break;
@@ -621,11 +622,11 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
         and mm.in_scope = true
         and m.status not in ('FT','PST','CANC','ABD')
         and m.kickoff_utc <= now() + interval '2 hours'
-      order by m.kickoff_utc asc
-      limit 12
+      order by case when m.status in ('LIVE','HT') then 0 else 1 end, m.kickoff_utc asc
+      limit ${isLiveMode ? 12 : 12}
     `;
     const seen = new Set(normalized.map((m) => `${m.provider}:${m.externalId}`));
-    let refreshBudget = 6; // protect FD quota / cron budget
+    let refreshBudget = isLiveMode ? 4 : 6; // protect FD quota / cron budget
     for (const row of staleRows) {
       if (refreshBudget <= 0) break;
       if (Date.now() >= processingDeadlineMs - 4_000) break;

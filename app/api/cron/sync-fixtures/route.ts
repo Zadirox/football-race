@@ -17,34 +17,49 @@ export const maxDuration = 60;
 // Keep under typical external-cron timeout (30s) with margin for DB/connect overhead.
 const CRON_BUDGET_MS = 35_000;
 
+function isConnectionEnded(error: unknown): boolean {
+  const msg = error instanceof Error ? error.message : String(error);
+  const code = (error as { code?: string } | null)?.code;
+  return code === 'CONNECTION_ENDED' || msg.includes('CONNECTION_ENDED');
+}
+
 async function run(request: Request): Promise<Response> {
   if (!cronAuthorized(request)) {
     return NextResponse.json({ ok: false, error: 'UNAUTHORIZED' }, { status: 401 });
   }
 
-  try {
-    const report = await syncFixtures({ budgetMs: CRON_BUDGET_MS });
+  for (let attempt = 0; attempt < 2; attempt++) {
+    try {
+      const report = await syncFixtures({ budgetMs: CRON_BUDGET_MS });
 
-    if (report.reason === 'CONFIG_MISSING') {
-      return NextResponse.json(report, { status: 503 });
-    }
-    if (report.reason === 'SYNC_QUOTA_EXCEEDED') {
-      console.warn('[sync-fixtures] quota exceeded', JSON.stringify(report));
-      return NextResponse.json(report, { status: 429 });
-    }
-    if (!report.ok) {
-      console.error('[sync-fixtures] failed', JSON.stringify(report));
-      return NextResponse.json(report, { status: 502 });
-    }
+      if (report.reason === 'CONFIG_MISSING') {
+        return NextResponse.json(report, { status: 503 });
+      }
+      if (report.reason === 'SYNC_QUOTA_EXCEEDED') {
+        console.warn('[sync-fixtures] quota exceeded', JSON.stringify(report));
+        return NextResponse.json(report, { status: 429 });
+      }
+      if (!report.ok) {
+        console.error('[sync-fixtures] failed', JSON.stringify(report));
+        return NextResponse.json(report, { status: 502 });
+      }
 
-    return NextResponse.json(report);
-  } catch (error) {
-    const message = error instanceof Error ? error.message : String(error);
-    console.error('[sync-fixtures] exception', message);
-    return NextResponse.json({ ok: false, reason: 'ERROR', error: message }, { status: 500 });
-  } finally {
-    await closeDb().catch(() => {});
+      return NextResponse.json(report);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (isConnectionEnded(error) && attempt === 0) {
+        console.warn('[sync-fixtures] connection ended, retrying once', message);
+        await closeDb().catch(() => {});
+        continue;
+      }
+      console.error('[sync-fixtures] exception', message);
+      return NextResponse.json({ ok: false, reason: 'ERROR', error: message }, { status: 500 });
+    } finally {
+      await closeDb().catch(() => {});
+    }
   }
+
+  return NextResponse.json({ ok: false, reason: 'ERROR', error: 'retry exhausted' }, { status: 500 });
 }
 
 export async function GET(request: Request): Promise<Response> {

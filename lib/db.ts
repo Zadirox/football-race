@@ -39,9 +39,10 @@ export function db(): Db {
   return client;
 }
 
-/** Закрыть пул (скрипты, тесты). В приложении не вызывается. */
+/** Закрыть пул (скрипты, тесты, cron). Всегда сбрасываем client, чтобы мёртвое соединение не переиспользовалось. */
 export async function closeDb(): Promise<void> {
-  if (!client) return;
-  await client.end({ timeout: 5 });
+  const c = client;
   client = null;
+  if (!c) return;
+  await c.end({ timeout: 5 }).catch(() => {});
 }

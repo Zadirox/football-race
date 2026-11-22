@@ -1,36 +1,41 @@
-# WORKING_STATE
+# Working State
 
 ## Current goal
-- Fix stat-prediction pulling/crediting for 7 question types: `corners_more`, `shots_on_target_more`, `corners_total_over` (8.5), `red_card`, `shots_on_target_total_over` (8.5), `possession_more`, `yellow_cards_total_over` (3.5).
+Board Phase 1 (Native): pack-choice cell 19 + new 41-80 mechanics (final codes 21-37), per approved spec/plan.
 
-## What is done (this session)
-- Investigated prod DB (winter-2026): many FT/LIVE matches have stat questions open/void with null stat columns and null `correct_option`. Root causes: (1) club sstats matches were not detail-enriched in sync; (2) football-data matches have no corners/cards/possession/SOT from FD and never received sstats detail stats.
-- Local code fix in `lib/repo/sync.ts` (uncommitted):
-  - Enrich remaining club sstats matches with `enrichSstatsMatchesWithStats` before merge.
-  - Propagate stats from sstats matches to same-game football-data matches (name-normalized, 6h kickoff window) so FD stat questions get stats.
-  - Backfill: resolve/grade `open/locked` FT questions when `fn_question_answer` becomes non-null; grade answers; re-resolve already-resolved matchdays that received newly-resolved questions (idempotent-ish: `score_events`/dice `ON CONFLICT DO NOTHING`; Q/resolved_at recalculated).
-- Verified 4 orphaned open stat questions in already-resolved closed matchday `d0d4bb5b` (2026-11-20) have 0 answers - safe to resolve once stats arrive.
+## Completed this session
+- Task 1 (2f13753): catalog 19->choice + added 21-37; board 41-80 layout replaced 20 placeholders with 19,21-37; board tests PASS 19/19.
+- Task 2 (312a35b): engine foundations - new EffectCodes (press_trap, dirty_time, broken_boot, tribune_panic, second_breath), NEGATIVE_EFFECTS extended, RollModifiers/applyRollModifiers/takeRollModifiers extended, CellChoice/PendingChoiceView extended, dice roll modifier support. Tests PASS.
+- Task 3 (56306c6): cell 19 now pending pack_choice; game-tx no longer auto-grants national pack; cards disabled auto-resolves safely; choosePackChoiceAction added; GameHud pack choice modal. Engine+cards-grants PASS 54/54, tsc PASS.
+- Task 4 (c76c72c): instant mechanics 24 (autogol, shieldable -3), 30 (VAR offside 60% -2/40% +2), 36 (water bottle clears negative debuffs or +2), 37 (podnozhka side effect nearest ahead -2 fallback self +1). Engine PASS 46/46.
+- Task 5 (a0f5b8e): debuffs 22 press trap, 25 dirty time, 26 broken boot, 32 tribune panic (global buff_all side effect). game-tx side-effect application added (buff_all, move_all_others, move_nearest_ahead). Engine PASS 50/50.
+- Task 6 (8c7bb0b): choice/risk 21 penalty, 23 dribble, 27 super_sub, 28 corner, 29 foul - engine awaiting+apply helpers, actions, GameHud modals. Engine PASS 55/55, tsc PASS.
+- Task 7 (e83f80b): global/target 31 mass offside, 33 red VAR, 34 attack break, 35 meteorite, 37 podnozhka tx handling. Added move_target/random_chaos side effects, actions, GameHud target modals. Engine+board PASS 80/80, tsc PASS.
 
-## Not done / pending
-- Commit/push/deploy not done (awaiting user confirmation).
-- Prod DB not remediated yet; fix takes effect on next sync after deploy.
-- Need to confirm on prod that affected stat questions get stats/correct_option after sync.
+## Touched files (main)
+- lib/game/catalog.ts, lib/game/board.ts, lib/game/engine.ts, lib/game/dice.ts
+- lib/repo/game-tx.ts, lib/actions/game.ts
+- components/map/GameHud.tsx, lib/types.ts
+- tests/unit/engine.test.ts, tests/unit/board.test.ts
+- docs/superpowers/specs/2026-11-22-board-phase1-pack-choice-and-new-mechanics-design.md (approved)
+- docs/superpowers/plans/2026-11-22-board-phase1-pack-choice-and-new-mechanics.md
 
-## Agreed decisions
-- User explicitly allowed commit/push earlier in session for UI fixes; this stat-fix is a new request - confirm before commit/push/deploy.
-- Do not commit `tmp/`, `.playwright-mcp/`, `клубы/`, `сборные/`, `.env.local`.
+## Checks run (actual)
+- `npm run test:run -- tests/unit/board.test.ts` PASS (19/19) after Task 1.
+- `npm run test:run -- tests/unit/engine.test.ts` PASS (41/41, then 42/42, 46/46, 50/50, 55/55, 61/61) across tasks.
+- `npm run test:run -- tests/unit/roll.test.ts tests/unit/dice.test.ts tests/unit/board.test.ts` PASS (65/65) after Task 2.
+- `npm run test:run -- tests/unit/engine.test.ts tests/unit/cards-grants-classification.test.ts` PASS (54/54) after Task 3.
+- `npx tsc --noEmit --pretty false` PASS after Tasks 3,5,6,7,8.
+- `npm run test:run -- tests/unit/engine.test.ts tests/unit/board.test.ts tests/unit/cards.test.ts` PASS (92/92) final.
 
-## Open questions (awaiting agreement)
-- Commit/push/deploy the `lib/repo/sync.ts` stat-fix now?
+## Not done / risks
+- No DB migrations added; side effects use existing tables (season_players, active_effects, cell_events, pending_actions). Assumes active_effects allows multiple rows/code per player? Current code does delete+insert per effect for buff_all targets.
+- 33/34 target selection UI is basic (list); no "ahead-only" hint beyond filter. 34 allows fallback when none ahead.
+- random_chaos uses Math.random() in tx (server-side) - acceptable but not seeded from roll seed.
+- Demo mode handlers for new choice/risk mechanics are minimal (refresh) vs full local simulation.
+- Phase 2+ not implemented: mechanics 11-18 (batches 15 -> 14/16/18 -> 11/12/13/17).
+- Full test suite not run in this session; only targeted tests + tsc.
+- Changes are local commits on frontend-finish, not pushed/deployed.
 
-## Blockers / risks
-- If no sstats donor match exists in same sync batch for an FD match, propagation won't help; sstats availability/timeouts can limit enrichment.
-- Re-resolving already-resolved matchdays may not upgrade/downgrade dice tier (`ON CONFLICT DO NOTHING`) but will insert missing score_events and recalc Q/resolved_at.
-- `rpc_resolve_matchday` marks FT stat questions resolved even when answer is null (existing behavior); backfill mitigates when stats arrive later.
-
-## Checks run
-- `npx tsc --noEmit --pretty false` - PASS.
-- Prod DB read-only queries for stat question state - completed.
-
-## Next safe step
-- After user confirmation: commit `lib/repo/sync.ts` (+ `docs/WORKING_STATE.md`), push `frontend-finish`, deploy, trigger sync, verify affected stat questions.
+## Next step
+- Ask user to review Phase 1 results; if approved, run broader test suite as needed and prepare push/deploy decision (no push/deploy without explicit user request).

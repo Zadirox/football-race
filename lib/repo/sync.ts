@@ -616,6 +616,33 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
     errors.push(`targeted-refresh: ${message}`);
   }
 
+  // Propagate sstats stats to refreshed FD same-game matches.
+  try {
+    const normTeam = (s: string) => teamNameRu(s).toLowerCase().replace(/ё/g, 'е').replace(/[^a-zа-я0-9]+/gi, ' ').trim();
+    const hasStats = (m: NormalizedMatch) => Object.values(m.stats).some((v) => v !== null);
+    const sstatsWithStats = normalized.filter((m) => m.provider === 'sstats' && hasStats(m));
+    if (sstatsWithStats.length > 0) {
+      for (const arr of [normalized, inScopeNormalized]) {
+        for (let i = 0; i < arr.length; i++) {
+          const m = arr[i]!;
+          if (m.provider === 'sstats' || hasStats(m)) continue;
+          if (m.status === 'NS' || m.status === 'PST' || m.status === 'CANC') continue;
+          const mh = normTeam(m.homeName);
+          const ma = normTeam(m.awayName);
+          const mt = m.kickoffUtc.getTime();
+          const donor = sstatsWithStats.find((s) => {
+            const dt = Math.abs(s.kickoffUtc.getTime() - mt);
+            if (dt > 6 * 60 * 60 * 1000) return false;
+            const sh = normTeam(s.homeName);
+            const sa = normTeam(s.awayName);
+            return (sh === mh || sh.includes(mh) || mh.includes(sh)) && (sa === ma || sa.includes(ma) || ma.includes(sa));
+          });
+          if (donor) arr[i] = { ...m, stats: { ...m.stats, ...donor.stats } };
+        }
+      }
+    }
+  } catch { /* non-critical */ }
+
   // 3.1=A: dates with national (UNL) in-scope matches are national-only; exclude club matches on those dates.
   const nationalDates = new Set<GameDate>();
   for (const m of inScopeNormalized) {

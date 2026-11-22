@@ -16,7 +16,7 @@ import { teamNameRu } from '@/lib/data/team-names';
 import { syncWindow } from '@/lib/data/sync-window';
 import { isAppError } from '@/lib/errors';
 import { grantPacksForResolvedMatchday } from '@/lib/repo/cards-grants';
-import { CLUB_COMPETITIONS, CLUB_COMPETITION_BY_LEAGUE_CODE, isWhitelistedClubMatch } from '@/lib/data/club-phase';
+import { CLUB_COMPETITIONS, CLUB_COMPETITION_BY_LEAGUE_CODE, isClubMatchAllowedForCompetition } from '@/lib/data/club-phase';
 import {
   allMatchesFinal,
   nextMatchdayStatus,
@@ -116,7 +116,7 @@ function clubMatchInWhitelistScope(match: NormalizedMatch): boolean {
   const awayCandidates = [match.awayName, ...rawNames.away];
   for (const h of homeCandidates) {
     for (const a of awayCandidates) {
-      if (isWhitelistedClubMatch(h, a)) return true;
+      if (isClubMatchAllowedForCompetition(h, a, match.leagueCode)) return true;
     }
   }
   return false;

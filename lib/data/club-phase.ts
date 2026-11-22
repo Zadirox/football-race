@@ -58,7 +58,7 @@ export const CLUB_WHITELIST: readonly ClubWhitelistEntry[] = [
 
   // Испания (La Liga)
   { slug: 'atletico-madrid', nameRu: 'Атлетико Мадрид', country: 'Испания', leagueKey: 'laliga', inCardPool: true, sstatsAliases: ['Atletico Madrid', 'Atlético Madrid', 'Atlético de Madrid'] },
-  { slug: 'barcelona', nameRu: 'Барселона', country: 'Испания', leagueKey: 'laliga', inCardPool: true, sstatsAliases: ['Barcelona', 'FC Barcelona'] },
+  { slug: 'barcelona', nameRu: 'Барселона', country: 'Испания', leagueKey: 'laliga', inCardPool: true, sstatsAliases: ['Barcelona', 'FC Barcelona', 'Barça', 'Barca'] },
   { slug: 'real-betis', nameRu: 'Бетис', country: 'Испания', leagueKey: 'laliga', inCardPool: false, sstatsAliases: ['Real Betis'] },
   { slug: 'real-madrid', nameRu: 'Реал Мадрид', country: 'Испания', leagueKey: 'laliga', inCardPool: true, sstatsAliases: ['Real Madrid'] },
   { slug: 'villarreal', nameRu: 'Вильярреал', country: 'Испания', leagueKey: 'laliga', inCardPool: false, sstatsAliases: ['Villarreal', 'Villarreal CF'] },
@@ -174,4 +174,126 @@ export function matchWhitelistClub(teamName: string | null | undefined): ClubWhi
 
 export function isWhitelistedClubMatch(homeName: string | null | undefined, awayName: string | null | undefined): boolean {
   return matchWhitelistClub(homeName) !== null || matchWhitelistClub(awayName) !== null;
+}
+
+/**
+ * G1a (2026-11-22): domestic whitelist_only roster allowlist.
+ * Used only when exactly one side is whitelisted in a domestic whitelist_only competition.
+ * Seeded from observed legit 20-22.11 opponents + common top-flight teams; REVIEW NEEDED.
+ * Fail-closed: unknown non-whitelisted opponent => reject.
+ */
+export const DOMESTIC_LEAGUE_ROSTER: Readonly<Record<string, readonly string[]>> = {
+  PL: [
+    'Fulham', 'Фулхэм', 'Everton', 'Эвертон', 'West Ham', 'West Ham United', 'Вест Хэм', 'Вест Хэм Юнайтед',
+    'Crystal Palace', 'Кристал Пэлас', 'Wolverhampton', 'Wolves', 'Вулверхэмптон',
+    'Nottingham Forest', "Nott'ham Forest", 'Ноттингем Форест', 'Brentford', 'Брентфорд',
+    'Leeds United', 'Leeds', 'Лидс Юнайтед', 'Лидс', 'Burnley', 'Бернли', 'Sunderland', 'Сандерленд',
+    'Ipswich', 'Ipswich Town', 'Ипсвич Таун', 'Ипсвич', 'Leicester', 'Leicester City', 'Лестер',
+    'Southampton', 'Саутгемптон', 'Bournemouth', 'AFC Bournemouth', 'Борнмут',
+  ],
+  PD: [
+    'Sevilla', 'Sevilla FC', 'Севилья', 'Getafe', 'Getafe CF', 'Хетафе', 'Valencia', 'Valencia CF', 'Валенсия',
+    'Osasuna', 'CA Osasuna', 'Осасуна', 'Rayo Vallecano', 'Райо Вальекано', 'Mallorca', 'RCD Mallorca', 'Мальорка',
+    'Girona', 'Girona FC', 'Жирона', 'Alaves', 'Deportivo Alaves', 'Алавес',
+    'Las Palmas', 'UD Las Palmas', 'Лас-Пальмас', 'Espanyol', 'RCD Espanyol', 'Эспаньол',
+    'Real Valladolid', 'Valladolid', 'Вальядолид', 'Leganes', 'CD Leganes', 'Леганес',
+  ],
+  BL1: [
+    'FC Koln', '1. FC Koln', 'Koln', 'Cologne', '1. FC Cologne', 'Кёльн', 'Кельн',
+    'Schalke 04', 'FC Schalke 04', 'Шальке 04', 'Шальке',
+    'Eintracht Frankfurt', 'Frankfurt', 'Айнтрахт Франкфурт', 'Айнтрахт',
+    'Bayer Leverkusen', 'Leverkusen', 'Байер Леверкузен', 'Байер',
+    'VfL Wolfsburg', 'Wolfsburg', 'Вольфсбург',
+    'SC Freiburg', 'Freiburg', 'Фрайбург',
+    'Borussia Monchengladbach', "Borussia M'gladbach", 'Monchengladbach', 'Gladbach', 'Боруссия Мёнхенгладбах', 'Боруссия Менхенгладбах',
+    '1. FSV Mainz 05', 'Mainz', 'Mainz 05', 'Майнц',
+    'FC Augsburg', 'Augsburg', 'Аугсбург',
+    'Werder Bremen', 'Bremen', 'Вердер', 'Вердер Бремен',
+    'TSG Hoffenheim', 'Hoffenheim', 'Хоффенхайм',
+    'Union Berlin', '1. FC Union Berlin', 'Унион Берлин',
+    'FC St. Pauli', 'St Pauli', 'Санкт-Паули',
+    'Holstein Kiel', 'Kiel', 'Хольштайн Киль',
+    'VfL Bochum', 'Bochum', 'Бохум',
+    '1. FC Heidenheim', 'Heidenheim', 'Хайденхайм',
+  ],
+  SA: [
+    'Atalanta', 'Atalanta BC', 'Аталанта', 'Torino', 'Torino FC', 'Торино', 'Parma', 'Parma Calcio 1913', 'Парма',
+    'Udinese', 'Udinese Calcio', 'Удинезе', 'Bologna', 'Bologna FC', 'Болонья',
+    'Fiorentina', 'ACF Fiorentina', 'Фиорентина', 'Lazio', 'SS Lazio', 'Лацио',
+    'Genoa', 'Genoa CFC', 'Дженоа', 'Cagliari', 'Cagliari Calcio', 'Кальяри',
+    'Empoli', 'Empoli FC', 'Эмполи', 'Verona', 'Hellas Verona', 'Верона',
+    'Lecce', 'US Lecce', 'Лечче', 'Monza', 'AC Monza', 'Монца',
+  ],
+  FL1: [
+    'Auxerre', 'AJ Auxerre', 'Осер', 'Toulouse', 'Toulouse FC', 'Тулуза',
+    'Marseille', 'Olympique Marseille', 'OM', 'Марсель',
+    'Nice', 'OGC Nice', 'Ницца', 'Strasbourg', 'RC Strasbourg', 'Strasbourg Alsace', 'Страсбур',
+    'Rennes', 'Stade Rennais', 'Ренн', 'Reims', 'Stade de Reims', 'Реймс',
+    'Brest', 'Stade Brestois', 'Brestois', 'Брест', 'Nantes', 'FC Nantes', 'Нант',
+    'Montpellier', 'Montpellier HSC', 'Монпелье', 'Le Havre', 'Le Havre AC', 'Гавр',
+    'Saint-Etienne', 'AS Saint-Etienne', 'Сент-Этьен', 'Angers', 'Angers SCO', 'Анже',
+  ],
+  SLTR: [
+    'Besiktas', 'Besiktas JK', 'Бешикташ', 'Trabzonspor', 'Трабзонспор',
+    'Basaksehir', 'Istanbul Basaksehir', 'Башакшехир', 'Истанбул Башакшехир',
+    'Kasimpasa', 'Kasimpasa SK', 'Касымпаша', 'Antalyaspor', 'Антальяспор',
+    'Sivasspor', 'Сивасспор', 'Alanyaspor', 'Аланьяспор',
+    'Samsunspor', 'Самсунспор', 'Kocaelispor', 'Коджаэлиспор',
+  ],
+};
+
+function normalizeRosterName(value: string): string {
+  return normalizeClubTeamName(value);
+}
+
+const DOMESTIC_ROSTER_INDEX: ReadonlyMap<string, ReadonlySet<string>> = (() => {
+  const map = new Map<string, Set<string>>();
+  for (const [leagueCode, names] of Object.entries(DOMESTIC_LEAGUE_ROSTER)) {
+    const set = new Set<string>();
+    for (const n of names) {
+      const k = normalizeRosterName(n);
+      if (k) set.add(k);
+    }
+    map.set(leagueCode, set);
+  }
+  return map;
+})();
+
+export function isAllowedDomesticRosterOpponent(leagueCode: string, teamName: string | null | undefined): boolean {
+  if (!teamName) return false;
+  const set = DOMESTIC_ROSTER_INDEX.get(leagueCode);
+  if (!set) return false;
+  const norm = normalizeRosterName(teamName);
+  if (!norm) return false;
+  if (set.has(norm)) return true;
+  // conservative includes fallback, same spirit as whitelist matching
+  for (const aliasNorm of set) {
+    if (aliasNorm.length < 5 || norm.length < 5) continue;
+    if (norm.includes(aliasNorm) || aliasNorm.includes(norm)) return true;
+  }
+  return false;
+}
+
+/**
+ * G1 scope check for a match in a competition.
+ * - scope=all: true
+ * - euro cup whitelist_only (EL/ECL): OR (either team in whitelist)
+ * - domestic whitelist_only: both whitelisted OR exactly one whitelisted and other in domestic roster
+ */
+export function isClubMatchAllowedForCompetition(
+  homeName: string | null | undefined,
+  awayName: string | null | undefined,
+  leagueCode: string,
+): boolean {
+  const comp = CLUB_COMPETITION_BY_LEAGUE_CODE[leagueCode];
+  if (!comp) return false;
+  if (comp.scope === 'all') return true;
+  const homeW = matchWhitelistClub(homeName) !== null;
+  const awayW = matchWhitelistClub(awayName) !== null;
+  if (homeW && awayW) return true;
+  if (comp.kind === 'europe_cup') return homeW || awayW;
+  // domestic whitelist_only G1
+  if (homeW && !awayW) return isAllowedDomesticRosterOpponent(leagueCode, awayName);
+  if (!homeW && awayW) return isAllowedDomesticRosterOpponent(leagueCode, homeName);
+  return false;
 }

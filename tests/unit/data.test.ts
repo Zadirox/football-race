@@ -10,6 +10,7 @@ import {
   type ProviderMatch,
 } from '@/lib/data/normalize';
 import { isAllowedMatch, leagueByProviderCode } from '@/lib/data/leagues';
+import { isClubMatchAllowedForCompetition } from '@/lib/data/club-phase';
 
 function providerMatch(overrides: Partial<ProviderMatch> = {}): ProviderMatch {
   return {
@@ -132,5 +133,32 @@ describe('окно дня и выбор матчей', () => {
 
   it('приоритет у ЛЧ, дальше топ-лиги', () => {
     expect(pickDayMatches(matches, 3).map((m) => m.externalId)).toEqual(['3', '4', '2']);
+  });
+});
+
+describe('G1 club scope (domestic whitelist_only + roster)', () => {
+  it('euro cup whitelist_only keeps OR', () => {
+    expect(isClubMatchAllowedForCompetition('Arsenal', 'Some Random', 'EL')).toBe(true);
+    expect(isClubMatchAllowedForCompetition('Random A', 'Random B', 'EL')).toBe(false);
+  });
+
+  it('domestic: both whitelisted allowed', () => {
+    expect(isClubMatchAllowedForCompetition('Barcelona', 'Real Madrid', 'PD')).toBe(true);
+  });
+
+  it('domestic: one whitelisted + roster opponent allowed', () => {
+    expect(isClubMatchAllowedForCompetition('Bayern Munich', 'Köln', 'BL1')).toBe(true);
+    expect(isClubMatchAllowedForCompetition('Manchester City', 'Fulham', 'PL')).toBe(true);
+  });
+
+  it('domestic: one whitelisted + unknown/garbage opponent rejected (fail-closed)', () => {
+    expect(isClubMatchAllowedForCompetition('Juventus', 'Venezia', 'SA')).toBe(false);
+    expect(isClubMatchAllowedForCompetition('Milan', 'Frosinone', 'SA')).toBe(false);
+    expect(isClubMatchAllowedForCompetition('Brighton', 'Hull City', 'PL')).toBe(false);
+    expect(isClubMatchAllowedForCompetition('Real Sociedad', 'Racing Santander', 'PD')).toBe(false);
+  });
+
+  it('domestic: Barça alias matches whitelist', () => {
+    expect(isClubMatchAllowedForCompetition('Barça', 'Villarreal', 'PD')).toBe(true);
   });
 });

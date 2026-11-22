@@ -302,6 +302,88 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
     errors.push('football-data: недостаточно бюджета на fetch');
   }
 
+  const normTeamKey = (s: string) => teamNameRu(s).toLowerCase().replace(/ё/g, 'е').replace(/[^a-zа-я0-9]+/gi, ' ').trim();
+  const sameTeamLoose = (a: string, b: string) => a === b || a.includes(b) || b.includes(a);
+  const findSstatsFallback = async (
+    row: {
+      external_id: string; league_code: string; league_title: string;
+      home_name: string; home_logo: string | null; away_name: string; away_logo: string | null;
+      kickoff_utc: Date; status: string; minute: number | null;
+      home_score: number | null; away_score: number | null; ht_home_score: number | null; ht_away_score: number | null;
+      corners_home: number | null; corners_away: number | null; yellow_cards_home: number | null; yellow_cards_away: number | null;
+      red_cards_home: number | null; red_cards_away: number | null; possession_home: number | null; possession_away: number | null;
+      shots_on_target_home: number | null; shots_on_target_away: number | null;
+    },
+    target: { provider: 'football-data' | 'sstats'; externalId: string },
+  ): Promise<NormalizedMatch[]> => {
+    if (!env.sstatsEnabled) return [];
+    const mh = normTeamKey(row.home_name);
+    const ma = normTeamKey(row.away_name);
+    const from = new Date(row.kickoff_utc.getTime() - 6 * 60 * 60 * 1000);
+    const to = new Date(row.kickoff_utc.getTime() + 6 * 60 * 60 * 1000);
+    const candidates = await sql<{
+      external_id: string; home_name: string; away_name: string; kickoff_utc: Date; status: string; minute: number | null;
+      home_score: number | null; away_score: number | null; ht_home_score: number | null; ht_away_score: number | null;
+      corners_home: number | null; corners_away: number | null; yellow_cards_home: number | null; yellow_cards_away: number | null;
+      red_cards_home: number | null; red_cards_away: number | null; possession_home: number | null; possession_away: number | null;
+      shots_on_target_home: number | null; shots_on_target_away: number | null;
+    }[]>`
+      select external_id, home_name, away_name, kickoff_utc, status, minute, home_score, away_score, ht_home_score, ht_away_score,
+             corners_home, corners_away, yellow_cards_home, yellow_cards_away, red_cards_home, red_cards_away,
+             possession_home, possession_away, shots_on_target_home, shots_on_target_away
+      from matches
+      where provider = 'sstats'
+        and kickoff_utc >= ${from.toISOString()}::timestamptz
+        and kickoff_utc <= ${to.toISOString()}::timestamptz
+      limit 40
+    `;
+    const cand = candidates.find((c) => {
+      const ch = normTeamKey(c.home_name);
+      const ca = normTeamKey(c.away_name);
+      return sameTeamLoose(ch, mh) && sameTeamLoose(ca, ma);
+    });
+    if (!cand) return [];
+    try {
+      const detail = await fetchSstatsGameDetail({ id: cand.external_id, apiKey: env.sstatsApiKey, timeoutMs: 8_000 });
+      requestsUsed += 1;
+      const core = detail.core;
+      const stats = {
+        cornersHome: detail.stats.cornersHome ?? cand.corners_home,
+        cornersAway: detail.stats.cornersAway ?? cand.corners_away,
+        yellowCardsHome: detail.stats.yellowCardsHome ?? cand.yellow_cards_home,
+        yellowCardsAway: detail.stats.yellowCardsAway ?? cand.yellow_cards_away,
+        redCardsHome: detail.stats.redCardsHome ?? cand.red_cards_home,
+        redCardsAway: detail.stats.redCardsAway ?? cand.red_cards_away,
+        possessionHome: detail.stats.possessionHome ?? cand.possession_home,
+        possessionAway: detail.stats.possessionAway ?? cand.possession_away,
+        shotsOnTargetHome: detail.stats.shotsOnTargetHome ?? cand.shots_on_target_home,
+        shotsOnTargetAway: detail.stats.shotsOnTargetAway ?? cand.shots_on_target_away,
+      };
+      const base = {
+        leagueCode: row.league_code,
+        leagueTitle: row.league_title,
+        homeName: row.home_name,
+        homeLogo: row.home_logo,
+        awayName: row.away_name,
+        awayLogo: row.away_logo,
+        kickoffUtc: new Date(row.kickoff_utc),
+        status: (core?.status ?? cand.status) as NormalizedMatch['status'],
+        minute: core?.minute ?? cand.minute,
+        homeScore: core?.homeScore ?? cand.home_score,
+        awayScore: core?.awayScore ?? cand.away_score,
+        htHomeScore: core?.htHomeScore ?? cand.ht_home_score,
+        htAwayScore: core?.htAwayScore ?? cand.ht_away_score,
+        stats,
+        raw: { refresh: 'sstats-fallback', fdExternalId: row.external_id, sstatsExternalId: cand.external_id, at: now.toISOString() },
+      };
+      const out: NormalizedMatch[] = [{ provider: target.provider, externalId: target.externalId, ...base }];
+      out.push({ provider: 'sstats', externalId: cand.external_id, ...base });
+      return out;
+    } catch {
+      return [];
+    }
+  };
+
   // 2.5) Early targeted refresh for in-scope live/started matches — must run before slow club comp loop.
   try {
     const liveRows = await sql<{
@@ -386,7 +468,19 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
         }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        errors.push(`early-refresh/${row.provider}/${row.external_id}: ${message}`);
+        let recovered = false;
+        if (row.provider === 'football-data') {
+          const fbs = await findSstatsFallback(row, { provider: 'football-data', externalId: row.external_id }).catch(() => [] as NormalizedMatch[]);
+          if (fbs.length) {
+            for (const fb of fbs) {
+              if (fb.provider === 'football-data') fdGroups.push([fb]);
+              else sstatsGroups.push([fb]);
+            }
+            errors.push(`early-refresh/fd-fallback/${row.external_id}: used sstats same-game`);
+            recovered = true;
+          }
+        }
+        if (!recovered) errors.push(`early-refresh/${row.provider}/${row.external_id}: ${message}`);
       }
     }
   } catch (error) {
@@ -710,7 +804,23 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
         }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
-        errors.push(`refresh/${row.provider}/${row.external_id}: ${message}`);
+        let recovered = false;
+        if (row.provider === 'football-data') {
+          const fbs = await findSstatsFallback(row, { provider: 'football-data', externalId: row.external_id }).catch(() => [] as NormalizedMatch[]);
+          if (fbs.length) {
+            for (const fb of fbs) {
+              normalized.push(fb);
+              if (fb.leagueCode === 'UNL') inScopeNormalized.push(fb);
+              else {
+                const comp = CLUB_COMPETITION_BY_LEAGUE_CODE[fb.leagueCode];
+                if (comp && (comp.scope !== 'whitelist_only' || clubMatchInWhitelistScope(fb))) inScopeNormalized.push(fb);
+              }
+            }
+            errors.push(`refresh/fd-fallback/${row.external_id}: used sstats same-game`);
+            recovered = true;
+          }
+        }
+        if (!recovered) errors.push(`refresh/${row.provider}/${row.external_id}: ${message}`);
       }
     }
   } catch (error) {

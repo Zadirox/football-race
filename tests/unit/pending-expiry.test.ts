@@ -44,6 +44,21 @@ describe('безопасные ветки брошенных ожиданий', 
     expect(expiryDecision('')).toBeNull();
   });
 
+  it('last_minute забирает текущую награду', () => {
+    expect(expiryDecision('last_minute', [], { stage: 1, currentReward: 1 })).toEqual({
+      kind: 'last_minute',
+      currentReward: 1,
+    });
+    expect(expiryDecision('last_minute', [], { stage: 2, currentReward: 3 })).toEqual({
+      kind: 'last_minute',
+      currentReward: 3,
+    });
+  });
+
+  it('last_minute лог содержит автозабор награды', () => {
+    expect(expiryLog('Марк', { kind: 'last_minute', currentReward: 3 })).toContain('забирает текущую награду');
+  });
+
   it('список D7 распознаётся по типу', () => {
     for (const kind of EXPIRABLE_KINDS) expect(isExpirableKind(kind)).toBe(true);
     expect(isExpirableKind('roll')).toBe(false);

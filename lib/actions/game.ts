@@ -22,14 +22,29 @@ import {
   applyCorner,
   applyDribble,
   applyFoul,
+  applyLastMinute,
   applyLocker,
   applyPassage,
   applyPenalty,
   applyRedVar,
   applySuperSub,
   applyVar,
+  applyRematchKick,
+  applyTrainingShot,
+  initialRematchState,
+  initialTrainingBaseState,
+  isGuessCorrect,
   makePlayer,
+  moveBy,
+  resolveGentleman,
+  resolveSimulation,
+  trainingBaseReward,
+  guessPlayerReward,
   type EffectCode,
+  type GentlemanChoice,
+  type RematchDirection,
+  type SimulationChoice,
+  type JudgeChoice,
 } from '@/lib/game/engine';
 import { applyTacticsChoice, planRoll } from '@/lib/game/roll';
 import {
@@ -142,6 +157,7 @@ export async function submitRollAction(input: {
            and profile_id = ${viewer.profileId}
            and resolved_at is null
            and expires_at > now()
+           and (payload->>'waiting') is distinct from 'true'
          limit 1
       `;
       if (pending) throw new AppError('PENDING_ACTION_BLOCKS_ROLL');
@@ -682,6 +698,525 @@ export async function chooseAttackBreakAction(input: {
       if (!hasTarget) await persistState(tx, ctx, outcome.state);
       await logActivity(tx, pending.season_id, viewer.profileId, hasTarget ? 'positive' : 'neutral', outcome.log);
       await closePending(tx, pending, { targetProfileId: input.targetProfileId, delta: outcome.delta });
+    });
+    revalidateGame();
+    return { ok: true };
+  } catch (error) { return toResult(error); }
+}
+
+export async function chooseLastMinuteAction(input: {
+  pendingId: string;
+  choice: 'stop' | 'continue';
+}): Promise<ActionResult> {
+  if (!hasDatabase()) return demoOnly();
+  if (input.choice !== 'stop' && input.choice !== 'continue') return toResult(new AppError('INVALID_INPUT'));
+
+  try {
+    const viewer = await requireViewer();
+    await db().begin(async (tx) => {
+      const pending = await lockPending(tx, input.pendingId, viewer.profileId);
+      requirePendingKind(pending, 'last_minute');
+
+      const stageRaw = pending.payload.stage;
+      const rewardRaw = pending.payload.currentReward;
+      const stage = stageRaw === 1 || stageRaw === 2 ? stageRaw : null;
+      const currentReward = rewardRaw === 1 || rewardRaw === 3 ? rewardRaw : null;
+      if (!stage || !currentReward || (stage === 1 && currentReward !== 1) || (stage === 2 && currentReward !== 3)) {
+        throw new AppError('EVENT_NOT_CHOOSABLE');
+      }
+
+      const ctx = await lockPlayer(tx, pending.season_id, viewer.profileId);
+      const res = applyLastMinute(makePlayer(ctx.position, ctx.effects), input.choice, stage, currentReward);
+
+      if (!res.done) {
+        await tx`
+          update pending_actions
+             set payload = ${tx.json({ stage: res.stage, currentReward: res.currentReward })}
+           where id = ${pending.id}
+        `;
+        if (pending.event_id) {
+          await tx`
+            update cell_events
+               set outcome = coalesce(outcome, '{}'::jsonb) || ${tx.json({ stage: res.stage, currentReward: res.currentReward })}::jsonb
+             where id = ${pending.event_id}
+          `;
+        }
+        await logActivity(tx, pending.season_id, viewer.profileId, 'neutral', res.log);
+        return;
+      }
+
+      await persistState(tx, ctx, res.outcome.state);
+      await logActivity(
+        tx,
+        pending.season_id,
+        viewer.profileId,
+        res.outcome.delta >= 0 ? 'positive' : 'neutral',
+        res.outcome.log,
+      );
+      await closePending(tx, pending, {
+        choice: input.choice,
+        stage,
+        currentReward,
+        delta: res.outcome.delta,
+      });
+    });
+
+    revalidateGame();
+    return { ok: true };
+  } catch (error) {
+    return toResult(error);
+  }
+}
+
+// ---------- партнёрские механики (14/16/18) ----------
+
+type PendingDbRowLocal = { id: string; season_id: string; profile_id: string; event_id: string | null; kind: string; payload: unknown; expires_at: string | Date; resolved_at: string | Date | null };
+type PartnerKind = 'rematch' | 'simulation' | 'gentleman';
+const PARTNER_KINDS: readonly PartnerKind[] = ['rematch', 'simulation', 'gentleman'];
+
+function isPartnerKind(kind: string): kind is PartnerKind {
+  return (PARTNER_KINDS as readonly string[]).includes(kind);
+}
+
+export async function choosePartnerInviteAction(input: {
+  pendingId: string;
+  targetProfileId: string | null;
+}): Promise<ActionResult> {
+  if (!hasDatabase()) return demoOnly();
+
+  try {
+    const viewer = await requireViewer();
+    await db().begin(async (tx) => {
+      const pending = await lockPending(tx, input.pendingId, viewer.profileId);
+      if (!isPartnerKind(pending.kind)) throw new AppError('EVENT_NOT_CHOOSABLE');
+      const phase = pending.payload.phase;
+      if (phase !== 'pick_partner') throw new AppError('EVENT_NOT_CHOOSABLE');
+
+      const ctx = await lockPlayer(tx, pending.season_id, viewer.profileId);
+
+      // Decline / no partner
+      if (!input.targetProfileId) {
+        await logActivity(tx, pending.season_id, viewer.profileId, 'neutral', `${ctx.nickname} не выбрал партнёра: событие закрыто без штрафа.`);
+        await closePending(tx, pending, { cancelled: 'no_partner' });
+        return;
+      }
+
+      if (input.targetProfileId === viewer.profileId) throw new AppError('INVALID_INPUT', 'Нельзя выбрать себя');
+
+      const [target] = await tx<Array<{ profile_id: string; nickname: string }>>`
+        select sp.profile_id, p.nickname
+          from season_players sp
+          join profiles p on p.id = sp.profile_id
+         where sp.season_id = ${pending.season_id}
+           and sp.profile_id = ${input.targetProfileId}
+           and sp.is_active = true
+           and sp.finished_at is null
+         limit 1
+      `;
+      if (!target) throw new AppError('INVALID_INPUT', 'Партнёр недоступен');
+
+      // Partner must not have a blocking pending
+      const [partnerBlocking] = await tx<{ id: string }[]>`
+        select id from pending_actions
+         where season_id = ${pending.season_id}
+           and profile_id = ${input.targetProfileId}
+           and resolved_at is null
+           and expires_at > now()
+           and (payload->>'waiting') is distinct from 'true'
+         limit 1
+      `;
+      if (partnerBlocking) throw new AppError('INVALID_INPUT', 'У этого игрока уже есть активное событие');
+
+      // Initiator pending becomes waiting
+      await tx`
+        update pending_actions
+           set payload = ${tx.json({ phase: 'waiting_partner', initiatorId: viewer.profileId, partnerId: input.targetProfileId, waiting: true })}
+         where id = ${pending.id}
+      `;
+
+      // Partner gets response pending
+      await tx`
+        insert into pending_actions (season_id, profile_id, event_id, kind, payload, required_profile_id)
+        values (
+          ${pending.season_id},
+          ${input.targetProfileId},
+          ${pending.event_id},
+          ${pending.kind},
+          ${tx.json({ phase: 'partner_response', initiatorId: viewer.profileId, partnerId: input.targetProfileId, waiting: false })},
+          ${input.targetProfileId}
+        )
+      `;
+
+      if (pending.event_id) {
+        await tx`
+          update cell_events
+             set state = 'awaiting_other',
+                 outcome = coalesce(outcome, '{}'::jsonb) || ${tx.json({ partnerId: input.targetProfileId, partnerNickname: target.nickname })}::jsonb
+           where id = ${pending.event_id}
+        `;
+      }
+
+      await logActivity(tx, pending.season_id, viewer.profileId, 'neutral', `${ctx.nickname} вызвал ${target.nickname} на «${pending.kind === 'rematch' ? 'Ответный матч' : pending.kind === 'simulation' ? 'Симуляцию' : 'Джентльменское соглашение'}».`);
+    });
+    revalidateGame();
+    return { ok: true };
+  } catch (error) {
+    return toResult(error);
+  }
+}
+
+export async function respondPartnerInviteAction(input: {
+  pendingId: string;
+  accept: boolean;
+}): Promise<ActionResult> {
+  if (!hasDatabase()) return demoOnly();
+
+  try {
+    const viewer = await requireViewer();
+    await db().begin(async (tx) => {
+      const pending = await lockPending(tx, input.pendingId, viewer.profileId);
+      if (!isPartnerKind(pending.kind)) throw new AppError('EVENT_NOT_CHOOSABLE');
+      if (pending.payload.phase !== 'partner_response') throw new AppError('EVENT_NOT_CHOOSABLE');
+
+      const initiatorId = typeof pending.payload.initiatorId === 'string' ? pending.payload.initiatorId : null;
+      const partnerId = viewer.profileId;
+      if (!initiatorId) throw new AppError('EVENT_NOT_CHOOSABLE');
+
+      const [initiatorPending] = await tx<PendingDbRowLocal[]>`
+        select id, season_id, profile_id, event_id, kind, payload, expires_at, resolved_at
+          from pending_actions
+         where event_id = ${pending.event_id}
+           and profile_id = ${initiatorId}
+           and resolved_at is null
+         for update
+      `;
+
+      const ctx = await lockPlayer(tx, pending.season_id, partnerId);
+
+      if (!input.accept) {
+        // Decline: close all, no penalty
+        await tx`update pending_actions set resolved_at = now() where event_id = ${pending.event_id} and resolved_at is null`;
+        if (pending.event_id) {
+          await tx`
+            update cell_events
+               set state = 'resolved', resolved_at = now(),
+                   outcome = coalesce(outcome, '{}'::jsonb) || ${tx.json({ cancelled: 'declined', declinedBy: partnerId })}::jsonb
+             where id = ${pending.event_id}
+          `;
+        }
+        await logActivity(tx, pending.season_id, partnerId, 'neutral', `${ctx.nickname} отказался от дуэли. Штрафа нет.`);
+        return;
+      }
+
+      // Accept: both become active secret_choice / shootout
+      const nextPhase = pending.kind === 'rematch' ? 'shootout' : 'secret_choice';
+      const basePayload = {
+        phase: nextPhase,
+        initiatorId,
+        partnerId,
+        waiting: false,
+        ...(pending.kind === 'rematch' ? { rematch: initialRematchState() } : {}),
+      };
+
+      await tx`
+        update pending_actions
+           set payload = ${tx.json(basePayload as any)}, required_profile_id = ${partnerId}
+         where id = ${pending.id}
+      `;
+      if (initiatorPending) {
+        await tx`
+          update pending_actions
+             set payload = ${tx.json(basePayload as any)}, required_profile_id = ${initiatorId}
+           where id = ${initiatorPending.id}
+        `;
+      }
+
+      if (pending.event_id) {
+        await tx`
+          update cell_events
+             set state = 'awaiting_choice',
+                 outcome = coalesce(outcome, '{}'::jsonb) || ${tx.json({ accepted: true, phase: nextPhase })}::jsonb
+           where id = ${pending.event_id}
+        `;
+      }
+
+      await logActivity(tx, pending.season_id, partnerId, 'neutral', `${ctx.nickname} принял вызов. Дуэль начинается.`);
+    });
+    revalidateGame();
+    return { ok: true };
+  } catch (error) {
+    return toResult(error);
+  }
+}
+
+export async function submitPartnerChoiceAction(input: {
+  pendingId: string;
+  choice: string;
+}): Promise<ActionResult> {
+  if (!hasDatabase()) return demoOnly();
+
+  try {
+    const viewer = await requireViewer();
+    await db().begin(async (tx) => {
+      const pending = await lockPending(tx, input.pendingId, viewer.profileId);
+      if (!isPartnerKind(pending.kind)) throw new AppError('EVENT_NOT_CHOOSABLE');
+      if (pending.payload.waiting === true) throw new AppError('EVENT_NOT_CHOOSABLE');
+
+      const phase = pending.payload.phase;
+      const initiatorId = typeof pending.payload.initiatorId === 'string' ? pending.payload.initiatorId : null;
+      const partnerId = typeof pending.payload.partnerId === 'string' ? pending.payload.partnerId : null;
+      if (!initiatorId || !partnerId) throw new AppError('EVENT_NOT_CHOOSABLE');
+
+      const [other] = await tx<PendingDbRowLocal[]>`
+        select id, season_id, profile_id, event_id, kind, payload, expires_at, resolved_at
+          from pending_actions
+         where event_id = ${pending.event_id}
+           and profile_id <> ${viewer.profileId}
+           and resolved_at is null
+         for update
+      `;
+
+      if (pending.kind === 'rematch') {
+        if (phase !== 'shootout') throw new AppError('EVENT_NOT_CHOOSABLE');
+        const dir = input.choice;
+        if (dir !== 'left' && dir !== 'center' && dir !== 'right') throw new AppError('INVALID_INPUT');
+        const pick = dir as RematchDirection;
+        const rematch = (pending.payload.rematch as any) ?? initialRematchState();
+        const myKey = viewer.profileId === initiatorId ? 'initiatorPick' : 'partnerPick';
+        const otherKey = myKey === 'initiatorPick' ? 'partnerPick' : 'initiatorPick';
+
+        // Store my pick in both pendings payload for simplicity
+        const myPayload = { ...pending.payload, [myKey]: pick, waiting: true };
+        const otherPayload = other ? { ...(other.payload as Record<string, unknown>), [myKey]: pick } : null;
+
+        const otherPick = (pending.payload[otherKey] as RematchDirection | undefined) ?? (other?.payload as any)?.[otherKey];
+        if (!otherPick) {
+          // wait for other
+          await tx`update pending_actions set payload = ${tx.json(myPayload as any)} where id = ${pending.id}`;
+          if (other) await tx`update pending_actions set payload = ${tx.json({ ...otherPayload, waiting: false } as any)} where id = ${other.id}`;
+          await logActivity(tx, pending.season_id, viewer.profileId, 'neutral', `Серия пенальти: выбор сделан, ждём соперника.`);
+          return;
+        }
+
+        // both picked - resolve kick
+        const initiatorPick = myKey === 'initiatorPick' ? pick : (otherPick as RematchDirection);
+        const partnerPick = myKey === 'partnerPick' ? pick : (otherPick as RematchDirection);
+        const next = applyRematchKick(rematch, initiatorPick, partnerPick);
+
+        if (!next.done) {
+          const nextPayload = { phase: 'shootout', initiatorId, partnerId, waiting: false, rematch: next };
+          await tx`update pending_actions set payload = ${tx.json(nextPayload as any)} where id = ${pending.id}`;
+          if (other) await tx`update pending_actions set payload = ${tx.json(nextPayload as any)} where id = ${other.id}`;
+          const last = next.kicks[next.kicks.length - 1];
+          await logActivity(tx, pending.season_id, viewer.profileId, 'neutral', `Серия пенальти: раунд ${last?.round ?? '?'}, ${last?.goal ? 'гол!' : 'сейв/мимо'}. Счёт ${next.initiatorScore}:${next.partnerScore}.`);
+          return;
+        }
+
+        // done
+        const winnerId = next.winner === 'initiator' ? initiatorId : partnerId;
+        const loserId = next.winner === 'initiator' ? partnerId : initiatorId;
+        const [winnerCtx, loserCtx] = await Promise.all([lockPlayer(tx, pending.season_id, winnerId), lockPlayer(tx, pending.season_id, loserId)]);
+        const winnerState = moveBy(makePlayer(winnerCtx.position, winnerCtx.effects), 3);
+        await persistState(tx, winnerCtx, winnerState);
+        // loser gets 0 (no penalty) - per spec "проигравшему ничего"
+        await logActivity(tx, pending.season_id, winnerId, 'positive', `Ответный матч: победа ${winnerCtx.nickname}! Счёт ${next.initiatorScore}:${next.partnerScore}, +3 клетки.`);
+        await logActivity(tx, pending.season_id, loserId, 'neutral', `Ответный матч: ${loserCtx.nickname} уступил. Счёт ${next.initiatorScore}:${next.partnerScore}, без штрафа.`);
+        await tx`update pending_actions set resolved_at = now() where event_id = ${pending.event_id} and resolved_at is null`;
+        if (pending.event_id) {
+          await tx`update cell_events set state='resolved', resolved_at=now(), outcome=coalesce(outcome,'{}'::jsonb)||${tx.json({ rematch: next })}::jsonb where id=${pending.event_id}`;
+        }
+        return;
+      }
+
+      if (phase !== 'secret_choice') throw new AppError('EVENT_NOT_CHOOSABLE');
+
+      // simulation / gentleman
+      const isInitiator = viewer.profileId === initiatorId;
+      const myChoiceKey = isInitiator ? 'initiatorChoice' : 'partnerChoice';
+      const otherChoiceKey = isInitiator ? 'partnerChoice' : 'initiatorChoice';
+
+      // validate choice
+      if (pending.kind === 'simulation') {
+        const ok = isInitiator ? (input.choice === 'honest' || input.choice === 'simulate') : (input.choice === 'play_on' || input.choice === 'check');
+        if (!ok) throw new AppError('INVALID_INPUT');
+      } else {
+        if (input.choice !== 'cooperate' && input.choice !== 'take') throw new AppError('INVALID_INPUT');
+      }
+
+      const otherChoice = (pending.payload[otherChoiceKey] as string | undefined) ?? (other?.payload as any)?.[otherChoiceKey];
+      const myPayload = { ...pending.payload, [myChoiceKey]: input.choice, waiting: true };
+      const otherPayload = other ? { ...(other.payload as Record<string, unknown>), [myChoiceKey]: input.choice, waiting: false } : null;
+
+      if (!otherChoice) {
+        await tx`update pending_actions set payload = ${tx.json(myPayload as any)} where id = ${pending.id}`;
+        if (other) await tx`update pending_actions set payload = ${tx.json({ ...otherPayload, waiting: false } as any)} where id = ${other.id}`;
+        await logActivity(tx, pending.season_id, viewer.profileId, 'neutral', `Выбор сделан. Ждём соперника.`);
+        return;
+      }
+
+      // both chosen - resolve
+      const initiatorChoice = (isInitiator ? input.choice : otherChoice) as string;
+      const partnerChoice = (isInitiator ? otherChoice : input.choice) as string;
+      const [iCtx, pCtx] = await Promise.all([lockPlayer(tx, pending.season_id, initiatorId), lockPlayer(tx, pending.season_id, partnerId)]);
+
+      let iDelta = 0; let pDelta = 0; let log = '';
+      if (pending.kind === 'simulation') {
+        const res = resolveSimulation(initiatorChoice as SimulationChoice, partnerChoice as JudgeChoice);
+        iDelta = res.attackerDelta; pDelta = res.judgeDelta; log = res.log;
+      } else {
+        const res = resolveGentleman(initiatorChoice as GentlemanChoice, partnerChoice as GentlemanChoice);
+        iDelta = res.initiatorDelta; pDelta = res.partnerDelta; log = res.log;
+      }
+
+      const iState = moveBy(makePlayer(iCtx.position, iCtx.effects), iDelta);
+      const pState = moveBy(makePlayer(pCtx.position, pCtx.effects), pDelta);
+      await persistState(tx, iCtx, iState);
+      await persistState(tx, pCtx, pState);
+      await logActivity(tx, pending.season_id, null, 'neutral', log);
+
+      await tx`update pending_actions set resolved_at = now() where event_id = ${pending.event_id} and resolved_at is null`;
+      if (pending.event_id) {
+        await tx`update cell_events set state='resolved', resolved_at=now(), outcome=coalesce(outcome,'{}'::jsonb)||${tx.json({ initiatorChoice, partnerChoice, iDelta, pDelta })}::jsonb where id=${pending.event_id}`;
+      }
+    });
+
+    revalidateGame();
+    return { ok: true };
+  } catch (error) {
+    return toResult(error);
+  }
+}
+
+export async function resolveTrainingBaseAction(input: { pendingId: string }): Promise<ActionResult> {
+  if (!hasDatabase()) return demoOnly();
+  try {
+    const viewer = await requireViewer();
+    await db().begin(async (tx) => {
+      const pending = await lockPending(tx, input.pendingId, viewer.profileId);
+      requirePendingKind(pending, 'training_base');
+      const round = Number(pending.payload.round ?? 1);
+      const hits = Number(pending.payload.hits ?? 0);
+      const shots = Array.isArray(pending.payload.shots) ? pending.payload.shots as Array<{round:number;hit:boolean}> : [];
+      const done = pending.payload.done === true;
+      if (done || round > 3) throw new AppError('EVENT_NOT_CHOOSABLE');
+
+      const prev = { round, hits, shots, done: false };
+      const next = applyTrainingShot(prev);
+      const ctx = await lockPlayer(tx, pending.season_id, viewer.profileId);
+
+      if (!next.done) {
+        await tx`update pending_actions set payload = ${tx.json(next as any)} where id = ${pending.id}`;
+        const last = next.shots[next.shots.length - 1];
+        await logActivity(tx, pending.season_id, viewer.profileId, 'neutral', `Тренировочная база: удар ${last?.round ?? round} — ${last?.hit ? 'попадание' : 'промах'}.`);
+        return;
+      }
+
+      const reward = trainingBaseReward(next.hits);
+      const finalState = reward > 0 ? moveBy(makePlayer(ctx.position, ctx.effects), reward) : makePlayer(ctx.position, ctx.effects);
+      if (reward > 0) await persistState(tx, ctx, finalState);
+      await logActivity(tx, pending.season_id, viewer.profileId, reward > 0 ? 'positive' : 'neutral', `Тренировочная база: ${next.hits} из 3 попаданий. ${reward > 0 ? '+2 клетки.' : 'Без награды.'}`);
+      await closePending(tx, pending, { hits: next.hits, reward });
+    });
+    revalidateGame();
+    return { ok: true };
+  } catch (error) { return toResult(error); }
+}
+
+export async function revealGuessClueAction(input: { pendingId: string }): Promise<ActionResult> {
+  if (!hasDatabase()) return demoOnly();
+  try {
+    const viewer = await requireViewer();
+    await db().begin(async (tx) => {
+      const pending = await lockPending(tx, input.pendingId, viewer.profileId);
+      requirePendingKind(pending, 'guess_player');
+      const revealed = Number(pending.payload.revealed ?? 1);
+      if (revealed >= 4) throw new AppError('EVENT_NOT_CHOOSABLE');
+      await tx`update pending_actions set payload = ${tx.json({ ...pending.payload, revealed: revealed + 1 } as any)} where id = ${pending.id}`;
+    });
+    revalidateGame();
+    return { ok: true };
+  } catch (error) { return toResult(error); }
+}
+
+export async function submitGuessAnswerAction(input: { pendingId: string; answer: string }): Promise<ActionResult> {
+  if (!hasDatabase()) return demoOnly();
+  const answer = String(input.answer ?? '').trim();
+  if (!answer) return toResult(new AppError('INVALID_INPUT'));
+  try {
+    const viewer = await requireViewer();
+    await db().begin(async (tx) => {
+      const pending = await lockPending(tx, input.pendingId, viewer.profileId);
+      requirePendingKind(pending, 'guess_player');
+      const revealed = Number(pending.payload.revealed ?? 1);
+      const acceptedAnswers = Array.isArray(pending.payload.acceptedAnswers) ? pending.payload.acceptedAnswers.map(String) : [];
+      const correct = isGuessCorrect(answer, { acceptedAnswers });
+      const ctx = await lockPlayer(tx, pending.season_id, viewer.profileId);
+      if (correct) {
+        const reward = guessPlayerReward(revealed);
+        const finalState = moveBy(makePlayer(ctx.position, ctx.effects), reward);
+        await persistState(tx, ctx, finalState);
+        await logActivity(tx, pending.season_id, viewer.profileId, 'positive', `Узнай футболиста: верно! Открыто подсказок: ${revealed}, награда +${reward}.`);
+        await closePending(tx, pending, { correct: true, revealed, reward });
+      } else {
+        await logActivity(tx, pending.season_id, viewer.profileId, 'neutral', `Узнай футболиста: ответ неверный. Попытка использована.`);
+        await closePending(tx, pending, { correct: false, revealed, reward: 0 });
+      }
+    });
+    revalidateGame();
+    return { ok: true };
+  } catch (error) { return toResult(error); }
+}
+
+export async function submitFanSectorAction(input: { pendingId: string; submit: boolean }): Promise<ActionResult> {
+  if (!hasDatabase()) return demoOnly();
+  try {
+    const viewer = await requireViewer();
+    await db().begin(async (tx) => {
+      const pending = await lockPending(tx, input.pendingId, viewer.profileId);
+      requirePendingKind(pending, 'fan_sector');
+      const ctx = await lockPlayer(tx, pending.season_id, viewer.profileId);
+      if (!input.submit) {
+        await logActivity(tx, pending.season_id, viewer.profileId, 'neutral', `Фан-сектор: ${ctx.nickname} пропустил задание без штрафа.`);
+        await closePending(tx, pending, { submitted: false, skipped: true });
+        return;
+      }
+      // Mark as submitted for admin review - non-blocking waiting
+      await tx`update pending_actions set payload = ${tx.json({ ...pending.payload, submitted: true, waiting: true, phase: 'review' } as any)} where id = ${pending.id}`;
+      if (pending.event_id) {
+        await tx`update cell_events set state='awaiting_choice', outcome=coalesce(outcome,'{}'::jsonb)||${tx.json({ submitted: true, review: 'pending' })}::jsonb where id=${pending.event_id}`;
+      }
+      await logActivity(tx, pending.season_id, viewer.profileId, 'neutral', `Фан-сектор: ${ctx.nickname} отправил задание на проверку администратору.`);
+    });
+    revalidateGame();
+    return { ok: true };
+  } catch (error) { return toResult(error); }
+}
+
+export async function signCoachContractAction(input: { pendingId: string; sign: boolean }): Promise<ActionResult> {
+  if (!hasDatabase()) return demoOnly();
+  try {
+    const viewer = await requireViewer();
+    await db().begin(async (tx) => {
+      const pending = await lockPending(tx, input.pendingId, viewer.profileId);
+      requirePendingKind(pending, 'coach_contract');
+      const ctx = await lockPlayer(tx, pending.season_id, viewer.profileId);
+      if (!input.sign) {
+        await logActivity(tx, pending.season_id, viewer.profileId, 'neutral', `Контракт тренера: ${ctx.nickname} отказался без штрафа.`);
+        await closePending(tx, pending, { signed: false });
+        return;
+      }
+      const [targetDay] = await tx<{ id: string }[]>`
+        select id from matchdays
+         where season_id = ${pending.season_id}
+           and opens_at > now()
+         order by game_date asc, opens_at asc
+         limit 1
+      `;
+      await logActivity(tx, pending.season_id, viewer.profileId, 'positive', `Контракт тренера: ${ctx.nickname} подписал контракт на следующий игровой день.`);
+      await closePending(tx, pending, { signed: true, status: 'signed', targetMatchdayId: targetDay?.id ?? null });
+      if (pending.event_id) {
+        await tx`update cell_events set outcome=coalesce(outcome,'{}'::jsonb)||${tx.json({ signed: true, evaluation: 'pending', targetMatchdayId: targetDay?.id ?? null } as any)}::jsonb where id=${pending.event_id}`;
+      }
     });
     revalidateGame();
     return { ok: true };

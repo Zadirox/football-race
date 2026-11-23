@@ -335,7 +335,7 @@ async function loadFromDatabase(viewer: SeasonViewer): Promise<SeasonSnapshot> {
             and resolved_at is null
             and expires_at > now()
             and event_id is not null
-          order by created_at desc
+          order by (case when payload->>'waiting' = 'true' then 1 else 0 end) asc, created_at desc
           limit 1
         `,
       ])

@@ -208,9 +208,35 @@ export async function moveAndResolve(
   `;
 
   if (outcome.awaiting && event) {
+    let pendingPayload: Record<string, unknown> = {};
+    if (outcome.awaiting === 'last_minute') pendingPayload = { stage: 1, currentReward: 1 };
+    if (outcome.awaiting === 'rematch' || outcome.awaiting === 'simulation' || outcome.awaiting === 'gentleman') {
+      pendingPayload = { phase: 'pick_partner', initiatorId: ctx.profileId, waiting: false };
+    }
+    if (outcome.awaiting === 'training_base') {
+      pendingPayload = { round: 1, hits: 0, shots: [], done: false };
+    }
+    if (outcome.awaiting === 'guess_player') {
+      // pick a random riddle server-side; answer kept in payload but stripped by mapper
+      const riddles = [
+        { id: 'gp1', clues: ['Нападающий', 'Аргентина', 'Барселона', 'Интер Майами'], answer: 'Месси', acceptedAnswers: ['месси', 'lionel messi', 'leo messi'] },
+        { id: 'gp2', clues: ['Нападающий', 'Португалия', 'Реал Мадрид', 'Аль-Наср'], answer: 'Роналду', acceptedAnswers: ['роналду', 'cristiano ronaldo', 'cr7'] },
+        { id: 'gp3', clues: ['Нападающий', 'Франция', 'ПСЖ', 'Реал Мадрид'], answer: 'Мбаппе', acceptedAnswers: ['мбаппе', 'kylian mbappe', 'mbappe'] },
+        { id: 'gp4', clues: ['Полузащитник', 'Бельгия', 'Челси', 'Манчестер Сити'], answer: 'Де Брёйне', acceptedAnswers: ['де брейне', 'де брёйне', 'kevin de bruyne', 'de bruyne'] },
+        { id: 'gp5', clues: ['Нападающий', 'Норвегия', 'Боруссия Дортмунд', 'Манчестер Сити'], answer: 'Холанд', acceptedAnswers: ['холанд', 'erling haaland', 'haaland'] },
+      ];
+      const pick = riddles[Math.floor(Math.random() * riddles.length)]!;
+      pendingPayload = { phase: 'clues', riddleId: pick.id, clues: pick.clues, revealed: 1, answer: pick.answer, acceptedAnswers: pick.acceptedAnswers, resolved: false };
+    }
+    if (outcome.awaiting === 'fan_sector') {
+      pendingPayload = { phase: 'task', waiting: false, task: 'Сделай футбольный пост/клич/афишу для сообщества и отправь на проверку администратору.', submitted: false };
+    }
+    if (outcome.awaiting === 'coach_contract') {
+      pendingPayload = { phase: 'sign', waiting: false };
+    }
     await tx`
-      insert into pending_actions (season_id, profile_id, event_id, kind, payload)
-      values (${ctx.seasonId}, ${ctx.profileId}, ${event.id}, ${outcome.awaiting}, ${tx.json({})})
+      insert into pending_actions (season_id, profile_id, event_id, kind, payload, required_profile_id)
+      values (${ctx.seasonId}, ${ctx.profileId}, ${event.id}, ${outcome.awaiting}, ${tx.json(pendingPayload as any)}, ${ctx.profileId})
     `;
   }
 

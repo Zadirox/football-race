@@ -10,8 +10,19 @@ import {
   applyPenalty,
   applySuperSub,
   applyAttackBreak,
+  applyLastMinute,
   applyRedVar,
   applyVar,
+  initialRematchState,
+  applyRematchKick,
+  resolveGentleman,
+  resolveSimulation,
+  initialTrainingBaseState,
+  applyTrainingShot,
+  trainingBaseReward,
+  normalizeGuessAnswer,
+  isGuessCorrect,
+  guessPlayerReward,
   describeEffects,
   effectCharges,
   hasEffect,
@@ -536,5 +547,148 @@ describe('Phase 1 global/target mechanics', () => {
     const out = resolveCell(makePlayer(10), '35', 'Игрок');
     expect(out.delta).toBe(0);
     expect(out.sideEffects).toEqual([{ kind: 'random_chaos', penalty: -3, bonus: 2 }]);
+  });
+});
+
+describe('Mechanic 15 Last minute', () => {
+  it('15: creates pending last_minute with no movement', () => {
+    const out = resolveCell(makePlayer(20), '15', 'Тест');
+    expect(out.awaiting).toBe('last_minute');
+    expect(out.delta).toBe(0);
+    expect(out.state.position).toBe(20);
+    expect(out.log).toContain('Последняя минута');
+  });
+
+  it('15: stop at stage1 takes +1', () => {
+    const res = applyLastMinute(makePlayer(20), 'stop', 1, 1, () => 0.0);
+    expect(res.done).toBe(true);
+    if (res.done) {
+      expect(res.outcome.state.position).toBe(21);
+      expect(res.outcome.delta).toBe(1);
+    }
+  });
+
+  it('15: continue stage1 success moves to stage2 pending', () => {
+    const res = applyLastMinute(makePlayer(20), 'continue', 1, 1, () => 0.59);
+    expect(res).toEqual({ done: false, stage: 2, currentReward: 3, log: expect.any(String) });
+  });
+
+  it('15: continue stage1 fail resolves to 0', () => {
+    const res = applyLastMinute(makePlayer(20), 'continue', 1, 1, () => 0.6);
+    expect(res.done).toBe(true);
+    if (res.done) {
+      expect(res.outcome.state.position).toBe(20);
+      expect(res.outcome.delta).toBe(0);
+    }
+  });
+
+  it('15: continue stage2 success gives +5', () => {
+    const res = applyLastMinute(makePlayer(20), 'continue', 2, 3, () => 0.39);
+    expect(res.done).toBe(true);
+    if (res.done) {
+      expect(res.outcome.state.position).toBe(25);
+      expect(res.outcome.delta).toBe(5);
+    }
+  });
+
+  it('15: continue stage2 fail resolves to 0', () => {
+    const res = applyLastMinute(makePlayer(20), 'continue', 2, 3, () => 0.4);
+    expect(res.done).toBe(true);
+    if (res.done) {
+      expect(res.outcome.state.position).toBe(20);
+      expect(res.outcome.delta).toBe(0);
+    }
+  });
+
+  it('15: stop at stage2 takes current +3', () => {
+    const res = applyLastMinute(makePlayer(20), 'stop', 2, 3, () => 0.0);
+    expect(res.done).toBe(true);
+    if (res.done) {
+      expect(res.outcome.state.position).toBe(23);
+      expect(res.outcome.delta).toBe(3);
+    }
+  });
+});
+describe('Mechanic 16 Simulation', () => {
+  it('resolves all 4 matrix outcomes', () => {
+    expect(resolveSimulation('honest', 'play_on')).toEqual({ attackerDelta: 1, judgeDelta: 0, log: expect.any(String) });
+    expect(resolveSimulation('simulate', 'play_on')).toEqual({ attackerDelta: 3, judgeDelta: 0, log: expect.any(String) });
+    expect(resolveSimulation('simulate', 'check')).toEqual({ attackerDelta: -2, judgeDelta: 1, log: expect.any(String) });
+    expect(resolveSimulation('honest', 'check')).toEqual({ attackerDelta: 1, judgeDelta: -1, log: expect.any(String) });
+  });
+});
+
+describe('Mechanic 18 Gentleman', () => {
+  it('resolves all 4 outcomes', () => {
+    expect(resolveGentleman('cooperate', 'cooperate')).toEqual({ initiatorDelta: 2, partnerDelta: 2, log: expect.any(String) });
+    expect(resolveGentleman('take', 'cooperate')).toEqual({ initiatorDelta: 3, partnerDelta: -1, log: expect.any(String) });
+    expect(resolveGentleman('cooperate', 'take')).toEqual({ initiatorDelta: -1, partnerDelta: 3, log: expect.any(String) });
+    expect(resolveGentleman('take', 'take')).toEqual({ initiatorDelta: -1, partnerDelta: -1, log: expect.any(String) });
+  });
+});
+
+describe('Mechanic 14 Rematch', () => {
+  it('alternates attacker and scores goals on direction mismatch', () => {
+    let s = initialRematchState();
+    expect(s.round).toBe(1);
+    s = applyRematchKick(s, 'left', 'right'); // r1 initiator attacks, different => goal initiator
+    expect(s.initiatorScore).toBe(1);
+    expect(s.partnerScore).toBe(0);
+    expect(s.done).toBe(false);
+    s = applyRematchKick(s, 'left', 'left'); // r2 partner attacks, same => no goal
+    expect(s.partnerScore).toBe(0);
+    expect(s.done).toBe(false);
+  });
+
+  it('finishes after 4 base rounds when score differs', () => {
+    let s = initialRematchState();
+    s = applyRematchKick(s, 'left', 'right'); // 1-0
+    s = applyRematchKick(s, 'center', 'left'); // 1-1
+    s = applyRematchKick(s, 'left', 'right'); // 2-1
+    s = applyRematchKick(s, 'center', 'center'); // 2-1, round 4 pair end
+    expect(s.done).toBe(true);
+    expect(s.winner).toBe('initiator');
+  });
+
+  it('goes to sudden death and decides on pair end', () => {
+    let s = initialRematchState();
+    s = applyRematchKick(s, 'left', 'left'); // 0-0 r1
+    s = applyRematchKick(s, 'left', 'left'); // 0-0 r2
+    s = applyRematchKick(s, 'left', 'left'); // 0-0 r3
+    s = applyRematchKick(s, 'left', 'left'); // 0-0 r4, tie
+    expect(s.done).toBe(false);
+    s = applyRematchKick(s, 'left', 'right'); // 1-0 r5 odd, mid-pair? r5 odd -> continue
+    expect(s.done).toBe(false);
+    s = applyRematchKick(s, 'center', 'center'); // r6 even, 1-0 -> initiator wins
+    expect(s.done).toBe(true);
+    expect(s.winner).toBe('initiator');
+  });
+});
+
+describe('Mechanic 11 Training base', () => {
+  it('awards +2 for 2+ hits and 0 otherwise', () => {
+    expect(trainingBaseReward(2)).toBe(2);
+    expect(trainingBaseReward(3)).toBe(2);
+    expect(trainingBaseReward(1)).toBe(0);
+  });
+  it('resolves 3 shots and can finish early on 2 hits', () => {
+    let st = initialTrainingBaseState();
+    st = applyTrainingShot(st, () => 0.1);
+    st = applyTrainingShot(st, () => 0.1);
+    expect(st.done).toBe(true);
+    expect(st.hits).toBe(2);
+  });
+});
+
+describe('Mechanic 12 Guess player', () => {
+  it('normalizes answers and compares accepted forms', () => {
+    expect(normalizeGuessAnswer('  МеССи!! ')).toBe('месси');
+    expect(isGuessCorrect('Lionel Messi', { acceptedAnswers: ['месси', 'lionel messi'] })).toBe(true);
+  });
+  it('gives reward by revealed clues', () => {
+    expect(guessPlayerReward(1)).toBe(4);
+    expect(guessPlayerReward(2)).toBe(3);
+    expect(guessPlayerReward(3)).toBe(2);
+    expect(guessPlayerReward(4)).toBe(1);
   });
 });

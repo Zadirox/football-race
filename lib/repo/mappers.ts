@@ -195,7 +195,28 @@ const ACTIVITY_KINDS = new Set<ActivityView['kind']>([
   'system',
   'reward',
 ]);
-const PENDING_KINDS = new Set<PendingChoiceView['kind']>(['var', 'passage', 'locker', 'tactics']);
+const PENDING_KINDS = new Set<PendingChoiceView['kind']>([
+  'var',
+  'passage',
+  'locker',
+  'tactics',
+  'pack_choice',
+  'penalty',
+  'dribble',
+  'super_sub',
+  'corner',
+  'foul',
+  'red_var',
+  'attack_break',
+  'last_minute',
+  'rematch',
+  'simulation',
+  'gentleman',
+  'training_base',
+  'guess_player',
+  'fan_sector',
+  'coach_contract',
+]);
 
 // ---------- мапперы ----------
 
@@ -360,11 +381,26 @@ export function toPendingChoice(row: PendingRow | null): PendingChoiceView | nul
   if (!row) return null;
   if (!PENDING_KINDS.has(row.kind as PendingChoiceView['kind'])) return null;
 
+  const rawPayload = (row.payload && typeof row.payload === 'object' ? row.payload : {}) as Record<string, unknown>;
+  const payload = { ...rawPayload };
+  // Never leak secret answers/hidden picks to client.
+  if (row.kind === 'guess_player') {
+    delete payload.answer;
+    delete payload.acceptedAnswers;
+  }
+  if (row.kind === 'rematch' || row.kind === 'simulation' || row.kind === 'gentleman') {
+    delete payload.initiatorChoice;
+    delete payload.partnerChoice;
+    // rematch picks are transient but sanitize anyway
+    delete payload.initiatorPick;
+    delete payload.partnerPick;
+  }
+
   return {
     id: row.id,
     eventId: row.event_id,
     kind: row.kind as PendingChoiceView['kind'],
-    payload: (row.payload && typeof row.payload === 'object' ? row.payload : {}) as Record<string, unknown>,
+    payload,
     expiresAt: toIsoOr(row.expires_at, DATE_FALLBACK),
   };
 }

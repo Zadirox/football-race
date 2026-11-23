@@ -37,11 +37,20 @@ import {
   chooseCornerAction,
   chooseDribbleAction,
   chooseFoulAction,
+  chooseLastMinuteAction,
   chooseLockerAction,
   choosePackChoiceAction,
   choosePassageAction,
+  choosePartnerInviteAction,
   choosePenaltyAction,
   chooseRedVarAction,
+  respondPartnerInviteAction,
+  resolveTrainingBaseAction,
+  revealGuessClueAction,
+  signCoachContractAction,
+  submitFanSectorAction,
+  submitGuessAnswerAction,
+  submitPartnerChoiceAction,
   chooseSuperSubAction,
   chooseTacticsAction,
   chooseVarAction,
@@ -69,7 +78,15 @@ type PendingBody =
   | { kind: 'corner'; payload: Record<string, never> }
   | { kind: 'foul'; payload: Record<string, never> }
   | { kind: 'red_var'; payload: Record<string, never> }
-  | { kind: 'attack_break'; payload: Record<string, never> };
+  | { kind: 'attack_break'; payload: Record<string, never> }
+  | { kind: 'last_minute'; payload: { stage: 1 | 2; currentReward: 1 | 3 } }
+  | { kind: 'rematch'; payload: Record<string, unknown> }
+  | { kind: 'simulation'; payload: Record<string, unknown> }
+  | { kind: 'gentleman'; payload: Record<string, unknown> }
+  | { kind: 'training_base'; payload: Record<string, unknown> }
+  | { kind: 'guess_player'; payload: Record<string, unknown> }
+  | { kind: 'fan_sector'; payload: Record<string, unknown> }
+  | { kind: 'coach_contract'; payload: Record<string, unknown> };
 
 /** Ожидание решения: `id` есть только у записи из БД, в демо его нет. */
 type Pending = PendingBody & { id?: string };
@@ -97,6 +114,22 @@ function seedPending(view: SeasonSnapshot['pending']): Pending | null {
       kind: 'tactics',
       payload: { value, base, tier: payload.tier, from: typeof from === 'number' ? from : 0 },
     };
+  }
+
+  if (view.kind === 'last_minute') {
+    const stage = view.payload.stage;
+    const currentReward = view.payload.currentReward;
+    if ((stage === 1 || stage === 2) && (currentReward === 1 || currentReward === 3)) {
+      return { id: view.id, kind: 'last_minute', payload: { stage, currentReward } };
+    }
+    return null;
+  }
+
+  if (
+    view.kind === 'rematch' || view.kind === 'simulation' || view.kind === 'gentleman' ||
+    view.kind === 'training_base' || view.kind === 'guess_player' || view.kind === 'fan_sector' || view.kind === 'coach_contract'
+  ) {
+    return { id: view.id, kind: view.kind, payload: (view.payload && typeof view.payload === 'object' ? view.payload : {}) as Record<string, unknown> };
   }
 
   return { id: view.id, kind: view.kind, payload: {} };
@@ -334,14 +367,19 @@ export function GameHud({ snapshot }: { snapshot: SeasonSnapshot }) {
       const steps = stepSequence(from, final.position);
       const landingDelay = walkDelay(steps.length);
 
+      const pendingFromOutcome = (awaiting: NonNullable<typeof outcome.awaiting>): Pending => {
+        if (awaiting === 'last_minute') return { kind: 'last_minute', payload: { stage: 1, currentReward: 1 } };
+        return { kind: awaiting, payload: {} } as Pending;
+      };
+
       if (landingDelay === 0) {
         play(landSound);
-        if (outcome.awaiting) setPending({ kind: outcome.awaiting, payload: {} });
+        if (outcome.awaiting) setPending(pendingFromOutcome(outcome.awaiting));
       } else {
         window.setTimeout(() => play(landSound), landingDelay);
         if (outcome.awaiting) {
           const awaiting = outcome.awaiting;
-          window.setTimeout(() => setPending({ kind: awaiting, payload: {} }), landingDelay);
+          window.setTimeout(() => setPending(pendingFromOutcome(awaiting)), landingDelay);
         }
       }
 
@@ -670,6 +708,83 @@ export function GameHud({ snapshot }: { snapshot: SeasonSnapshot }) {
     setPending(null); router.refresh();
   }, [pending, router, runServerChoice, snapshot.demo]);
 
+  const chooseLastMinute = useCallback((choice: 'stop' | 'continue') => {
+    const pendingId = pending?.kind === 'last_minute' ? pending.id : undefined;
+    if (!snapshot.demo) {
+      if (!pendingId) return;
+      void runServerChoice(() => chooseLastMinuteAction({ pendingId, choice }), choice === 'continue' ? 'click' : 'reward');
+      return;
+    }
+    setPending(null);
+    router.refresh();
+  }, [pending, router, runServerChoice, snapshot.demo]);
+
+  const choosePartnerInvite = useCallback((targetProfileId: string | null) => {
+    const p = pending;
+    const pendingId = p && (p.kind === 'rematch' || p.kind === 'simulation' || p.kind === 'gentleman') ? p.id : undefined;
+    if (!snapshot.demo) {
+      if (!pendingId) return;
+      void runServerChoice(() => choosePartnerInviteAction({ pendingId, targetProfileId }), targetProfileId ? 'click' : 'land');
+      return;
+    }
+    setPending(null);
+    router.refresh();
+  }, [pending, router, runServerChoice, snapshot.demo]);
+
+  const respondPartnerInvite = useCallback((accept: boolean) => {
+    const p = pending;
+    const pendingId = p && (p.kind === 'rematch' || p.kind === 'simulation' || p.kind === 'gentleman') ? p.id : undefined;
+    if (!snapshot.demo) {
+      if (!pendingId) return;
+      void runServerChoice(() => respondPartnerInviteAction({ pendingId, accept }), accept ? 'positive' : 'land');
+      return;
+    }
+    setPending(null);
+    router.refresh();
+  }, [pending, router, runServerChoice, snapshot.demo]);
+
+  const submitPartnerChoice = useCallback((choice: string) => {
+    const p = pending;
+    const pendingId = p && (p.kind === 'rematch' || p.kind === 'simulation' || p.kind === 'gentleman') ? p.id : undefined;
+    if (!snapshot.demo) {
+      if (!pendingId) return;
+      void runServerChoice(() => submitPartnerChoiceAction({ pendingId, choice }), 'click');
+      return;
+    }
+    setPending(null);
+    router.refresh();
+  }, [pending, router, runServerChoice, snapshot.demo]);
+
+  const doTrainingShot = useCallback(() => {
+    const pendingId = pending?.kind === 'training_base' ? pending.id : undefined;
+    if (!snapshot.demo) { if (!pendingId) return; void runServerChoice(() => resolveTrainingBaseAction({ pendingId }), 'click'); return; }
+    setPending(null); router.refresh();
+  }, [pending, router, runServerChoice, snapshot.demo]);
+
+  const doRevealGuessClue = useCallback(() => {
+    const pendingId = pending?.kind === 'guess_player' ? pending.id : undefined;
+    if (!snapshot.demo) { if (!pendingId) return; void runServerChoice(() => revealGuessClueAction({ pendingId }), 'click'); return; }
+    setPending(null); router.refresh();
+  }, [pending, router, runServerChoice, snapshot.demo]);
+
+  const doSubmitGuessAnswer = useCallback((answer: string) => {
+    const pendingId = pending?.kind === 'guess_player' ? pending.id : undefined;
+    if (!snapshot.demo) { if (!pendingId) return; void runServerChoice(() => submitGuessAnswerAction({ pendingId, answer }), 'click'); return; }
+    setPending(null); router.refresh();
+  }, [pending, router, runServerChoice, snapshot.demo]);
+
+  const doFanSector = useCallback((submit: boolean) => {
+    const pendingId = pending?.kind === 'fan_sector' ? pending.id : undefined;
+    if (!snapshot.demo) { if (!pendingId) return; void runServerChoice(() => submitFanSectorAction({ pendingId, submit }), submit ? 'positive' : 'land'); return; }
+    setPending(null); router.refresh();
+  }, [pending, router, runServerChoice, snapshot.demo]);
+
+  const doCoachContract = useCallback((sign: boolean) => {
+    const pendingId = pending?.kind === 'coach_contract' ? pending.id : undefined;
+    if (!snapshot.demo) { if (!pendingId) return; void runServerChoice(() => signCoachContractAction({ pendingId, sign }), sign ? 'positive' : 'land'); return; }
+    setPending(null); router.refresh();
+  }, [pending, router, runServerChoice, snapshot.demo]);
+
   const toggleMute = () => {
     const next = !liveMuted;
     setLiveMuted(next);
@@ -679,17 +794,20 @@ export function GameHud({ snapshot }: { snapshot: SeasonSnapshot }) {
 
   const total = totalDice(dice);
 
+  const isWaiting = Boolean(pending && (pending.payload as Record<string, unknown>).waiting === true);
   const rollDisabled =
-    !canPlay || !me || busy || isWalking || Boolean(pending) || total === 0 || me.position >= 80;
+    !canPlay || !me || busy || isWalking || (Boolean(pending) && !isWaiting) || total === 0 || me.position >= 80;
   const rollHelper = !canPlay
     ? 'Сейчас бросают кубики только участники'
     : !me
       ? 'Ты смотришь как зритель'
       : isWalking
         ? 'Фишка идёт по клеткам'
-        : pending
+        : pending && !isWaiting
           ? 'Сначала выбери, что делать'
-          : me.position >= 80
+          : pending && isWaiting
+            ? 'Ждём ответа партнёра'
+            : me.position >= 80
             ? 'Ты уже на финише'
             : total === 0
               ? 'Кубиков нет — ответь на вопросы, чтобы получить'
@@ -932,7 +1050,7 @@ export function GameHud({ snapshot }: { snapshot: SeasonSnapshot }) {
         </div>
       )}
 
-      {pending && me && (
+      {pending && me && !isWaiting && (
         <EventModal
           pending={pending}
           me={me}
@@ -949,6 +1067,15 @@ export function GameHud({ snapshot }: { snapshot: SeasonSnapshot }) {
           onFoul={chooseFoul}
           onRedVar={chooseRedVar}
           onAttackBreak={chooseAttackBreak}
+          onLastMinute={chooseLastMinute}
+          onPartnerInvite={choosePartnerInvite}
+          onPartnerRespond={respondPartnerInvite}
+          onPartnerChoice={submitPartnerChoice}
+          onTrainingShot={doTrainingShot}
+          onRevealGuessClue={doRevealGuessClue}
+          onSubmitGuessAnswer={doSubmitGuessAnswer}
+          onFanSector={doFanSector}
+          onCoachContract={doCoachContract}
           onCancel={() => {
             if (!snapshot.demo) {
               setToast({ text: 'Событие нужно решить: оно держит следующий бросок', kind: 'info' });
@@ -957,6 +1084,11 @@ export function GameHud({ snapshot }: { snapshot: SeasonSnapshot }) {
             setPending(null);
           }}
         />
+      )}
+      {pending && me && isWaiting && (
+        <div className="toast toast--info" style={{ position: 'fixed', bottom: 16, right: 16, zIndex: 60 }}>
+          Ожидаем ответ партнёра по событию. Можно бросать кубик дальше.
+        </div>
       )}
     </>
   );
@@ -1070,6 +1202,15 @@ function EventModal({
   onFoul,
   onRedVar,
   onAttackBreak,
+  onLastMinute,
+  onPartnerInvite,
+  onPartnerRespond,
+  onPartnerChoice,
+  onTrainingShot,
+  onRevealGuessClue,
+  onSubmitGuessAnswer,
+  onFanSector,
+  onCoachContract,
   onCancel,
 }: {
   pending: Pending;
@@ -1087,8 +1228,18 @@ function EventModal({
   onFoul: (choice: 'defend' | 'dispute') => void;
   onRedVar: (targetProfileId: string) => void;
   onAttackBreak: (targetProfileId: string | null) => void;
+  onLastMinute: (choice: 'stop' | 'continue') => void;
+  onPartnerInvite: (targetProfileId: string | null) => void;
+  onPartnerRespond: (accept: boolean) => void;
+  onPartnerChoice: (choice: string) => void;
+  onTrainingShot: () => void;
+  onRevealGuessClue: () => void;
+  onSubmitGuessAnswer: (answer: string) => void;
+  onFanSector: (submit: boolean) => void;
+  onCoachContract: (sign: boolean) => void;
   onCancel: () => void;
 }) {
+  const [guess, setGuess] = useState('');
   const others = players.filter((p) => !p.isMe && p.position < 80);
 
   if (pending.kind === 'tactics') {
@@ -1326,6 +1477,238 @@ function EventModal({
               <button type="button" className="btn btn--primary" onClick={() => onAttackBreak(null)}>Впереди никого: +1 мне</button>
             )}
           </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (pending.kind === 'last_minute') {
+    const { stage, currentReward } = pending.payload;
+    const nextReward = stage === 1 ? 3 : 5;
+    const successPct = stage === 1 ? 60 : 40;
+    const failPct = 100 - successPct;
+    return (
+      <div className="modal" role="dialog" aria-modal="true" aria-label="Последняя минута">
+        <div className="modal__card">
+          <div className="modal__eyebrow">Механика 15 · Последняя минута</div>
+          <h2 className="modal__title">Забрать или рискнуть?</h2>
+          <p className="modal__text">
+            Текущая награда: +{currentReward}. Рискнуть: {successPct}% шанс +{nextReward}, {failPct}% шанс 0. Провал обнуляет только награду этого события.
+          </p>
+          <div className="odds">
+            <div className="odds__item">
+              <span className="odds__value" style={{ color: 'var(--lime)' }}>+{nextReward}</span>
+              <span className="odds__label">{successPct}%</span>
+            </div>
+            <div className="odds__item">
+              <span className="odds__value" style={{ color: 'var(--danger)' }}>0</span>
+              <span className="odds__label">{failPct}%</span>
+            </div>
+          </div>
+          <div className="modal__actions">
+            <button type="button" className="btn" onClick={() => onLastMinute('stop')}>Забрать +{currentReward}</button>
+            <button type="button" className="btn btn--primary" onClick={() => onLastMinute('continue')}>Рискнуть</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (pending.kind === 'training_base') {
+    const round = Number(pending.payload.round ?? 1);
+    const hits = Number(pending.payload.hits ?? 0);
+    const shots = Array.isArray(pending.payload.shots) ? pending.payload.shots as Array<{round:number;hit:boolean}> : [];
+    return (
+      <div className="modal" role="dialog" aria-modal="true" aria-label="Тренировочная база">
+        <div className="modal__card">
+          <div className="modal__eyebrow">Механика 11 · Тренировочная база</div>
+          <h2 className="modal__title">3 удара, нужно 2 попадания</h2>
+          <p className="modal__text">Попаданий: {hits}. Удар {Math.min(round,3)} из 3. Награда за 2+ попадания: +2 клетки.</p>
+          <div className="list">
+            {shots.map((s) => (
+              <div key={s.round} className="list-row"><span className="list-row__main"><span className="list-row__title">Удар {s.round}</span><span className="list-row__meta">{s.hit ? 'Попадание' : 'Промах'}</span></span></div>
+            ))}
+          </div>
+          <div className="modal__actions">
+            <button type="button" className="btn btn--primary" onClick={onTrainingShot}>Ударить</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (pending.kind === 'guess_player') {
+    const revealed = Number(pending.payload.revealed ?? 1);
+    const clues = Array.isArray(pending.payload.clues) ? pending.payload.clues.map(String) : [];
+    const labels = ['Позиция', 'Страна', 'Бывший клуб', 'Текущая команда'];
+    return (
+      <div className="modal" role="dialog" aria-modal="true" aria-label="Узнай футболиста">
+        <div className="modal__card">
+          <div className="modal__eyebrow">Механика 12 · Узнай футболиста</div>
+          <h2 className="modal__title">Угадай футболиста</h2>
+          <p className="modal__text">Одна попытка ответа. Чем меньше подсказок открыто, тем больше награда.</p>
+          <div className="list">
+            {labels.slice(0, revealed).map((label, i) => (
+              <div key={label} className="list-row"><span className="list-row__main"><span className="list-row__title">{label}</span><span className="list-row__meta">{clues[i] ?? '—'}</span></span></div>
+            ))}
+          </div>
+          <div className="modal__actions" style={{ display: 'grid', gap: 8 }}>
+            {revealed < 4 && <button type="button" className="btn" onClick={onRevealGuessClue}>Открыть подсказку</button>}
+            <input className="input" value={guess} onChange={(e) => setGuess(e.target.value)} placeholder="Фамилия футболиста" />
+            <button type="button" className="btn btn--primary" onClick={() => onSubmitGuessAnswer(guess)} disabled={!guess.trim()}>Ответить</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (pending.kind === 'fan_sector') {
+    const task = typeof pending.payload.task === 'string' ? pending.payload.task : 'Выполни задание и отправь на проверку администратору.';
+    return (
+      <div className="modal" role="dialog" aria-modal="true" aria-label="Фан-сектор">
+        <div className="modal__card">
+          <div className="modal__eyebrow">Механика 13 · Фан-сектор</div>
+          <h2 className="modal__title">Задание для фаната</h2>
+          <p className="modal__text">{task}</p>
+          <p className="modal__text">После отправки администратор подтвердит выполнение. Пока идёт проверка, бросок не блокируется.</p>
+          <div className="modal__actions">
+            <button type="button" className="btn" onClick={() => onFanSector(false)}>Пропустить</button>
+            <button type="button" className="btn btn--primary" onClick={() => onFanSector(true)}>Отправить на проверку</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (pending.kind === 'coach_contract') {
+    return (
+      <div className="modal" role="dialog" aria-modal="true" aria-label="Контракт тренера">
+        <div className="modal__card">
+          <div className="modal__eyebrow">Механика 17 · Контракт тренера</div>
+          <h2 className="modal__title">Подписать контракт?</h2>
+          <p className="modal__text">На следующий игровой день: ответить минимум на 80% обычных вопросов и угадать не менее 2/3. Выполнил — +4, не выполнил — −2, отказался — ничего.</p>
+          <div className="modal__actions">
+            <button type="button" className="btn" onClick={() => onCoachContract(false)}>Отказаться</button>
+            <button type="button" className="btn btn--primary" onClick={() => onCoachContract(true)}>Подписать</button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  if (pending.kind === 'rematch' || pending.kind === 'simulation' || pending.kind === 'gentleman') {
+    const phase = String(pending.payload.phase ?? '');
+    const initiatorId = typeof pending.payload.initiatorId === 'string' ? pending.payload.initiatorId : null;
+    const partnerId = typeof pending.payload.partnerId === 'string' ? pending.payload.partnerId : null;
+    const isInitiator = me.profileId === initiatorId;
+    const partnerLabel = pending.kind === 'rematch' ? 'Ответный матч' : pending.kind === 'simulation' ? 'Симуляция' : 'Джентльменское соглашение';
+    const mechanicLabel = pending.kind === 'rematch' ? 'Механика 14 · Ответный матч' : pending.kind === 'simulation' ? 'Механика 16 · Симуляция' : 'Механика 18 · Джентльменское соглашение';
+
+    if (phase === 'pick_partner') {
+      const targets = players.filter((p) => !p.isMe && !p.finishedAt && p.position < 80);
+      return (
+        <div className="modal" role="dialog" aria-modal="true" aria-label={partnerLabel}>
+          <div className="modal__card">
+            <div className="modal__eyebrow">{mechanicLabel}</div>
+            <h2 className="modal__title">Кого вызвать?</h2>
+            <p className="modal__text">Можно выбрать соперника или отказаться без штрафа.</p>
+            <div className="list">
+              {targets.map((p) => (
+                <button key={p.profileId} type="button" className="list-row" onClick={() => onPartnerInvite(p.profileId)} style={{ textAlign: 'left' }}>
+                  <span className="list-row__main"><span className="list-row__title">{p.nickname}</span><span className="list-row__meta">Клетка {p.position}</span></span>
+                </button>
+              ))}
+              <button type="button" className="btn" onClick={() => onPartnerInvite(null)}>Отказаться без штрафа</button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    if (phase === 'partner_response') {
+      return (
+        <div className="modal" role="dialog" aria-modal="true" aria-label={partnerLabel}>
+          <div className="modal__card">
+            <div className="modal__eyebrow">{mechanicLabel}</div>
+            <h2 className="modal__title">Принять вызов?</h2>
+            <p className="modal__text">Отказ не считается поражением и не даёт штрафа.</p>
+            <div className="modal__actions">
+              <button type="button" className="btn" onClick={() => onPartnerRespond(false)}>Отказаться</button>
+              <button type="button" className="btn btn--primary" onClick={() => onPartnerRespond(true)}>Принять</button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    if (phase === 'secret_choice' && (pending.kind === 'simulation' || pending.kind === 'gentleman')) {
+      if (pending.kind === 'simulation') {
+        const attacker = isInitiator;
+        return (
+          <div className="modal" role="dialog" aria-modal="true" aria-label="Симуляция">
+            <div className="modal__card">
+              <div className="modal__eyebrow">{mechanicLabel}</div>
+              <h2 className="modal__title">{attacker ? 'Как сыграешь?' : 'Проверять или нет?'}</h2>
+              <p className="modal__text">Выбор тайный. Результат раскроется после ответа обоих.</p>
+              <div className="modal__actions">
+                {attacker ? (
+                  <>
+                    <button type="button" className="btn" onClick={() => onPartnerChoice('honest')}>Честно</button>
+                    <button type="button" className="btn btn--primary" onClick={() => onPartnerChoice('simulate')}>Симулировать</button>
+                  </>
+                ) : (
+                  <>
+                    <button type="button" className="btn" onClick={() => onPartnerChoice('play_on')}>Не проверять</button>
+                    <button type="button" className="btn btn--primary" onClick={() => onPartnerChoice('check')}>Проверить</button>
+                  </>
+                )}
+              </div>
+            </div>
+          </div>
+        );
+      }
+      return (
+        <div className="modal" role="dialog" aria-modal="true" aria-label="Джентльменское соглашение">
+          <div className="modal__card">
+            <div className="modal__eyebrow">{mechanicLabel}</div>
+            <h2 className="modal__title">Сотрудничать или забрать?</h2>
+            <p className="modal__text">Выбор тайный. Решения раскроются после ответа обоих.</p>
+            <div className="modal__actions">
+              <button type="button" className="btn" onClick={() => onPartnerChoice('cooperate')}>Сотрудничать</button>
+              <button type="button" className="btn btn--primary" onClick={() => onPartnerChoice('take')}>Забрать себе</button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    if (phase === 'shootout' && pending.kind === 'rematch') {
+      const rematch = (pending.payload.rematch as any) ?? { round: 1, initiatorScore: 0, partnerScore: 0 };
+      const round = Number(rematch.round ?? 1);
+      const attackerIsInitiator = round % 2 === 1;
+      const iAmAttacker = (attackerIsInitiator && isInitiator) || (!attackerIsInitiator && !isInitiator);
+      return (
+        <div className="modal" role="dialog" aria-modal="true" aria-label="Ответный матч">
+          <div className="modal__card">
+            <div className="modal__eyebrow">{mechanicLabel}</div>
+            <h2 className="modal__title">{iAmAttacker ? 'Куда бьёшь?' : 'Куда прыгаешь?'}</h2>
+            <p className="modal__text">Раунд {round}. Счёт {Number(rematch.initiatorScore ?? 0)}:{Number(rematch.partnerScore ?? 0)}. Выбор тайный до ответа обоих.</p>
+            <div className="modal__actions">
+              <button type="button" className="btn" onClick={() => onPartnerChoice('left')}>Влево</button>
+              <button type="button" className="btn" onClick={() => onPartnerChoice('center')}>В центр</button>
+              <button type="button" className="btn btn--primary" onClick={() => onPartnerChoice('right')}>Вправо</button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    return (
+      <div className="modal" role="dialog" aria-modal="true" aria-label={partnerLabel}>
+        <div className="modal__card">
+          <div className="modal__eyebrow">{mechanicLabel}</div>
+          <h2 className="modal__title">Ожидание</h2>
+          <p className="modal__text">Событие обрабатывается. Обнови страницу, если состояние не меняется.</p>
         </div>
       </div>
     );

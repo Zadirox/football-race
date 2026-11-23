@@ -134,7 +134,15 @@ export type CellChoice =
   | 'corner'
   | 'foul'
   | 'red_var'
-  | 'attack_break';
+  | 'attack_break'
+  | 'last_minute'
+  | 'rematch'
+  | 'simulation'
+  | 'gentleman'
+  | 'training_base'
+  | 'guess_player'
+  | 'fan_sector'
+  | 'coach_contract';
 
 export type SideEffect =
   | { kind: 'move_all_others'; delta: number; minPosition?: number }
@@ -160,6 +168,10 @@ export type CellOutcome = {
   /** Запись в журнал активности. */
   log: string;
 };
+
+export type LastMinuteResolution =
+  | { done: true; outcome: CellOutcome }
+  | { done: false; stage: 2; currentReward: 3; log: string };
 
 function base(code: string | null, state: PlayerState, log: string): CellOutcome {
   return {
@@ -284,7 +296,55 @@ export function resolveCell(
       };
     }
 
-        case '21':
+    case '11':
+      return {
+        ...base(code, state, `Тренировочная база: ${who} получает 3 удара. Нужно минимум 2 попадания для +2 клеток.`),
+        awaiting: 'training_base',
+      };
+
+    case '12':
+      return {
+        ...base(code, state, `Узнай футболиста: ${who} может открыть подсказки и дать один ответ.`),
+        awaiting: 'guess_player',
+      };
+
+    case '13':
+      return {
+        ...base(code, state, `Фан-сектор: ${who} получил задание. Выполнение подтверждается админом.`),
+        awaiting: 'fan_sector',
+      };
+
+    case '14':
+      return {
+        ...base(code, state, `Ответный матч: ${who} может вызвать соперника на серию пенальти. Отказ не считается поражением.`),
+        awaiting: 'rematch',
+      };
+
+    case '15':
+      return {
+        ...base(code, state, `Последняя минута: ${who} на старте +1. Можно забрать или рискнуть за +3 (60%) / 0 (40%).`),
+        awaiting: 'last_minute',
+      };
+
+    case '16':
+      return {
+        ...base(code, state, `Симуляция: ${who} выбирает соперника-судью. Решения раскроются после фиксации обоих.`),
+        awaiting: 'simulation',
+      };
+
+    case '17':
+      return {
+        ...base(code, state, `Контракт тренера: ${who} может подписать обязательство на следующий игровой день.`),
+        awaiting: 'coach_contract',
+      };
+
+    case '18':
+      return {
+        ...base(code, state, `Джентльменское соглашение: ${who} может предложить дуэль доверия. Ожидание не блокирует ход.`),
+        awaiting: 'gentleman',
+      };
+
+    case '21':
       return { ...base(code, state, `Пенальти: ${who} выбирает удар или пас.`), awaiting: 'penalty' };
 
     case '22': {
@@ -462,6 +522,47 @@ export function applyTactics(value: number, delta: number): number {
 
 /** Разбор активных эффектов для UI: что висит и сколько осталось. */
 
+export function applyLastMinute(
+  state: PlayerState,
+  choice: 'stop' | 'continue',
+  stage: 1 | 2,
+  currentReward: 1 | 3,
+  random: () => number = Math.random,
+): LastMinuteResolution {
+  if (choice === 'stop') {
+    const delta = currentReward;
+    if (delta > 0) {
+      const next = moveBy(state, delta);
+      return {
+        done: true,
+        outcome: moved('15', state, state.position, next, `Последняя минута: забираешь +${delta} ${delta === 1 ? 'клетку' : 'клетки'}.`),
+      };
+    }
+    return { done: true, outcome: base('15', state, 'Последняя минута: награда события — 0, остаёшься на месте.') };
+  }
+
+  if (stage === 1) {
+    if (random() < 0.6) {
+      return {
+        done: false,
+        stage: 2,
+        currentReward: 3,
+        log: 'Последняя минута: риск оправдался! Сейчас на кону +3. Можно забрать или рискнуть за +5 (40%) / 0 (60%).',
+      };
+    }
+    return { done: true, outcome: base('15', state, 'Последняя минута: риск не сыграл, награда события обнуляется.') };
+  }
+
+  if (random() < 0.4) {
+    const next = moveBy(state, 5);
+    return {
+      done: true,
+      outcome: moved('15', state, state.position, next, 'Последняя минута: вау! Забираешь +5 клеток.'),
+    };
+  }
+  return { done: true, outcome: base('15', state, 'Последняя минута: финальный риск не сыграл, награда события обнуляется.') };
+}
+
 export function applyPenalty(
   state: PlayerState,
   choice: 'shoot' | 'pass',
@@ -563,6 +664,172 @@ export function applyAttackBreak(
   }
   const next = moveBy(state, 1);
   return moved('34', state, state.position, next, 'Срыв атаки: впереди никого нет, +1 клетка.');
+}
+
+export type SimulationChoice = 'honest' | 'simulate';
+export type JudgeChoice = 'play_on' | 'check';
+
+export function resolveSimulation(
+  attackerChoice: SimulationChoice,
+  judgeChoice: JudgeChoice,
+): { attackerDelta: number; judgeDelta: number; log: string } {
+  if (attackerChoice === 'honest' && judgeChoice === 'play_on') {
+    return { attackerDelta: 1, judgeDelta: 0, log: 'Симуляция: честная игра, судья не проверял. Атакующий +1.' };
+  }
+  if (attackerChoice === 'simulate' && judgeChoice === 'play_on') {
+    return { attackerDelta: 3, judgeDelta: 0, log: 'Симуляция: нарушение прошло без проверки. Атакующий +3.' };
+  }
+  if (attackerChoice === 'simulate' && judgeChoice === 'check') {
+    return { attackerDelta: -2, judgeDelta: 1, log: 'Симуляция: судья проверил симуляцию. Атакующий -2, судья +1.' };
+  }
+  return { attackerDelta: 1, judgeDelta: -1, log: 'Симуляция: судья проверил честного игрока. Атакующий +1, судья -1.' };
+}
+
+export type GentlemanChoice = 'cooperate' | 'take';
+
+export function resolveGentleman(
+  initiatorChoice: GentlemanChoice,
+  partnerChoice: GentlemanChoice,
+): { initiatorDelta: number; partnerDelta: number; log: string } {
+  if (initiatorChoice === 'cooperate' && partnerChoice === 'cooperate') {
+    return { initiatorDelta: 2, partnerDelta: 2, log: 'Джентльменское соглашение: оба сыграли честно. Каждому +2.' };
+  }
+  if (initiatorChoice === 'take' && partnerChoice === 'cooperate') {
+    return { initiatorDelta: 3, partnerDelta: -1, log: 'Джентльменское соглашение: инициатор забрал себе. Ему +3, партнёру -1.' };
+  }
+  if (initiatorChoice === 'cooperate' && partnerChoice === 'take') {
+    return { initiatorDelta: -1, partnerDelta: 3, log: 'Джентльменское соглашение: партнёр забрал себе. Партнёру +3, инициатору -1.' };
+  }
+  return { initiatorDelta: -1, partnerDelta: -1, log: 'Джентльменское соглашение: оба забрали себе. Каждому -1.' };
+}
+
+export type RematchDirection = 'left' | 'center' | 'right';
+
+export type RematchKick = {
+  round: number;
+  attacker: 'initiator' | 'partner';
+  initiatorPick?: RematchDirection;
+  partnerPick?: RematchDirection;
+  goal?: boolean;
+};
+
+export type RematchState = {
+  round: number;
+  initiatorScore: number;
+  partnerScore: number;
+  kicks: RematchKick[];
+  done: boolean;
+  winner: 'initiator' | 'partner' | null;
+};
+
+export function rematchAttacker(round: number): 'initiator' | 'partner' {
+  // 4 base rounds (2 kicks each), then sudden death pairs: 5,6,7,8...
+  // Odd rounds: initiator attacks; even rounds: partner attacks.
+  return round % 2 === 1 ? 'initiator' : 'partner';
+}
+
+export function applyRematchKick(
+  state: RematchState,
+  initiatorPick: RematchDirection,
+  partnerPick: RematchDirection,
+): RematchState {
+  const attacker = rematchAttacker(state.round);
+  const attackPick = attacker === 'initiator' ? initiatorPick : partnerPick;
+  const keepPick = attacker === 'initiator' ? partnerPick : initiatorPick;
+  const goal = attackPick !== keepPick;
+  const initiatorScore = state.initiatorScore + (goal && attacker === 'initiator' ? 1 : 0);
+  const partnerScore = state.partnerScore + (goal && attacker === 'partner' ? 1 : 0);
+  const kicks = [...state.kicks, { round: state.round, attacker, initiatorPick, partnerPick, goal }];
+  const round = state.round;
+
+  let done = false;
+  let winner: 'initiator' | 'partner' | null = null;
+
+  // Fairness: decide at the end of a pair (even round), in base (4) or sudden death (6,8,...)
+  if (round % 2 === 0 && round >= 4) {
+    if (initiatorScore !== partnerScore) {
+      done = true;
+      winner = initiatorScore > partnerScore ? 'initiator' : 'partner';
+    }
+  }
+
+  // Safety cap to avoid infinite state machine
+  if (!done && round >= 12) {
+    done = true;
+    winner = initiatorScore >= partnerScore ? 'initiator' : 'partner';
+  }
+
+  return {
+    round: done ? round : round + 1,
+    initiatorScore,
+    partnerScore,
+    kicks,
+    done,
+    winner,
+  };
+}
+
+export function initialRematchState(): RematchState {
+  return { round: 1, initiatorScore: 0, partnerScore: 0, kicks: [], done: false, winner: null };
+}
+
+export type TrainingShot = { round: number; hit: boolean };
+export type TrainingBaseState = { round: number; hits: number; shots: TrainingShot[]; done: boolean };
+
+export function initialTrainingBaseState(): TrainingBaseState {
+  return { round: 1, hits: 0, shots: [], done: false };
+}
+
+export function applyTrainingShot(state: TrainingBaseState, random: () => number = Math.random): TrainingBaseState {
+  if (state.done || state.round > 3) return state;
+  const hit = random() < 0.5;
+  const hits = state.hits + (hit ? 1 : 0);
+  const shots = [...state.shots, { round: state.round, hit }];
+  const round = state.round + 1;
+  const done = round > 3 || hits >= 2; // early finish if 2 hits already? 3 shots total available; 2 hits wins
+  // Spec: 3 удара, 2 попадания -> +2. If 2 hits in first 2, third not needed but harmless; we'll end early.
+  return { round: done ? state.round : round, hits, shots, done };
+}
+
+export function trainingBaseReward(hits: number): number {
+  return hits >= 2 ? 2 : 0;
+}
+
+export type GuessRiddle = {
+  id: string;
+  clues: [string, string, string, string]; // position, country, former club, current team
+  answer: string;
+  acceptedAnswers: string[];
+};
+
+export const GUESS_PLAYER_RIDDLES: readonly GuessRiddle[] = [
+  { id: 'gp1', clues: ['Нападающий', 'Аргентина', 'Барселона', 'Интер Майами'], answer: 'Месси', acceptedAnswers: ['месси', 'lionel messi', 'leo messi'] },
+  { id: 'gp2', clues: ['Нападающий', 'Португалия', 'Реал Мадрид', 'Аль-Наср'], answer: 'Роналду', acceptedAnswers: ['роналду', 'cristiano ronaldo', 'cr7'] },
+  { id: 'gp3', clues: ['Нападающий', 'Франция', 'ПСЖ', 'Реал Мадрид'], answer: 'Мбаппе', acceptedAnswers: ['мбаппе', 'kylian mbappe', 'mbappe'] },
+  { id: 'gp4', clues: ['Полузащитник', 'Бельгия', 'Челси', 'Манчестер Сити'], answer: 'Де Брёйне', acceptedAnswers: ['де брейне', 'де брёйне', 'kevin de bruyne', 'de bruyne'] },
+  { id: 'gp5', clues: ['Нападающий', 'Норвегия', 'Боруссия Дортмунд', 'Манчестер Сити'], answer: 'Холанд', acceptedAnswers: ['холанд', 'erling haaland', 'haaland'] },
+] as const;
+
+export function normalizeGuessAnswer(value: string): string {
+  return value
+    .toLowerCase()
+    .replace(/ё/g, 'е')
+    .replace(/[^a-zа-я0-9\s]/gi, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+export function isGuessCorrect(guess: string, riddle: Pick<GuessRiddle, 'acceptedAnswers'>): boolean {
+  const n = normalizeGuessAnswer(guess);
+  return riddle.acceptedAnswers.some((a) => normalizeGuessAnswer(a) === n);
+}
+
+export function guessPlayerReward(cluesRevealed: number): number {
+  // 1 clue revealed -> +4, 2 -> +3, 3 -> +2, 4 -> +1
+  if (cluesRevealed <= 1) return 4;
+  if (cluesRevealed === 2) return 3;
+  if (cluesRevealed === 3) return 2;
+  return 1;
 }
 export function describeEffects(state: PlayerState): Array<{ code: EffectCode; label: string; charges: number }> {
   const labels: Record<EffectCode, string> = {

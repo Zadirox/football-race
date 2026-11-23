@@ -139,7 +139,27 @@ export type MeView = {
 export type PendingChoiceView = {
   id: string;
   eventId: string;
-  kind: 'var' | 'passage' | 'locker' | 'tactics' | 'pack_choice' | 'penalty' | 'dribble' | 'super_sub' | 'corner' | 'foul' | 'red_var' | 'attack_break';
+  kind:
+    | 'var'
+    | 'passage'
+    | 'locker'
+    | 'tactics'
+    | 'pack_choice'
+    | 'penalty'
+    | 'dribble'
+    | 'super_sub'
+    | 'corner'
+    | 'foul'
+    | 'red_var'
+    | 'attack_break'
+    | 'last_minute'
+    | 'rematch'
+    | 'simulation'
+    | 'gentleman'
+    | 'training_base'
+    | 'guess_player'
+    | 'fan_sector'
+    | 'coach_contract';
   payload: Record<string, unknown>;
   expiresAt: string;
 };

@@ -13,7 +13,7 @@ import type { TransactionSql } from 'postgres';
 import { db } from '@/lib/db';
 import { hasDatabase } from '@/lib/env';
 import { isAppError } from '@/lib/errors';
-import { applyLocker, applyVar, makePlayer } from '@/lib/game/engine';
+import { applyLocker, applyVar, makePlayer, moveBy } from '@/lib/game/engine';
 import { expiryDecision, expiryLog, isExpirableKind, type ExpiryDecision } from '@/lib/game/pending-expiry';
 import { applyTacticsChoice } from '@/lib/game/roll';
 import {
@@ -72,6 +72,49 @@ export async function applyExpiryDecision(
     case 'passage': {
       await logActivity(tx, pending.season_id, pending.profile_id, 'system', expiryLog(ctx.nickname, decision));
       await closePending(tx, pending, { given: false, auto: true });
+      return;
+    }
+
+    case 'last_minute': {
+      const next = moveBy(makePlayer(ctx.position, ctx.effects), decision.currentReward);
+      await persistState(tx, ctx, next);
+      await logActivity(
+        tx,
+        pending.season_id,
+        pending.profile_id,
+        decision.currentReward > 0 ? 'positive' : 'neutral',
+        expiryLog(ctx.nickname, decision),
+      );
+      await closePending(tx, pending, { auto: true, choice: 'stop', currentReward: decision.currentReward });
+      return;
+    }
+
+    case 'rematch':
+    case 'simulation':
+    case 'gentleman':
+    case 'training_base':
+    case 'guess_player':
+    case 'fan_sector':
+    case 'coach_contract': {
+      await logActivity(tx, pending.season_id, pending.profile_id, 'neutral', expiryLog(ctx.nickname, decision));
+      // Close this pending; paired pending/event will be closed below.
+      await tx`update pending_actions set resolved_at = now() where id = ${pending.id}`;
+      if (pending.event_id) {
+        // Close any other unresolved pendings for the same event.
+        await tx`
+          update pending_actions
+             set resolved_at = now()
+           where event_id = ${pending.event_id}
+             and resolved_at is null
+        `;
+        await tx`
+          update cell_events
+             set state = 'resolved',
+                 resolved_at = now(),
+                 outcome = coalesce(outcome, '{}'::jsonb) || ${tx.json({ auto: true, cancelled: 'expired' })}::jsonb
+           where id = ${pending.event_id}
+        `;
+      }
       return;
     }
 
@@ -137,7 +180,7 @@ export async function expirePending(now = new Date()): Promise<ExpireReport> {
         if (!isExpirableKind(pending.kind)) return 'unknown' as const;
 
         const ctx = await lockPlayer(tx, pending.season_id, pending.profile_id);
-        const decision = expiryDecision(pending.kind, ctx.effects);
+        const decision = expiryDecision(pending.kind, ctx.effects, pending.payload);
         if (!decision) return 'unknown' as const;
 
         await applyExpiryDecision(tx, pending, ctx, decision);

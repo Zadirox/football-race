@@ -16,6 +16,7 @@ import { teamNameRu } from '@/lib/data/team-names';
 import { syncWindow } from '@/lib/data/sync-window';
 import { isAppError } from '@/lib/errors';
 import { grantPacksForResolvedMatchday } from '@/lib/repo/cards-grants';
+import { evaluateCoachContractsForMatchday } from '@/lib/repo/coach-contracts';
 import { CLUB_COMPETITIONS, CLUB_COMPETITION_BY_LEAGUE_CODE, isClubMatchAllowedForCompetition } from '@/lib/data/club-phase';
 import {
   allMatchesFinal,
@@ -1340,6 +1341,7 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
       for (const mdId of toReResolve) {
         await sql`update matchdays set resolved_at = null where id = ${mdId} and resolved_at is not null`;
         await sql`select public.rpc_resolve_matchday(${mdId}::uuid)`;
+        try { await evaluateCoachContractsForMatchday(mdId, sql); } catch (e) { errors.push(`coach-contracts:${mdId}:${e instanceof Error ? e.message : String(e)}`); }
       }
     } catch (error) {
       errors.push(`regrade: ${error instanceof Error ? error.message : String(error)}`);
@@ -1492,6 +1494,13 @@ export async function advanceMatchdays(now = new Date()): Promise<AdvanceReport>
         } catch (error) {
           report.errors.push(
             `${day.id}: pack grants failed: ${error instanceof Error ? error.message : String(error)}`,
+          );
+        }
+        try {
+          await evaluateCoachContractsForMatchday(day.id, sql, day.season_id);
+        } catch (error) {
+          report.errors.push(
+            `${day.id}: coach contracts failed: ${error instanceof Error ? error.message : String(error)}`,
           );
         }
       } else {

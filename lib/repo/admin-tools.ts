@@ -13,6 +13,7 @@
 import type { TransactionSql } from 'postgres';
 import type {
   DiceGrantInput,
+  FanSectorResolveInput,
   LineupBonusManualInput,
   MatchUpdateInput,
   PackGrantInput,
@@ -24,9 +25,10 @@ import { hasDatabase } from '@/lib/env';
 import { AppError } from '@/lib/errors';
 import { LINEUP_POINTS, type CardRarity } from '@/lib/game/cards';
 import { DICE_SIDES } from '@/lib/game/dice';
+import { makePlayer, moveBy } from '@/lib/game/engine';
 import { expiryDecision, isExpirableKind } from '@/lib/game/pending-expiry';
 import { CLUB_PACK_ID, getActiveClubPack, getActiveNationalPack, grantNationalPack, NATIONAL_PACK_ID } from '@/lib/repo/cards';
-import { lockAnyPending, lockPlayer } from '@/lib/repo/game-tx';
+import { closePending, lockAnyPending, lockPlayer, logActivity, persistState } from '@/lib/repo/game-tx';
 import { applyExpiryDecision } from '@/lib/repo/pending';
 
 export type AdminPendingView = {
@@ -162,11 +164,31 @@ export async function forceClosePending(actorId: string, input: PendingCloseInpu
     }
 
     const ctx = await lockPlayer(tx, pending.season_id, pending.profile_id);
-    const decision = expiryDecision(pending.kind, ctx.effects);
+    const decision = expiryDecision(pending.kind, ctx.effects, pending.payload);
     if (!decision) throw new AppError('EVENT_NOT_CHOOSABLE');
 
     await applyExpiryDecision(tx, pending, ctx, decision);
     await audit(tx, actorId, 'pending.close', 'pending_action', pending.id, { kind: pending.kind }, decision);
+  });
+}
+
+export async function resolveFanSectorPending(actorId: string, input: FanSectorResolveInput): Promise<void> {
+  const sql = db();
+  await sql.begin(async (tx) => {
+    const pending = await lockAnyPending(tx, input.pendingId);
+    if (pending.resolved_at !== null) throw new AppError('EVENT_NOT_CHOOSABLE', 'Ожидание уже закрыто');
+    if (pending.kind !== 'fan_sector') throw new AppError('EVENT_NOT_CHOOSABLE', 'Это не задание фан-сектора');
+    const ctx = await lockPlayer(tx, pending.season_id, pending.profile_id);
+    if (input.approved) {
+      const next = moveBy(makePlayer(ctx.position, ctx.effects), 2);
+      await persistState(tx, ctx, next);
+      await logActivity(tx, pending.season_id, pending.profile_id, 'positive', 'Фан-сектор: задание одобрено администратором. +2 клетки.');
+      await closePending(tx, pending, { approved: true, reward: 2 });
+    } else {
+      await logActivity(tx, pending.season_id, pending.profile_id, 'neutral', 'Фан-сектор: задание отклонено администратором. Без штрафа.');
+      await closePending(tx, pending, { approved: false, reward: 0 });
+    }
+    await audit(tx, actorId, 'fan_sector.resolve', 'pending_action', pending.id, { kind: pending.kind }, { approved: input.approved });
   });
 }
 

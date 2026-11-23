@@ -46,6 +46,13 @@ export const pendingCloseSchema = z.object({
 
 export type PendingCloseInput = z.infer<typeof pendingCloseSchema>;
 
+export const fanSectorResolveSchema = z.object({
+  pendingId: z.uuid(),
+  approved: z.boolean(),
+});
+
+export type FanSectorResolveInput = z.infer<typeof fanSectorResolveSchema>;
+
 export const roleChangeSchema = z.object({
   profileId: z.uuid(),
   role: z.enum(ROLES),

@@ -9,6 +9,7 @@ import {
   awardLineupBonusAction,
   changeRoleAction,
   forceClosePendingAction,
+  resolveFanSectorAction,
   grantDiceAction,
   grantPackAction,
   updateMatchAction,
@@ -40,6 +41,14 @@ const PENDING_KIND: Record<string, string> = {
   tactics: 'тактика',
   locker: 'раздевалка',
   passage: 'передача',
+  last_minute: 'последняя минута',
+  rematch: 'ответный матч',
+  simulation: 'симуляция',
+  gentleman: 'джентльмен',
+  training_base: 'тренировка',
+  guess_player: 'узнай футболиста',
+  fan_sector: 'фан-сектор',
+  coach_contract: 'контракт тренера',
 };
 
 const ROLE_LABEL: Record<AdminManualLineupSlotView['roleGroup'], string> = {
@@ -577,15 +586,24 @@ export function AdminTools({ enabled, players, matches, pending, manualBonusSlot
                     <span className="list-row__title">{item.nickname}</span>
                     <span className="list-row__meta">истекает {expiresLabel(item.expiresAt)} МСК</span>
                   </span>
-                  <button
-                    type="button"
-                    className="btn btn--sm"
-                    disabled={!enabled || pendingTx}
-                    title={disabledHint}
-                    onClick={() => run('pending', () => forceClosePendingAction({ pendingId: item.id }))}
-                  >
-                    {busy === 'pending' ? '…' : 'Закрыть'}
-                  </button>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                    {item.kind === 'fan_sector' && (
+                      <>
+                        <button type="button" className="btn btn--sm" disabled={!enabled || pendingTx} title={disabledHint}
+                          onClick={() => run('pending', () => resolveFanSectorAction({ pendingId: item.id, approved: true }))}>
+                          {busy === 'pending' ? '…' : 'Одобрить'}
+                        </button>
+                        <button type="button" className="btn btn--sm" disabled={!enabled || pendingTx} title={disabledHint}
+                          onClick={() => run('pending', () => resolveFanSectorAction({ pendingId: item.id, approved: false }))}>
+                          {busy === 'pending' ? '…' : 'Отклонить'}
+                        </button>
+                      </>
+                    )}
+                    <button type="button" className="btn btn--sm" disabled={!enabled || pendingTx} title={disabledHint}
+                      onClick={() => run('pending', () => forceClosePendingAction({ pendingId: item.id }))}>
+                      {busy === 'pending' ? '…' : 'Закрыть'}
+                    </button>
+                  </div>
                 </div>
               ))}
             </div>

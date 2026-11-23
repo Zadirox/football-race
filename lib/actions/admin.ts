@@ -16,6 +16,7 @@ import {
   matchUpdateSchema,
   packGrantSchema,
   pendingCloseSchema,
+  fanSectorResolveSchema,
   roleChangeSchema,
   syncFixturesSchema,
 } from '@/lib/actions/admin-schemas';
@@ -25,6 +26,7 @@ import { AppError, isAppError } from '@/lib/errors';
 import {
   awardManualLineupBonus,
   forceClosePending,
+  resolveFanSectorPending,
   grantDice,
   grantPackToProfile,
   reviewManualLineupBonus,
@@ -190,6 +192,20 @@ export async function forceClosePendingAction(input: unknown): Promise<AdminRunR
     await forceClosePending(viewer.profileId, parsed.data);
     revalidateAdminGlobal();
     return { ok: true, message: 'Ожидание закрыто безопасной веткой' };
+  } catch (error) {
+    return toResult(error);
+  }
+}
+
+export async function resolveFanSectorAction(input: unknown): Promise<AdminRunResult> {
+  if (!hasDatabase()) return demoOnly();
+  try {
+    const viewer = await requireAdmin();
+    const parsed = fanSectorResolveSchema.safeParse(input);
+    if (!parsed.success) return invalidInput(parsed.error) ?? { ok: false, message: 'Проверь поля' };
+    await resolveFanSectorPending(viewer.profileId, parsed.data);
+    revalidateAdminGlobal();
+    return { ok: true, message: parsed.data.approved ? 'Фан-сектор одобрен (+2)' : 'Фан-сектор отклонён' };
   } catch (error) {
     return toResult(error);
   }

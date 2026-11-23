@@ -23,7 +23,8 @@ export type EffectCode =
   | 'dirty_time'
   | 'broken_boot'
   | 'tribune_panic'
-  | 'second_breath';
+  | 'second_breath'
+  | 'cursed_boot';
 
 export type ActiveEffect = {
   code: EffectCode;
@@ -44,6 +45,7 @@ export const NEGATIVE_EFFECTS: readonly EffectCode[] = [
   'dirty_time',
   'broken_boot',
   'tribune_panic',
+  'cursed_boot',
 ];
 
 export function makePlayer(position = FIRST_CELL, effects: ActiveEffect[] = []): PlayerState {
@@ -94,6 +96,7 @@ export type RollModifiers = {
   brokenBoot: boolean;
   tribunePanic: boolean;
   dirtyTime: boolean;
+  cursedBoot: boolean;
 };
 
 /**
@@ -111,6 +114,7 @@ export function takeRollModifiers(state: PlayerState): { state: PlayerState; mod
     brokenBoot: hasEffect(state, 'broken_boot'),
     tribunePanic: hasEffect(state, 'tribune_panic'),
     dirtyTime: hasEffect(state, 'dirty_time'),
+    cursedBoot: hasEffect(state, 'cursed_boot'),
   };
   let next = state;
   if (mods.tribuny) next = spendCharge(next, 'tribuny');
@@ -120,6 +124,7 @@ export function takeRollModifiers(state: PlayerState): { state: PlayerState; mod
   if (mods.brokenBoot) next = spendCharge(next, 'broken_boot');
   if (mods.tribunePanic) next = spendCharge(next, 'tribune_panic');
   if (mods.dirtyTime) next = spendCharge(next, 'dirty_time');
+  if (mods.cursedBoot) next = spendCharge(next, 'cursed_boot');
   return { state: next, mods };
 }
 
@@ -466,7 +471,11 @@ export function resolveCell(
       };
 
     case '20':
-      return base(code, state, `${who} заглядывает на клетку с будущей механикой. Пока здесь спокойно.`);
+      return base(
+        code,
+        addEffect(state, 'cursed_boot', 1),
+        `Проклятая бутса: следующий бросок ${who} уйдёт случайному сопернику.`,
+      );
 
     default:
       return base(code, state, `${who} попадает на «${mechanicName(code)}».`);
@@ -843,6 +852,7 @@ export function describeEffects(state: PlayerState): Array<{ code: EffectCode; l
     broken_boot: 'Сломанный бутс',
     tribune_panic: 'Паника на трибунах',
     second_breath: 'Суперзамена: +2',
+    cursed_boot: 'Проклятая бутса',
   };
   return state.effects
     .filter((e) => e.charges > 0)

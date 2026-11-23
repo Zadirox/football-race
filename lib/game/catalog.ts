@@ -192,7 +192,7 @@ export const MECHANICS: readonly Mechanic[] = [
     name: 'Последняя минута',
     kind: 'choice',
     polarity: 'trap',
-    tagline: 'рискни на +3 или +5',
+    tagline: 'Старт +1: рискни до +3, потом до +5',
     description:
       'Начинаешь с +1 и решаешь, продолжать ли. Провал обнуляет только награду события — прошлое и кубики остаются.',
     application: 'choice',
@@ -242,6 +242,17 @@ export const MECHANICS: readonly Mechanic[] = [
     application: 'choice',
     core: false,
     note: 'Выбор сохраняется при перезагрузке (pending action)',
+  },
+  {
+    code: '20',
+    name: 'Проклятая бутса',
+    kind: 'debuff',
+    polarity: 'trap',
+    tagline: 'Следующий бросок уйдёт сопернику',
+    description:
+      'Получаешь проклятую бутсу на 1 следующий бросок. Твой бросок считается как обычно, но движение получает случайный активный соперник, а ты остаёшься на месте. Если соперников нет — сразу +1 клетка.',
+    application: 'auto',
+    core: false,
   },
   {
     code: '21',

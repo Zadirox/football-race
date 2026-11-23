@@ -195,7 +195,7 @@ export async function submitRollAction(input: {
           ${plan.value},
           ${ctx.position},
           'pending_move',
-          ${tx.json({ tribuny: ctx.effects.some((e) => e.code === 'tribuny'), gazon: ctx.effects.some((e) => e.code === 'gazon'), tactics: plan.needsTactics })},
+          ${tx.json({ tribuny: ctx.effects.some((e) => e.code === 'tribuny'), gazon: ctx.effects.some((e) => e.code === 'gazon'), tactics: plan.needsTactics, cursedBoot: plan.cursedBoot })},
           ${key}
         )
         returning id
@@ -207,7 +207,7 @@ export async function submitRollAction(input: {
         matchday.season_id,
         viewer.profileId,
         'roll',
-        `${ctx.nickname} бросил ${TIER_LABEL[tier]} кубик: ${plan.value}`,
+        `${ctx.nickname} бросил ${TIER_LABEL[tier]} кубик: ${plan.value}${plan.cursedBoot ? ' (проклятая бутса)' : ''}`,
       );
 
       const info: RollResult = {
@@ -219,8 +219,6 @@ export async function submitRollAction(input: {
       };
 
       if (plan.needsTactics) {
-        // Тактику нужно решать на стороне клиента: сохраняем в транзакции,
-        // показываем выбор бросок/вперёд-назад.
         await persistState(tx, ctx, plan.state);
         await tx`
           insert into pending_actions (season_id, profile_id, kind, payload)
@@ -228,9 +226,40 @@ export async function submitRollAction(input: {
             ${matchday.season_id},
             ${viewer.profileId},
             'tactics',
-            ${tx.json({ rollId: roll.id, value: plan.value, base: plan.base, tier, from: ctx.position })}
+            ${tx.json({ rollId: roll.id, value: plan.value, base: plan.base, tier, from: ctx.position, cursedBoot: plan.cursedBoot })}
           )
         `;
+        return info;
+      }
+
+      if (plan.cursedBoot) {
+        await persistState(tx, ctx, plan.state);
+        const opponents = await tx<Array<{ profile_id: string; position: number; nickname: string }>>`
+          select sp.profile_id, sp.position, p.nickname
+            from season_players sp
+            join profiles p on p.id = sp.profile_id
+           where sp.season_id = ${matchday.season_id}
+             and sp.profile_id <> ${viewer.profileId}
+             and sp.is_active = true
+             and sp.finished_at is null
+        `;
+        if (opponents.length === 0) {
+          const next = moveBy(makePlayer(ctx.position, plan.state.effects), 1);
+          await persistState(tx, ctx, next);
+          await logActivity(tx, matchday.season_id, viewer.profileId, 'positive', `Проклятая бутса: соперников нет, ${ctx.nickname} получает +1 клетку.`);
+        } else {
+          const target = opponents[Math.floor(Math.random() * opponents.length)]!;
+          const newPos = Math.max(1, Math.min(LAST_CELL, target.position + plan.value));
+          await tx`
+            update season_players
+               set position = ${newPos},
+                   finished_at = case when ${newPos} >= ${LAST_CELL} and finished_at is null then now() else finished_at end
+             where season_id = ${matchday.season_id}
+               and profile_id = ${target.profile_id}
+          `;
+          await logActivity(tx, matchday.season_id, target.profile_id, 'neutral', `Проклятая бутса: бросок ${ctx.nickname} (${plan.value}) сдвинул ${target.nickname} на ${plan.value} клеток.`);
+        }
+        await tx`update rolls set state = 'resolved', to_position = ${ctx.position} where id = ${roll.id}`;
         return info;
       }
 
@@ -275,7 +304,38 @@ export async function chooseTacticsAction(input: {
       if (!roll || roll.state !== 'pending_move') throw new AppError('ROLL_ALREADY_MOVED');
 
       const choice = applyTacticsChoice(makePlayer(ctx.position, ctx.effects), Number(roll.value), input.delta);
-      await moveAndResolve(tx, ctx, choice.state, choice.value, roll.id);
+      const cursedBoot = pending.payload.cursedBoot === true;
+      if (cursedBoot) {
+        await persistState(tx, ctx, choice.state);
+        const opponents = await tx<Array<{ profile_id: string; position: number; nickname: string }>>`
+          select sp.profile_id, sp.position, p.nickname
+            from season_players sp
+            join profiles p on p.id = sp.profile_id
+           where sp.season_id = ${pending.season_id}
+             and sp.profile_id <> ${viewer.profileId}
+             and sp.is_active = true
+             and sp.finished_at is null
+        `;
+        if (opponents.length === 0) {
+          const next = moveBy(makePlayer(ctx.position, choice.state.effects), 1);
+          await persistState(tx, ctx, next);
+          await logActivity(tx, pending.season_id, viewer.profileId, 'positive', `Проклятая бутса: соперников нет, ${ctx.nickname} получает +1 клетку.`);
+        } else {
+          const target = opponents[Math.floor(Math.random() * opponents.length)]!;
+          const newPos = Math.max(1, Math.min(LAST_CELL, target.position + choice.value));
+          await tx`
+            update season_players
+               set position = ${newPos},
+                   finished_at = case when ${newPos} >= ${LAST_CELL} and finished_at is null then now() else finished_at end
+             where season_id = ${pending.season_id}
+               and profile_id = ${target.profile_id}
+          `;
+          await logActivity(tx, pending.season_id, target.profile_id, 'neutral', `Проклятая бутса: бросок ${ctx.nickname} (${choice.value}) сдвинул ${target.nickname} на ${choice.value} клеток.`);
+        }
+        await tx`update rolls set state = 'resolved', to_position = ${ctx.position} where id = ${roll.id}`;
+      } else {
+        await moveAndResolve(tx, ctx, choice.state, choice.value, roll.id);
+      }
 
       await logActivity(
         tx,
@@ -287,7 +347,7 @@ export async function chooseTacticsAction(input: {
           : `Тактическая схема: ${choice.delta > 0 ? 'плюс' : 'минус'} один к броску.`,
       );
 
-      await closePending(tx, pending, { choice: choice.delta });
+      await closePending(tx, pending, { choice: choice.delta, cursedBoot });
     });
 
     revalidateGame();

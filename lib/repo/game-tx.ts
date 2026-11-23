@@ -173,6 +173,28 @@ export async function moveAndResolve(
     };
   }
 
+  if (code === '20') {
+    const [opp] = await tx<Array<{ ok: boolean }>>`
+      select true as ok
+        from season_players
+       where season_id = ${ctx.seasonId}
+         and profile_id <> ${ctx.profileId}
+         and is_active = true
+         and finished_at is null
+       limit 1
+    `;
+    if (!opp) {
+      const baseState = { ...outcome.state, effects: outcome.state.effects.filter((e) => e.code !== 'cursed_boot') };
+      const next = moveBy(baseState, 1);
+      outcome = {
+        ...outcome,
+        state: next,
+        delta: 1,
+        log: `Проклятая бутса: подходящих соперников нет, ${ctx.nickname} получает +1 клетку.`,
+      };
+    }
+  }
+
   await persistState(tx, ctx, outcome.state);
   await logActivity(tx, ctx.seasonId, ctx.profileId, activityKind(code), outcome.log);
 

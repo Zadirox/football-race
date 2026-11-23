@@ -140,18 +140,17 @@ describe('generateReworkedBoard (Phase 1 41-80)', () => {
     expect(byIdx.get(80)?.kind).toBe('finish');
   });
 
-  it('maps 41-80 event slots with 11-18 and 21-37, no 20 placeholders', () => {
+  it('maps 41-80 event slots with 11-18, 20, and 21-37', () => {
     const expected = new Map([
       [41, '11'], [42, '21'], [44, '22'], [46, '23'], [47, '12'], [48, '19'], [49, '13'],
       [50, '24'], [52, '25'], [53, '14'], [54, '26'], [56, '27'], [57, '15'], [58, '28'],
-      [60, '29'], [62, '19'], [63, '16'], [64, '30'], [66, '31'], [68, '32'], [69, '17'],
-      [70, '33'], [72, '34'], [74, '35'], [75, '18'], [76, '36'], [78, '37'],
+      [59, '20'], [60, '29'], [62, '19'], [63, '16'], [64, '30'], [66, '31'], [68, '32'],
+      [69, '17'], [70, '33'], [72, '34'], [74, '35'], [75, '18'], [76, '36'], [78, '37'],
     ]);
     for (const [idx, code] of expected) {
       expect(byIdx.get(idx)).toMatchObject({ idx, kind: 'event', mechanicCode: code });
     }
     const tailEvents = board.cells.filter((c) => c.idx >= 41 && c.idx <= 79 && c.kind === 'event');
     expect(tailEvents).toHaveLength(expected.size);
-    expect(tailEvents.some((c) => c.mechanicCode === '20')).toBe(false);
   });
 });

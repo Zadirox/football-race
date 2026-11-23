@@ -26,6 +26,8 @@ export type RollPlan = {
   state: PlayerState;
   /** Нужен ли выбор «Тактической схемы» перед ходом. */
   needsTactics: boolean;
+  /** Проклятая бутса: движение уйдёт случайному сопернику. */
+  cursedBoot: boolean;
 };
 
 /**
@@ -42,6 +44,7 @@ export function planRoll(state: PlayerState, tier: DiceTier, random: () => numbe
     value,
     state: taken.state,
     needsTactics: hasEffect(taken.state, 'tactics'),
+    cursedBoot: taken.mods.cursedBoot,
   };
 }
 

@@ -665,6 +665,21 @@ describe('Mechanic 14 Rematch', () => {
   });
 });
 
+describe('Mechanic 20 Cursed boot', () => {
+  it('gives cursed_boot effect on landing', () => {
+    const out = resolveCell(makePlayer(30), '20', 'Марк');
+    expect(out.state.effects.some((e) => e.code === 'cursed_boot' && e.charges === 1)).toBe(true);
+    expect(out.delta).toBe(0);
+  });
+
+  it('takeRollModifiers consumes cursed_boot', () => {
+    const state = addEffect(makePlayer(30), 'cursed_boot', 1);
+    const { mods, state: after } = takeRollModifiers(state);
+    expect(mods.cursedBoot).toBe(true);
+    expect(hasEffect(after, 'cursed_boot')).toBe(false);
+  });
+});
+
 describe('Mechanic 11 Training base', () => {
   it('awards +2 for 2+ hits and 0 otherwise', () => {
     expect(trainingBaseReward(2)).toBe(2);

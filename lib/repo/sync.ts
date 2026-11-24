@@ -458,6 +458,32 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
     }
   };
 
+  const quickUpdateInScopeMatch = async (nm: NormalizedMatch) => {
+    try {
+      await sql`
+        update matches set
+          status = ${nm.status},
+          minute = ${nm.minute ?? null},
+          home_score = ${nm.homeScore ?? null},
+          away_score = ${nm.awayScore ?? null},
+          ht_home_score = ${nm.htHomeScore ?? null},
+          ht_away_score = ${nm.htAwayScore ?? null},
+          corners_home = ${nm.stats.cornersHome ?? null},
+          corners_away = ${nm.stats.cornersAway ?? null},
+          yellow_cards_home = ${nm.stats.yellowCardsHome ?? null},
+          yellow_cards_away = ${nm.stats.yellowCardsAway ?? null},
+          red_cards_home = ${nm.stats.redCardsHome ?? null},
+          red_cards_away = ${nm.stats.redCardsAway ?? null},
+          possession_home = ${nm.stats.possessionHome ?? null},
+          possession_away = ${nm.stats.possessionAway ?? null},
+          shots_on_target_home = ${nm.stats.shotsOnTargetHome ?? null},
+          shots_on_target_away = ${nm.stats.shotsOnTargetAway ?? null},
+          updated_at = now()
+        where provider = ${nm.provider} and external_id = ${nm.externalId}
+      `;
+    } catch { /* best-effort live update */ }
+  };
+
   // 2.5) Early targeted refresh for in-scope live/started matches — must run before slow club comp loop.
   try {
     const liveRows = await sql<{
@@ -503,10 +529,11 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
             const nm = normalizeMatch(fd.match);
             if (nm) {
               fdGroups.push([nm]);
+              await quickUpdateInScopeMatch(nm);
               if (nm.status !== 'NS' && nm.status !== 'PST' && nm.status !== 'CANC' && Date.now() < processingDeadlineMs - 3_000) {
                 const extras = await findSstatsFallback(row, { provider: 'football-data', externalId: row.external_id }, { timeoutMs: isLiveMode ? 4_000 : 8_000 }).catch(() => [] as NormalizedMatch[]);
                 const sstatsNm = extras.find((x) => x.provider === 'sstats');
-                if (sstatsNm) sstatsGroups.push([sstatsNm]);
+                if (sstatsNm) { sstatsGroups.push([sstatsNm]); await quickUpdateInScopeMatch(sstatsNm); }
               }
             }
           }
@@ -517,6 +544,7 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
             for (const fb of fbs) {
               if (fb.provider === 'football-data') fdGroups.push([fb]);
               else sstatsGroups.push([fb]);
+              if (fb.provider === row.provider && fb.externalId === row.external_id) await quickUpdateInScopeMatch(fb);
             }
             errors.push(`early-refresh/fd-quota-fallback/${row.external_id}: used sstats same-game`);
           }
@@ -556,6 +584,7 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
             raw: { refresh: 'early-detail', externalId: row.external_id, at: now.toISOString() },
           };
           sstatsGroups.push([nm]);
+          await quickUpdateInScopeMatch(nm);
         }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
@@ -567,6 +596,7 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
             for (const fb of fbs) {
               if (fb.provider === 'football-data') fdGroups.push([fb]);
               else sstatsGroups.push([fb]);
+              if (fb.provider === row.provider && fb.externalId === row.external_id) await quickUpdateInScopeMatch(fb);
             }
             errors.push(`early-refresh/fd-fallback/${row.external_id}: used sstats same-game`);
             recovered = true;
@@ -577,6 +607,7 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
             for (const fb of fbs) {
               if (fb.provider === 'football-data') fdGroups.push([fb]);
               else sstatsGroups.push([fb]);
+              if (fb.provider === row.provider && fb.externalId === row.external_id) await quickUpdateInScopeMatch(fb);
             }
             errors.push(`early-refresh/sstats-fallback/${row.external_id}: used football-data same-game`);
             recovered = true;
@@ -874,10 +905,11 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
                 if (comp && (comp.scope !== 'whitelist_only' || clubMatchInWhitelistScope(nm))) inScopeNormalized.push(nm);
               }
               seen.add(key);
+              await quickUpdateInScopeMatch(nm);
               if (nm.status !== 'NS' && nm.status !== 'PST' && nm.status !== 'CANC' && Date.now() < processingDeadlineMs - 3_000) {
                 const extras = await findSstatsFallback(row, { provider: 'football-data', externalId: row.external_id }, { timeoutMs: isLiveMode ? 4_000 : 8_000 }).catch(() => [] as NormalizedMatch[]);
                 const sstatsNm = extras.find((x) => x.provider === 'sstats');
-                if (sstatsNm) { normalized.push(sstatsNm); sstatsGroups.push([sstatsNm]); }
+                if (sstatsNm) { normalized.push(sstatsNm); sstatsGroups.push([sstatsNm]); await quickUpdateInScopeMatch(sstatsNm); }
               }
             }
           }
@@ -893,6 +925,7 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
                 if (comp && (comp.scope !== 'whitelist_only' || clubMatchInWhitelistScope(fb))) inScopeNormalized.push(fb);
               }
               seen.add(`${fb.provider}:${fb.externalId}`);
+              if (fb.provider === row.provider && fb.externalId === row.external_id) await quickUpdateInScopeMatch(fb);
             }
             errors.push(`refresh/fd-quota-fallback/${row.external_id}: used sstats same-game`);
           }
@@ -942,6 +975,7 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
             if (comp && (comp.scope !== 'whitelist_only' || clubMatchInWhitelistScope(nm))) inScopeNormalized.push(nm);
           }
           seen.add(key);
+          await quickUpdateInScopeMatch(nm);
         }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
@@ -957,6 +991,7 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
                 const comp = CLUB_COMPETITION_BY_LEAGUE_CODE[fb.leagueCode];
                 if (comp && (comp.scope !== 'whitelist_only' || clubMatchInWhitelistScope(fb))) inScopeNormalized.push(fb);
               }
+              if (fb.provider === row.provider && fb.externalId === row.external_id) await quickUpdateInScopeMatch(fb);
             }
             errors.push(`refresh/fd-fallback/${row.external_id}: used sstats same-game`);
             recovered = true;
@@ -971,6 +1006,7 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
                 const comp = CLUB_COMPETITION_BY_LEAGUE_CODE[fb.leagueCode];
                 if (comp && (comp.scope !== 'whitelist_only' || clubMatchInWhitelistScope(fb))) inScopeNormalized.push(fb);
               }
+              if (fb.provider === row.provider && fb.externalId === row.external_id) await quickUpdateInScopeMatch(fb);
             }
             errors.push(`refresh/sstats-fallback/${row.external_id}: used football-data same-game`);
             recovered = true;

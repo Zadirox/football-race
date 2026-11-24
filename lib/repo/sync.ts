@@ -1078,6 +1078,8 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
   // Prefer matches not yet attached in window to avoid starving the tail of the queue.
   let prioritizedProcessing = eligibleForProcessing;
   let unattachedCount = 0;
+  let attachedByKey = new Set<string>();
+  let matchIdByKey = new Map<string, string>();
   if (eligibleForProcessing.length > 0) {
     const attachedRows = await sql<{ match_id: string }[]>`
       select mm.match_id
@@ -1087,7 +1089,7 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
         and md.game_date >= ${window.from}::date
         and md.game_date <= ${window.to}::date
     `;
-    const attachedByKey = new Set(attachedRows.map((r) => r.match_id));
+    attachedByKey = new Set(attachedRows.map((r) => r.match_id));
     const providers = eligibleForProcessing.map((m) => m.provider);
     const extIds = eligibleForProcessing.map((m) => m.externalId);
     const idRows = await sql<{ id: string; provider: string; external_id: string }[]>`
@@ -1097,7 +1099,7 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
         select * from unnest(${providers}::text[], ${extIds}::text[])
       )
     `;
-    const matchIdByKey = new Map(idRows.map((r) => [`${r.provider}:${r.external_id}`, r.id]));
+    matchIdByKey = new Map(idRows.map((r) => [`${r.provider}:${r.external_id}`, r.id]));
     const head: NormalizedMatch[] = [];
     const tail: NormalizedMatch[] = [];
     for (const m of eligibleForProcessing) {
@@ -1116,14 +1118,25 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
   // Unattached-first ordering means progress is made on missing matches each run.
   // Live mode: только актуальные матчи (live/ht/скоро старт/недавно стартовали) — меньше DB работы, быстрее.
   const matchesToProcess = isLiveMode
-    ? prioritizedProcessing.filter((m) => {
-        const nowMs = now.getTime();
-        const kickoffMs = m.kickoffUtc.getTime();
-        if (m.status === 'LIVE' || m.status === 'HT') return true;
-        if (!finalStatuses.has(m.status) && kickoffMs <= nowMs + 30 * 60_000) return true;
-        if (finalStatuses.has(m.status) && kickoffMs >= nowMs - 4 * 60 * 60_000) return true;
-        return false;
-      })
+    ? prioritizedProcessing
+        .filter((m) => {
+          const nowMs = now.getTime();
+          const kickoffMs = m.kickoffUtc.getTime();
+          if (m.status === 'LIVE' || m.status === 'HT') return true;
+          if (!finalStatuses.has(m.status) && kickoffMs <= nowMs + 30 * 60_000) return true;
+          if (finalStatuses.has(m.status) && kickoffMs >= nowMs - 4 * 60 * 60_000) return true;
+          return false;
+        })
+        .sort((a, b) => {
+          const aId = matchIdByKey.get(`${a.provider}:${a.externalId}`);
+          const bId = matchIdByKey.get(`${b.provider}:${b.externalId}`);
+          const aAttached = aId ? attachedByKey.has(aId) : false;
+          const bAttached = bId ? attachedByKey.has(bId) : false;
+          if (aAttached !== bAttached) return aAttached ? -1 : 1;
+          const aLive = a.status === 'LIVE' || a.status === 'HT' ? 0 : 1;
+          const bLive = b.status === 'LIVE' || b.status === 'HT' ? 0 : 1;
+          return aLive - bLive;
+        })
     : prioritizedProcessing;
 
   tDbStartMs = Date.now();

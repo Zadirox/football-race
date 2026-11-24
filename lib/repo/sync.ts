@@ -32,7 +32,8 @@ export type SyncReason =
   | 'PROVIDER_NOT_CONFIGURED'
   | 'NO_ACTIVE_SEASON'
   | 'SYNC_QUOTA_EXCEEDED'
-  | 'SYNC_PROVIDER_DOWN';
+  | 'SYNC_PROVIDER_DOWN'
+  | 'SYNC_ALREADY_RUNNING';
 
 export type SyncFixturesReport = {
   ok: boolean;
@@ -173,6 +174,31 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
 
   const sql = db();
 
+  const SYNC_LOCK_KEY = 918273645; // stable advisory lock key for syncFixtures
+  let lockAcquired = false;
+  const errors: string[] = [];
+  try {
+    const [lockRow] = await sql<{ locked: boolean }[]>`
+      select pg_try_advisory_lock(${SYNC_LOCK_KEY}) as locked
+    `;
+    lockAcquired = lockRow?.locked === true;
+  } catch (error) {
+    errors.push(`sync-lock: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  if (!lockAcquired) {
+    await logSyncRun({
+      endpoint,
+      status: 'skipped',
+      httpStatus: null,
+      durationMs: Date.now() - startedAt,
+      requestsUsed: 0,
+      error: errors.join('; ') || 'Sync already running',
+      provider: 'multi',
+    });
+    return finish('SYNC_ALREADY_RUNNING', { error: errors.join('; ') || 'Sync already running' });
+  }
+
+  try {
   const [season] = await sql<{ id: string }[]>`
     select id from seasons where status = 'active' order by starts_on desc limit 1
   `;
@@ -192,7 +218,6 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
   let fetchedTotal = 0;
   let requestsUsed = 0;
   let httpStatus: number | null = null;
-  const errors: string[] = [];
   const fdGroups: NormalizedMatch[][] = [];
   const sstatsGroups: NormalizedMatch[][] = [];
   let unlMatches: NormalizedMatch[] = [];
@@ -1381,6 +1406,11 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
     httpStatus,
     error: errorText,
   };
+  } finally {
+    if (lockAcquired) {
+      await sql`select pg_advisory_unlock(${SYNC_LOCK_KEY})`.catch(() => {});
+    }
+  }
 }
 
 function hashString(value: string): number {

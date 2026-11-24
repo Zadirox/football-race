@@ -171,6 +171,7 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
   if (!hasDatabase()) return finish('CONFIG_MISSING');
 
   const hasFootballData = Boolean(env.footballDataToken);
+  let fdQuotaExhausted = false;
 
   const sql = db();
 
@@ -310,7 +311,7 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
 
   // 2) football-data first (B): reserve/guarantee FD before slow sstats club comp loop, so FD is not starved.
   // В live mode пропускаем широкий FD listing: экономим квоту (10 req/min), live обновится через targeted ID refresh.
-  if (!isLiveMode && hasFootballData && Date.now() < processingDeadlineMs - 4_000) {
+  if (!isLiveMode && hasFootballData && !fdQuotaExhausted && Date.now() < processingDeadlineMs - 4_000) {
     try {
       const fixtures = await fetchFixtures({ token: env.footballDataToken!, from: window.from, to: window.to });
       fetchedTotal += fixtures.matches.length;
@@ -321,10 +322,10 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
       const message = error instanceof Error ? error.message : 'Ошибка получения матчей';
       errors.push(message);
       if (isQuotaError(error)) {
-        // quota отмечена в errors; ниже обработается как reason при отсутствии данных
+        fdQuotaExhausted = true;
       }
     }
-  } else if (!isLiveMode && hasFootballData) {
+  } else if (!isLiveMode && hasFootballData && !fdQuotaExhausted) {
     errors.push('football-data: недостаточно бюджета на fetch');
   }
 
@@ -423,7 +424,7 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
     target: { provider: 'football-data' | 'sstats'; externalId: string },
     opts?: { timeoutMs?: number },
   ): Promise<NormalizedMatch[]> => {
-    if (!hasFootballData) return [];
+    if (!hasFootballData || fdQuotaExhausted) return [];
     const timeoutMs = Math.max(2_000, Math.min(opts?.timeoutMs ?? 8_000, 12_000));
     const mh = normTeamKey(row.home_name);
     const ma = normTeamKey(row.away_name);
@@ -451,7 +452,8 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
         out.push({ ...nm, provider: target.provider, externalId: target.externalId, raw: { refresh: 'fd-fallback', fdExternalId: cand.external_id, target: target.externalId, at: now.toISOString() } });
       }
       return out;
-    } catch {
+    } catch (error) {
+      if (isQuotaError(error)) fdQuotaExhausted = true;
       return [];
     }
   };
@@ -491,7 +493,7 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
       if (earlyBudget <= 0) break;
       if (Date.now() >= processingDeadlineMs - 8_000) break;
       try {
-        if (row.provider === 'football-data' && hasFootballData) {
+        if (row.provider === 'football-data' && hasFootballData && !fdQuotaExhausted) {
           earlyBudget -= 1;
           const fd = await fetchFootballDataMatch({ token: env.footballDataToken!, matchId: row.external_id });
           requestsUsed += fd.requestsUsed;
@@ -508,10 +510,20 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
               }
             }
           }
+        } else if (row.provider === 'football-data' && hasFootballData && fdQuotaExhausted && env.sstatsEnabled) {
+          earlyBudget -= 1;
+          const fbs = await findSstatsFallback(row, { provider: 'football-data', externalId: row.external_id }, { timeoutMs: isLiveMode ? 4_000 : 8_000 }).catch(() => [] as NormalizedMatch[]);
+          if (fbs.length) {
+            for (const fb of fbs) {
+              if (fb.provider === 'football-data') fdGroups.push([fb]);
+              else sstatsGroups.push([fb]);
+            }
+            errors.push(`early-refresh/fd-quota-fallback/${row.external_id}: used sstats same-game`);
+          }
         } else if (row.provider === 'sstats' && env.sstatsEnabled) {
           earlyBudget -= 1;
           requestsUsed += 1;
-          const detail = await fetchSstatsGameDetail({ id: row.external_id, apiKey: env.sstatsApiKey, timeoutMs: 8_000 });
+          const detail = await fetchSstatsGameDetail({ id: row.external_id, apiKey: env.sstatsApiKey, timeoutMs: isLiveMode ? 5_000 : 8_000 });
           const core = detail.core;
           const nm: NormalizedMatch = {
             provider: 'sstats',
@@ -547,8 +559,9 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
         }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
+        if (isQuotaError(error)) fdQuotaExhausted = true;
         let recovered = false;
-        if (row.provider === 'football-data' && Date.now() < processingDeadlineMs - 3_000) {
+        if (row.provider === 'football-data' && !fdQuotaExhausted && Date.now() < processingDeadlineMs - 3_000) {
           const fbs = await findSstatsFallback(row, { provider: 'football-data', externalId: row.external_id }, { timeoutMs: isLiveMode ? 4_000 : 8_000 }).catch(() => [] as NormalizedMatch[]);
           if (fbs.length) {
             for (const fb of fbs) {
@@ -558,7 +571,7 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
             errors.push(`early-refresh/fd-fallback/${row.external_id}: used sstats same-game`);
             recovered = true;
           }
-        } else if (row.provider === 'sstats' && hasFootballData && Date.now() < processingDeadlineMs - 3_000) {
+        } else if (row.provider === 'sstats' && hasFootballData && !fdQuotaExhausted && Date.now() < processingDeadlineMs - 3_000) {
           const fbs = await findFootballDataFallback(row, { provider: 'sstats', externalId: row.external_id }, { timeoutMs: isLiveMode ? 4_000 : 8_000 }).catch(() => [] as NormalizedMatch[]);
           if (fbs.length) {
             for (const fb of fbs) {
@@ -844,7 +857,7 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
         }
       }
       try {
-        if (row.provider === 'football-data' && hasFootballData) {
+        if (row.provider === 'football-data' && hasFootballData && !fdQuotaExhausted) {
           refreshBudget -= 1;
           requestsUsed += 1;
           fetchedTotal += 1;
@@ -868,13 +881,28 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
               }
             }
           }
+        } else if (row.provider === 'football-data' && hasFootballData && fdQuotaExhausted && env.sstatsEnabled) {
+          refreshBudget -= 1;
+          const fbs = await findSstatsFallback(row, { provider: 'football-data', externalId: row.external_id }, { timeoutMs: isLiveMode ? 4_000 : 8_000 }).catch(() => [] as NormalizedMatch[]);
+          if (fbs.length) {
+            for (const fb of fbs) {
+              normalized.push(fb);
+              if (fb.leagueCode === 'UNL') inScopeNormalized.push(fb);
+              else {
+                const comp = CLUB_COMPETITION_BY_LEAGUE_CODE[fb.leagueCode];
+                if (comp && (comp.scope !== 'whitelist_only' || clubMatchInWhitelistScope(fb))) inScopeNormalized.push(fb);
+              }
+              seen.add(`${fb.provider}:${fb.externalId}`);
+            }
+            errors.push(`refresh/fd-quota-fallback/${row.external_id}: used sstats same-game`);
+          }
         } else if (row.provider === 'sstats' && env.sstatsEnabled) {
           refreshBudget -= 1;
           requestsUsed += 1;
           const detail = await fetchSstatsGameDetail({
             id: row.external_id,
             apiKey: env.sstatsApiKey,
-            timeoutMs: 8_000,
+            timeoutMs: isLiveMode ? 5_000 : 8_000,
           });
           const core = detail.core;
           const nm: NormalizedMatch = {
@@ -917,8 +945,9 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
         }
       } catch (error) {
         const message = error instanceof Error ? error.message : String(error);
+        if (isQuotaError(error)) fdQuotaExhausted = true;
         let recovered = false;
-        if (row.provider === 'football-data' && Date.now() < processingDeadlineMs - 3_000) {
+        if (row.provider === 'football-data' && !fdQuotaExhausted && Date.now() < processingDeadlineMs - 3_000) {
           const fbs = await findSstatsFallback(row, { provider: 'football-data', externalId: row.external_id }, { timeoutMs: isLiveMode ? 4_000 : 8_000 }).catch(() => [] as NormalizedMatch[]);
           if (fbs.length) {
             for (const fb of fbs) {
@@ -932,7 +961,7 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
             errors.push(`refresh/fd-fallback/${row.external_id}: used sstats same-game`);
             recovered = true;
           }
-        } else if (row.provider === 'sstats' && hasFootballData && Date.now() < processingDeadlineMs - 3_000) {
+        } else if (row.provider === 'sstats' && hasFootballData && !fdQuotaExhausted && Date.now() < processingDeadlineMs - 3_000) {
           const fbs = await findFootballDataFallback(row, { provider: 'sstats', externalId: row.external_id }, { timeoutMs: isLiveMode ? 4_000 : 8_000 }).catch(() => [] as NormalizedMatch[]);
           if (fbs.length) {
             for (const fb of fbs) {

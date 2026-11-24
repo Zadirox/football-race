@@ -515,6 +515,7 @@ export function CollectionClient({ packs, cards, progresses }: Props) {
           collectionComplete={revealComplete}
           variant={variant}
           palette={palette}
+          poolCards={activeCardsAll}
           onClose={closeReveal}
         />
       )}

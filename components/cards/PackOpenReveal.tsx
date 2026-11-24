@@ -1,25 +1,12 @@
 'use client';
 
-import dynamic from 'next/dynamic';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { CardRarity, OwnedCardView } from '@/lib/types';
-import { RARITY_LABEL_RU, ROLE_TITLE_RU } from '@/lib/game/cards-ui';
-import {
-  playPackTear,
-  playRarityReveal,
-  playRatingHit,
-  playRevealStart,
-  playRollTick,
-  preloadRevealSfx,
-} from '@/lib/game/reveal-sfx';
+import { RARITY_LABEL_RU, ROLE_LABEL_RU, ROLE_TITLE_RU, teamFlag } from '@/lib/game/cards-ui';
+import { preloadRevealSfx } from '@/lib/game/reveal-sfx';
 import { FutCard, type FutCardPalette, type FutCardVariant } from './FutCard';
 
-const PackRevealScene = dynamic(
-  () => import('./PackRevealScene').then((m) => m.PackRevealScene),
-  { ssr: false },
-);
-
-type Phase = 'intro' | 'country' | 'role' | 'rating' | 'player' | 'final';
+type Phase = 'intro' | 'spin' | 'final';
 
 type Props = {
   card: OwnedCardView | null;
@@ -27,647 +14,609 @@ type Props = {
   variant?: FutCardVariant;
   palette?: FutCardPalette;
   onClose: () => void;
+  /** Optional pool for spin variety (e.g. cards from the same set). */
+  poolCards?: OwnedCardView[];
 };
 
-const COUNTRY_POOL = [
-  'Англия', 'Франция', 'Германия', 'Испания', 'Италия', 'Португалия',
-  'Нидерланды', 'Бельгия', 'Хорватия', 'Дания', 'Швейцария', 'Австрия',
-  'Польша', 'Турция', 'Норвегия', 'Швеция', 'Шотландия', 'Чехия',
-  'Сербия', 'Украина', 'Аргентина', 'Бразилия', 'Уругвай', 'США', 'Япония',
-];
+type SpinItem = { label: string; img?: string | null; isFlag?: boolean; flag?: string | null };
 
-const CLUB_POOL = [
-  'Арсенал', 'Челси', 'Ливерпуль', 'Манчестер Сити', 'Тоттенхэм',
-  'Барселона', 'Реал Мадрид', 'Атлетико Мадрид', 'Бавария', 'Боруссия Д',
-  'Ювентус', 'Милан', 'Интер', 'Наполи', 'ПСЖ',
-  'Бенфика', 'Порту', 'Аякс', 'Байер', 'Аталанта',
-  'Рома', 'Лацио', 'Севилья', 'Валенсия', 'Марсель',
-];
+const CLUB_CRESTS: Record<string, string> = {
+  'ac milan': '/crests/ac-milan.png',
+  'milan': '/crests/ac-milan.png',
+  'arsenal': '/crests/arsenal.png',
+  'aston villa': '/crests/aston-villa.png',
+  'atletico madrid': '/crests/atletico-madrid.png',
+  'атлетико мадрид': '/crests/atletico-madrid.png',
+  'barcelona': '/crests/barcelona.png',
+  'барселона': '/crests/barcelona.png',
+  'bayern munich': '/crests/bayern-munich.png',
+  'bayern': '/crests/bayern-munich.png',
+  'бавария': '/crests/bayern-munich.png',
+  'borussia dortmund': '/crests/borussia-dortmund.png',
+  'боруссия д': '/crests/borussia-dortmund.png',
+  'боруссия дортмунд': '/crests/borussia-dortmund.png',
+  'brighton': '/crests/brighton.png',
+  'chelsea': '/crests/chelsea.png',
+  'челси': '/crests/chelsea.png',
+  'como': '/crests/como.png',
+  'fenerbahce': '/crests/fenerbahce.png',
+  'фенербахче': '/crests/fenerbahce.png',
+  'galatasaray': '/crests/galatasaray.png',
+  'галатасарай': '/crests/galatasaray.png',
+  'inter': '/crests/inter.png',
+  'интер': '/crests/inter.png',
+  'juventus': '/crests/juventus.png',
+  'ювентус': '/crests/juventus.png',
+  'lille': '/crests/lille.png',
+  'лилль': '/crests/lille.png',
+  'liverpool': '/crests/liverpool.png',
+  'ливерпуль': '/crests/liverpool.png',
+  'manchester city': '/crests/manchester-city.png',
+  'манчестер сити': '/crests/manchester-city.png',
+  'manchester united': '/crests/manchester-united.png',
+  'манчестер юнайтед': '/crests/manchester-united.png',
+  'napoli': '/crests/napoli.png',
+  'наполи': '/crests/napoli.png',
+  'psg': '/crests/psg.png',
+  'paris saint-germain': '/crests/psg.png',
+  'псж': '/crests/psg.png',
+  'rb leipzig': '/crests/rb-leipzig.png',
+  'рб лейпциг': '/crests/rb-leipzig.png',
+  'real madrid': '/crests/real-madrid.png',
+  'реал мадрид': '/crests/real-madrid.png',
+  'roma': '/crests/roma.png',
+  'рома': '/crests/roma.png',
+  'tottenham': '/crests/tottenham.png',
+  'тоттенхэм': '/crests/tottenham.png',
+};
 
-const ROLE_POOL = ['Вратарь', 'Защитник', 'Полузащитник', 'Нападающий'];
+const BG_TRACKS = ['/sounds/packs/bg/bg-1.mp3', '/sounds/packs/bg/bg-2.mp3'];
+const REVEAL_SOUNDS: Record<CardRarity, string[]> = {
+  common: [
+    '/sounds/packs/reveal/common/baby-laughing-meme.mp3',
+    '/sounds/packs/reveal/common/meme-violin-sad-violin.mp3',
+    '/sounds/packs/reveal/common/movie_1.mp3',
+    '/sounds/packs/reveal/common/omg-bruh-oh-hell-nah.mp3',
+    '/sounds/packs/reveal/common/sad-violin-meme-hamster-mp3.mp3',
+    '/sounds/packs/reveal/common/spongebob-fail.mp3',
+    '/sounds/packs/reveal/common/vot-takaia-vot-kh-nia-sobachka.mp3',
+  ],
+  rare: [
+    '/sounds/packs/reveal/rare/1-000-000-000-iq.mp3',
+    '/sounds/packs/reveal/rare/dexter-meme.mp3',
+    '/sounds/packs/reveal/rare/faaah.mp3',
+    '/sounds/packs/reveal/rare/spiderman-meme-song.mp3',
+    '/sounds/packs/reveal/rare/zvuk-litvina.mp3',
+  ],
+  epic: [
+    '/sounds/packs/reveal/epic/gol-messi-vs-getafe-narrat-per-puyal-full-hd-1080p-audiotrimmer-1.mp3',
+    '/sounds/packs/reveal/epic/suuuuuuuuuuuuu.mp3',
+    '/sounds/packs/reveal/epic/verity-edit.mp3',
+  ],
+  legend: [
+    '/sounds/packs/reveal/legendary/gta-san-andreas-gorevi-gecme-muzigi-respect-mp3indirdur.mp3',
+    '/sounds/packs/reveal/legendary/tiki-tiki-boosted.mp3',
+  ],
+};
 
-const NAME_POOL = [
-  'Harry Kane', 'Kylian Mbappé', 'Jude Bellingham', 'Kevin De Bruyne', 'Virgil van Dijk',
-  'Luka Modrić', 'Bruno Fernandes', 'Rodri', 'Phil Foden', 'Declan Rice',
-  'Bernardo Silva', 'Rúben Dias', 'Florian Wirtz', 'Jamal Musiala', 'Pedri',
-  'Gavi', 'Federico Valverde', 'Lautaro Martínez', 'Joshua Kimmich', 'İlkay Gündoğan',
-  'Martin Ødegaard', 'Bukayo Saka', 'Achraf Hakimi', 'Antoine Griezmann', 'Rafael Leão',
-];
+const ROLE_FULL: Record<string, string> = {
+  GK: 'Вратарь',
+  DEF: 'Защитник',
+  MID: 'Полузащитник',
+  FWD: 'Нападающий',
+};
 
-const DUR = {
-  intro: 1600,
-  country: 4600,
-  role: 3600,
-  rating: 4600,
-  player: 5200,
-  pause: 900, // after player lands, before final card burst
-} as const;
+const FALLBACK_NATIONS = ['Бразилия', 'Франция', 'Англия', 'Испания', 'Германия', 'Португалия', 'Аргентина', 'Нидерланды', 'Италия', 'Бельгия'];
+const FALLBACK_CLUBS = ['Арсенал', 'Реал Мадрид', 'Барселона', 'Ливерпуль', 'Бавария', 'ПСЖ', 'Манчестер Сити', 'Интер', 'Милан', 'Челси'];
+const FALLBACK_NAMES = ['ALEX NOVAK', 'LEO MARTIN', 'MARCUS VALE', 'NOAH GRANT', 'DANI ROJAS'];
 
-function pickOther<T>(pool: T[], current: T): T {
-  if (pool.length <= 1) return current;
-  let v = pool[Math.floor(Math.random() * pool.length)]!;
-  let tries = 0;
-  while (v === current && tries < 6) {
-    v = pool[Math.floor(Math.random() * pool.length)]!;
-    tries++;
-  }
-  return v;
+function norm(s: string) { return s.trim().toLowerCase(); }
+function crestFor(name: string | null | undefined) { return name ? CLUB_CRESTS[norm(name)] ?? null : null; }
+function sameVal(a: unknown, b: unknown) {
+  if (a && b && typeof a === 'object' && typeof b === 'object') return (a as SpinItem).label === (b as SpinItem).label && (a as SpinItem).img === (b as SpinItem).img;
+  return a === b;
+}
+function rarityPillLabel(r: CardRarity) {
+  if (r === 'legend') return 'Легендарная';
+  if (r === 'epic') return 'Эпическая';
+  if (r === 'rare') return 'Редкая';
+  return 'Обычная';
 }
 
-function runSlot(opts: {
-  duration: number;
-  pool: (string | number)[];
-  target: string | number;
-  onTick: (v: string | number) => void;
-  onDone: () => void;
-  tickSound: (intensity: number) => void;
-  cancelled: () => boolean;
-}) {
-  const start = performance.now();
-  const step = () => {
-    if (opts.cancelled()) return;
-    const elapsed = performance.now() - start;
-    const p = Math.min(1, elapsed / opts.duration);
-    // ease-out interval: fast at start, slows near end
-    const interval = 55 + p * p * 340;
-    const intensity = 1 - p * 0.7;
-    if (p >= 1) {
-      opts.onTick(opts.target);
-      opts.onDone();
-      return;
-    }
-    opts.onTick(pickOther(opts.pool, opts.target));
-    opts.tickSound(intensity);
-    window.setTimeout(step, interval);
-  };
-  step();
-}
-
-/**
- * Раскрытие пака: 3D-пак + слот-машина (страна → роль → рейтинг → игрок),
- * длинная анимация с прокруткой значений, звуки и финальный показ карточки.
- */
-export function PackOpenReveal({ card, collectionComplete, variant = 'fut', palette = 'fut', onClose }: Props) {
+export function PackOpenReveal({ card, collectionComplete, variant = 'fut', palette = 'fut', onClose, poolCards = [] }: Props) {
   const [phase, setPhase] = useState<Phase>('intro');
-  const [countryText, setCountryText] = useState('—');
-  const [roleText, setRoleText] = useState('—');
-  const [ratingText, setRatingText] = useState<string | number>('—');
-  const [playerText, setPlayerText] = useState('—');
-  const [countryLocked, setCountryLocked] = useState(false);
-  const [roleLocked, setRoleLocked] = useState(false);
+  const [revealed, setRevealed] = useState(false);
+  const [step, setStep] = useState(0);
+  const [nation, setNation] = useState<SpinItem>({ label: 'Клуб' });
+  const [pos, setPos] = useState('—');
+  const [rating, setRating] = useState('—');
+  const [name, setName] = useState<SpinItem>({ label: 'НЕИЗВЕСТНЫЙ ИГРОК' });
+  const [nationLocked, setNationLocked] = useState(false);
+  const [posLocked, setPosLocked] = useState(false);
   const [ratingLocked, setRatingLocked] = useState(false);
-  const [playerLocked, setPlayerLocked] = useState(false);
-  const [sceneProgress, setSceneProgress] = useState(0);
+  const [nameLocked, setNameLocked] = useState(false);
+  const [rarityShown, setRarityShown] = useState(false);
+  const [introShow, setIntroShow] = useState(false);
+  const [introDissolve, setIntroDissolve] = useState(false);
+  const [continueReady, setContinueReady] = useState(false);
+  const [continueVisible, setContinueVisible] = useState(false);
+  const [fxVol, setFxVol] = useState(0.8);
+  const [bgVol, setBgVol] = useState(0.65);
+
   const cancelledRef = useRef(false);
   const timersRef = useRef<number[]>([]);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const bgSourceRef = useRef<AudioBufferSourceNode | HTMLAudioElement | null>(null);
+  const bgGainRef = useRef<GainNode | null>(null);
+  const bgStopTimerRef = useRef<number | null>(null);
+  const bgTokenRef = useRef(0);
+  const lastBgRef = useRef(-1);
+  const revealAudioRef = useRef<HTMLAudioElement | null>(null);
+  const fxVolRef = useRef(0.8);
+  const bgVolRef = useRef(0.65);
 
-  const clearTimers = () => {
-    for (const t of timersRef.current) window.clearTimeout(t);
-    timersRef.current = [];
+  fxVolRef.current = fxVol;
+  bgVolRef.current = bgVol;
+
+  const clearTimers = () => { for (const t of timersRef.current) window.clearTimeout(t); timersRef.current = []; };
+  const later = (fn: () => void, ms: number) => {
+    const t = window.setTimeout(() => { if (!cancelledRef.current) fn(); }, ms);
+    timersRef.current.push(t);
+    return t;
   };
 
+  const ensureCtx = () => {
+    if (typeof window === 'undefined') return null;
+    const Ctx = window.AudioContext || (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+    if (!Ctx) return null;
+    if (!audioCtxRef.current) audioCtxRef.current = new Ctx();
+    if (audioCtxRef.current.state === 'suspended') void audioCtxRef.current.resume().catch(() => {});
+    return audioCtxRef.current;
+  };
+
+  const tone = (freq: number, dur: number, type: OscillatorType = 'sine', vol = 0.03, when = 0) => {
+    const ctx = audioCtxRef.current;
+    if (!ctx) return;
+    const v = Math.max(0.0001, vol * (fxVolRef.current / 0.8));
+    const o = ctx.createOscillator();
+    const g = ctx.createGain();
+    o.type = type;
+    o.frequency.value = freq;
+    g.gain.setValueAtTime(0.0001, ctx.currentTime + when);
+    g.gain.exponentialRampToValueAtTime(v, ctx.currentTime + when + 0.01);
+    g.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + when + dur);
+    o.connect(g); g.connect(ctx.destination);
+    o.start(ctx.currentTime + when); o.stop(ctx.currentTime + when + dur + 0.02);
+  };
+  const sfx = {
+    tick: () => tone(520 + Math.random() * 180, 0.04, 'triangle', 0.012),
+    lock: () => { tone(660, 0.08, 'sine', 0.03); tone(880, 0.12, 'sine', 0.025, 0.05); },
+    rarity: () => { tone(523, 0.18, 'sine', 0.03); tone(659, 0.18, 'sine', 0.03, 0.06); tone(784, 0.28, 'sine', 0.035, 0.12); tone(1047, 0.35, 'triangle', 0.02, 0.18); },
+  };
+
+  const stopReveal = () => { if (revealAudioRef.current) { revealAudioRef.current.pause(); revealAudioRef.current.currentTime = 0; revealAudioRef.current = null; } };
+  const stopBg = () => {
+    bgTokenRef.current++;
+    if (bgStopTimerRef.current) { window.clearTimeout(bgStopTimerRef.current); bgStopTimerRef.current = null; }
+    const src = bgSourceRef.current;
+    if (src) {
+      try {
+        if (src instanceof HTMLAudioElement) { src.pause(); src.currentTime = 0; }
+        else src.stop();
+      } catch {}
+      bgSourceRef.current = null;
+    }
+    bgGainRef.current = null;
+  };
+
+  const playBg = async () => {
+    stopBg();
+    const token = ++bgTokenRef.current;
+    ensureCtx();
+    let idx = Math.floor(Math.random() * BG_TRACKS.length);
+    if (BG_TRACKS.length > 1 && idx === lastBgRef.current) idx = (idx + 1) % BG_TRACKS.length;
+    lastBgRef.current = idx;
+    const srcUrl = BG_TRACKS[idx]!;
+    const ctx = audioCtxRef.current;
+    if (ctx) {
+      try {
+        const res = await fetch(srcUrl);
+        const buf = await res.arrayBuffer();
+        const audioBuf = await ctx.decodeAudioData(buf);
+        if (token !== bgTokenRef.current || !audioCtxRef.current) return;
+        stopBg(); bgTokenRef.current = token;
+        const source = ctx.createBufferSource();
+        const gain = ctx.createGain();
+        source.buffer = audioBuf;
+        gain.gain.value = bgVolRef.current;
+        source.connect(gain); gain.connect(ctx.destination);
+        source.start(0);
+        bgSourceRef.current = source;
+        bgGainRef.current = gain;
+        bgStopTimerRef.current = window.setTimeout(() => { if (token === bgTokenRef.current) stopBg(); }, 30000);
+        return;
+      } catch {}
+    }
+    try {
+      if (token !== bgTokenRef.current) return;
+      stopBg(); bgTokenRef.current = token;
+      const a = new Audio(srcUrl);
+      a.volume = bgVolRef.current;
+      bgSourceRef.current = a;
+      void a.play().catch(() => {});
+      bgStopTimerRef.current = window.setTimeout(() => { if (token === bgTokenRef.current) stopBg(); }, 30000);
+    } catch {}
+  };
+
+  const playRevealSound = (r: CardRarity) => {
+    stopReveal();
+    const list = REVEAL_SOUNDS[r] ?? REVEAL_SOUNDS.common;
+    const src = list[Math.floor(Math.random() * list.length)]!;
+    const a = new Audio(src);
+    a.volume = fxVolRef.current;
+    revealAudioRef.current = a;
+    void a.play().catch(() => {});
+  };
+
+  useEffect(() => () => { cancelledRef.current = true; clearTimers(); stopBg(); stopReveal(); }, []);
+
   useEffect(() => {
-    return () => {
-      cancelledRef.current = true;
-      clearTimers();
-    };
+    if (bgGainRef.current) bgGainRef.current.gain.value = bgVol;
+    const src = bgSourceRef.current;
+    if (src instanceof HTMLAudioElement) src.volume = bgVol;
+  }, [bgVol]);
+
+  useEffect(() => {
+    if (revealAudioRef.current) revealAudioRef.current.volume = fxVol;
+  }, [fxVol]);
+
+  useEffect(() => {
+    document.documentElement.setAttribute('data-pack-opening', 'true');
+    return () => { document.documentElement.removeAttribute('data-pack-opening'); };
   }, []);
+
+  const data = useMemo(() => {
+    if (!card) return null;
+    const isClub = card.setKind === 'club';
+    const teamLabel = isClub ? (card.clubName || card.nationalTeam || 'Клуб') : (card.nationalTeam || 'Сборная');
+    const teamImg = isClub ? crestFor(teamLabel) : null;
+    const teamFlagEmoji = !isClub ? teamFlag(card.nationalTeam, card.nationalTeamSlug) : null;
+    const finalNation: SpinItem = { label: teamLabel, img: teamImg, isFlag: !isClub, flag: teamFlagEmoji };
+    const finalName: SpinItem = { label: card.playerName, img: card.photoUrl ?? null };
+    const posFull = ROLE_TITLE_RU[card.roleGroup] ?? ROLE_FULL[card.roleGroup] ?? card.roleGroup;
+    const posShort = ROLE_LABEL_RU[card.roleGroup] ?? card.roleGroup;
+
+    const nationPool: SpinItem[] = [];
+    const seenNation = new Set<string>();
+    const pushNation = (it: SpinItem) => { const k = norm(it.label); if (seenNation.has(k)) return; seenNation.add(k); nationPool.push(it); };
+    pushNation(finalNation);
+    for (const c of poolCards) {
+      if (isClub) {
+        const l = c.clubName || c.nationalTeam;
+        if (l) pushNation({ label: l, img: crestFor(l) });
+      } else {
+        const l = c.nationalTeam;
+        if (l) pushNation({ label: l, img: null, isFlag: true, flag: teamFlag(l, c.nationalTeamSlug) });
+      }
+    }
+    const fallbacks = isClub ? FALLBACK_CLUBS : FALLBACK_NATIONS;
+    for (const fb of fallbacks) pushNation(isClub ? { label: fb, img: crestFor(fb) } : { label: fb, isFlag: true, flag: teamFlag(fb) });
+
+    const namePool: SpinItem[] = [];
+    const seenName = new Set<string>();
+    const pushName = (it: SpinItem) => { const k = norm(it.label); if (seenName.has(k)) return; seenName.add(k); namePool.push(it); };
+    pushName(finalName);
+    for (const c of poolCards) pushName({ label: c.playerName, img: c.photoUrl ?? null });
+    for (const n of FALLBACK_NAMES) pushName({ label: n, img: null });
+
+    const ratingPool = Array.from({ length: 30 }, (_, i) => String(70 + i));
+    const posPool = ['Вратарь', 'Защитник', 'Левый защитник', 'Правый защитник', 'Опорный полузащитник', 'Центральный полузащитник', 'Атакующий полузащитник', 'Правый вингер', 'Левый вингер', 'Нападающий'];
+    if (!posPool.includes(posFull)) posPool.push(posFull);
+
+    return { isClub, teamLabel, finalNation, finalName, posFull, posShort, rating: String(card.rating), rarity: card.rarity, nationPool, namePool, ratingPool, posPool };
+  }, [card, poolCards]);
 
   useEffect(() => {
     cancelledRef.current = false;
     clearTimers();
-    if (!card) {
-      setPhase('final');
-      setSceneProgress(1);
-      return;
-    }
+    stopBg(); stopReveal();
+    setPhase('intro'); setRevealed(false); setStep(0);
+    setNation({ label: card?.setKind === 'club' ? 'Клуб' : 'Сборная' });
+    setPos('—'); setRating('—'); setName({ label: 'НЕИЗВЕСТНЫЙ ИГРОК' });
+    setNationLocked(false); setPosLocked(false); setRatingLocked(false); setNameLocked(false);
+    setRarityShown(false); setIntroShow(false); setIntroDissolve(false);
+    setContinueReady(false); setContinueVisible(false);
 
+    if (!card) { setRevealed(true); setPhase('final'); return; }
     preloadRevealSfx(card.rarity);
-    setPhase('intro');
-    setCountryText('—');
-    setRoleText('—');
-    setRatingText('—');
-    setPlayerText('—');
-    setCountryLocked(false);
-    setRoleLocked(false);
-    setRatingLocked(false);
-    setPlayerLocked(false);
-    setSceneProgress(0);
-    playRevealStart();
+    ensureCtx();
+    void playBg();
 
-    // progress ramp during intro+suspense (approximate)
-    const start = performance.now();
-    const total = DUR.intro + DUR.country + DUR.role + DUR.rating + DUR.player + DUR.pause + 350;
-    const prog = () => {
-      if (cancelledRef.current) return;
-      const p = Math.min(1, (performance.now() - start) / total);
-      setSceneProgress((prev) => (p > prev ? p : prev));
-      if (p < 1) window.requestAnimationFrame(prog);
-    };
-    window.requestAnimationFrame(prog);
-
-    const later = (fn: () => void, ms: number) => {
-      const id = window.setTimeout(() => {
-        if (!cancelledRef.current) fn();
-      }, ms);
-      timersRef.current.push(id);
+    const runSlot = <T,>(opts: { pool: T[]; target: T; duration: number; onTick: (v: T) => void; onDone: () => void; tickSound?: boolean }) => {
+      const start = performance.now();
+      const tick = () => {
+        if (cancelledRef.current) return;
+        const elapsed = performance.now() - start;
+        const p = Math.min(1, elapsed / opts.duration);
+        const interval = 90 + p * p * 520;
+        if (p >= 1) { opts.onTick(opts.target); sfx.lock(); opts.onDone(); return; }
+        let v = opts.pool[Math.floor(Math.random() * opts.pool.length)] as T;
+        if (sameVal(v, opts.target)) v = opts.pool[(opts.pool.indexOf(v) + 1) % opts.pool.length] as T;
+        opts.onTick(v);
+        if (opts.tickSound !== false) sfx.tick();
+        later(tick, interval);
+      };
+      tick();
     };
 
-    // Fixed schedule for phases/slots (reliable), locks happen on slot completion.
+    later(() => setPhase('spin'), 600);
     later(() => {
-      if (cancelledRef.current) return;
-      setPhase('country');
-      const teamLabel = card.clubName || card.nationalTeam || '—';
-      runSlot({
-        duration: DUR.country,
-        pool: card.setKind === 'club' ? CLUB_POOL : COUNTRY_POOL,
-        target: teamLabel,
-        onTick: (v) => setCountryText(String(v)),
-        onDone: () => {
-          if (cancelledRef.current) return;
-          setCountryText(teamLabel);
-          setCountryLocked(true);
-          playRollTick(0.18);
-        },
-        tickSound: playRollTick,
-        cancelled: () => cancelledRef.current,
-      });
-    }, DUR.intro);
+      setStep(1); setIntroShow(true);
+      if (!data) return;
+      runSlot({ pool: data.nationPool, target: data.finalNation, duration: 7000, onTick: (v) => setNation(v), onDone: () => { setNation(data.finalNation); setNationLocked(true); } });
+      runSlot({ pool: data.posPool, target: data.posFull, duration: 12000, tickSound: false, onTick: (v) => setPos(v), onDone: () => { setPos(data.posFull); setPosLocked(true); } });
+      runSlot({ pool: data.ratingPool, target: data.rating, duration: 17500, tickSound: false, onTick: (v) => setRating(v), onDone: () => { setRating(data.rating); setRatingLocked(true); } });
+      runSlot({ pool: data.namePool, target: data.finalName, duration: 24000, tickSound: false, onTick: (v) => setName(v), onDone: () => { setName(data.finalName); setNameLocked(true); } });
+    }, 1000);
 
-    const roleStart = DUR.intro + DUR.country;
+    later(() => setIntroDissolve(true), 8400);
+    later(() => { setIntroShow(false); setIntroDissolve(false); }, 9200);
+    later(() => setStep(2), 8500);
+    later(() => setStep(3), 13500);
+    later(() => { setStep(4); setRarityShown(true); sfx.rarity(); }, 19000);
+    later(() => setStep(5), 20000);
     later(() => {
-      if (cancelledRef.current) return;
-      setPhase('role');
-      runSlot({
-        duration: DUR.role,
-        pool: ROLE_POOL,
-        target: ROLE_TITLE_RU[card.roleGroup],
-        onTick: (v) => setRoleText(String(v)),
-        onDone: () => {
-          if (cancelledRef.current) return;
-          setRoleText(ROLE_TITLE_RU[card.roleGroup]);
-          setRoleLocked(true);
-          playRollTick(0.18);
-        },
-        tickSound: playRollTick,
-        cancelled: () => cancelledRef.current,
-      });
-    }, roleStart);
+      setRevealed(true); setPhase('final'); stopBg(); playRevealSound(card.rarity);
+      setContinueVisible(true);
+      later(() => setContinueReady(true), 4000);
+    }, 25500);
 
-    const ratingStart = roleStart + DUR.role;
-    later(() => {
-      if (cancelledRef.current) return;
-      setPhase('rating');
-      const ratingPool = Array.from({ length: 23 }, (_, i) => 70 + i); // 70-92
-      runSlot({
-        duration: DUR.rating,
-        pool: ratingPool,
-        target: card.rating,
-        onTick: (v) => setRatingText(v),
-        onDone: () => {
-          if (cancelledRef.current) return;
-          setRatingText(card.rating);
-          setRatingLocked(true);
-          playRatingHit();
-        },
-        tickSound: playRollTick,
-        cancelled: () => cancelledRef.current,
-      });
-    }, ratingStart);
-
-    const playerStart = ratingStart + DUR.rating;
-    later(() => {
-      if (cancelledRef.current) return;
-      setPhase('player');
-      runSlot({
-        duration: DUR.player,
-        pool: NAME_POOL,
-        target: card.playerName,
-        onTick: (v) => setPlayerText(String(v)),
-        onDone: () => {
-          if (cancelledRef.current) return;
-          setPlayerText(card.playerName);
-          setPlayerLocked(true);
-          playRollTick(0.18);
-          later(() => {
-            if (cancelledRef.current) return;
-            playPackTear();
-            setSceneProgress(1);
-            later(() => {
-              if (cancelledRef.current) return;
-              setPhase('final');
-              playRarityReveal(card.rarity);
-            }, 350);
-          }, DUR.pause);
-        },
-        tickSound: playRollTick,
-        cancelled: () => cancelledRef.current,
-      });
-    }, playerStart);
-
-    return () => {
-      cancelledRef.current = true;
-      clearTimers();
-    };
-  }, [card]);
-
-  const rarityLabel = useMemo(() => (card ? RARITY_LABEL_RU[card.rarity] : null), [card]);
-  const revealed = phase === 'final' || collectionComplete || !card;
-  const rarity = card?.rarity ?? 'common';
-  const rarityKnown = ratingLocked || phase === 'player' || phase === 'final' || !card;
-  const visualRarity: CardRarity | 'mystery' = rarityKnown ? rarity : 'mystery';
+    return () => { cancelledRef.current = true; clearTimers(); stopBg(); stopReveal(); };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [card?.instanceId, collectionComplete]);
 
   const skip = () => {
     if (!card || revealed) return;
     cancelledRef.current = true;
     clearTimers();
-    setCountryText(card.nationalTeam || '—');
-    setRoleText(ROLE_TITLE_RU[card.roleGroup]);
-    setRatingText(card.rating);
-    setPlayerText(card.playerName);
-    setCountryLocked(true);
-    setRoleLocked(true);
-    setRatingLocked(true);
-    setPlayerLocked(true);
-    setSceneProgress(1);
-    setPhase('final');
-    playRarityReveal(card.rarity);
+    stopBg(); stopReveal();
+    if (data) {
+      setNation(data.finalNation); setPos(data.posFull); setRating(data.rating); setName(data.finalName);
+      setNationLocked(true); setPosLocked(true); setRatingLocked(true); setNameLocked(true);
+      setRarityShown(true); setStep(5); setIntroShow(false); setIntroDissolve(false);
+      setRevealed(true); setPhase('final'); setContinueVisible(true); setContinueReady(true);
+    }
   };
 
-  const sceneStep = phase === 'intro' ? 0 : phase === 'country' ? 1 : phase === 'role' ? 2 : phase === 'rating' ? 3 : 4;
+  const onPrimary = () => { if (!revealed) { skip(); return; } onClose(); };
+  const onBackdrop = () => { if (revealed) onClose(); else skip(); };
+
+  const rarity = card?.rarity ?? 'common';
+  const rarityLabel = rarityPillLabel(rarity);
+  const teamLabel = data?.isClub ? 'Клуб' : 'Сборная';
+  const posSize = pos.length > 18 ? '20px' : pos.length > 12 ? '24px' : '28px';
+
+  if (collectionComplete || !card) {
+    return (
+      <div className="pr" role="dialog" aria-modal="true" aria-label="Открытие пака">
+        <div className="pr__bg" onClick={onClose} />
+        <div className="pr__simple">
+          <h2 className="pr__simpleTitle">Коллекция собрана</h2>
+          <p className="pr__simpleText">Новых карточек в этом сете больше нет. Дублей не выдаём.</p>
+          <button type="button" className="btn btn--primary" onClick={onClose}>В коллекцию</button>
+        </div>
+        <style jsx>{`
+          .pr{position:fixed;inset:0;z-index:80;display:flex;align-items:center;justify-content:center;padding:18px}
+          .pr__bg{position:absolute;inset:0;background:radial-gradient(60% 50% at 50% 45%, rgba(10,16,24,.6), rgba(2,4,8,.88));backdrop-filter:blur(8px)}
+          .pr__simple{position:relative;z-index:2;width:min(520px,100%);padding:28px;border-radius:24px;background:linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.02)), rgba(12,20,32,.72);border:1px solid rgba(255,255,255,.1);text-align:center;box-shadow:0 30px 80px rgba(0,0,0,.5)}
+          .pr__simpleTitle{margin:0 0 8px;font-family:var(--font-display),sans-serif;font-size:36px;color:#fff}
+          .pr__simpleText{margin:0 0 18px;color:rgba(255,255,255,.78)}
+        `}</style>
+      </div>
+    );
+  }
 
   return (
-    <div className="pack-reveal" role="dialog" aria-modal="true" aria-label="Открытие пака">
-      <div className="pack-reveal__backdrop" onClick={revealed ? onClose : skip} />
-
-      {card && !collectionComplete && (
-        <div className="pack-reveal__scene" aria-hidden="true">
-          <PackRevealScene rarity={rarity} step={sceneStep} progress={sceneProgress} rarityRevealed={rarityKnown} />
-        </div>
-      )}
-
-      <div className={`reveal-stage${revealed ? ' reveal-stage--revealed' : ''}`}>
-        <div className={`pack-reveal__panel pack-reveal__panel--${visualRarity}${revealed ? ' pack-reveal__panel--revealed' : ''}${rarityKnown ? ' pack-reveal__panel--charged' : ''}`}>
-          <div className="panel-frame" aria-hidden="true">
-            <span className="panel-frame__glow" />
-            <span className="panel-frame__shine" />
-            <span className="panel-frame__corner panel-frame__corner--tl" />
-            <span className="panel-frame__corner panel-frame__corner--tr" />
-            <span className="panel-frame__corner panel-frame__corner--bl" />
-            <span className="panel-frame__corner panel-frame__corner--br" />
+    <div className="pr" role="dialog" aria-modal="true" aria-label="Открытие пака">
+      <div className="pr__bg" onClick={onBackdrop} />
+      <div className={`pr__stage ${phase !== 'intro' ? 'pr__stage--open' : ''} ${rarityShown ? 'pr__stage--rarity' : ''}`}>
+        <div className="pr__fx" aria-hidden="true"><div className="pr__fx-a" /><div className="pr__fx-b" /><div className="pr__fx-c" /></div>
+        <div className="pr__tunnel">
+          <div className="pr__world">
+            <div className="pr__wall pr__wall--l" /><div className="pr__wall pr__wall--r" />
+            <div className="pr__ceil" /><div className="pr__floor" /><div className="pr__end" />
           </div>
 
-          <div className="panel-inner">
-            {collectionComplete || !card ? (
-              <div className="pack-reveal__done">
-                <h2 className="card__title">Коллекция собрана</h2>
-                <p className="card__text">Новых карточек в этом сете больше нет. Дублей не выдаём.</p>
+          <div className={`pr__panel pr__panel--l ${nationLocked ? 'is-locked' : step >= 1 ? 'is-active' : ''}`}>
+            <div className="pr__plabel">{teamLabel}</div>
+            <div className="pr__pmedia">
+              {nation.img ? <img src={nation.img} alt="" /> : nation.flag ? <span className="pr__flag">{nation.flag}</span> : null}
+              <div className="pr__pval">{nation.label}</div>
+            </div>
+          </div>
+          <div className={`pr__panel pr__panel--r ${posLocked ? 'is-locked' : step >= 1 ? 'is-active' : ''}`}>
+            <div className="pr__plabel">Роль</div>
+            <div className="pr__pval" style={{ fontSize: posSize }}>{pos}</div>
+          </div>
+          <div className={`pr__panel pr__panel--l pr__panel--rating ${ratingLocked ? 'is-locked' : step >= 1 ? 'is-active' : ''}`}>
+            <div className="pr__plabel">Рейтинг</div>
+            <div className="pr__pval pr__pval--big">{rating}</div>
+          </div>
+          <div className={`pr__panel pr__panel--r ${nameLocked ? 'is-locked' : step >= 1 ? 'is-active' : ''}`}>
+            <div className="pr__plabel">Игрок</div>
+            <div className="pr__pmedia">
+              {name.img ? <img src={name.img} alt="" className="pr__pavatar" /> : null}
+              <div className="pr__pval">{name.label}</div>
+            </div>
+          </div>
+
+          <div className={`pr__center ${rarityShown ? 'is-show' : ''}`}>
+            {!revealed || !card ? (
+              <div className={`pr__mysteryCard r-${rarityShown ? rarity : 'mystery'}`}>
+                <div className="pr__mcTop"><div><div className="pr__mcRating">{ratingLocked ? rating : '—'}</div><div className="pr__mcPos">{posLocked ? (data?.posShort ?? '—') : '—'}</div></div><div className="pr__mcTeam">{nationLocked ? nation.label : teamLabel}</div></div>
+                <div className="pr__mcPortrait">{nameLocked && name.img ? <img src={name.img} alt="" /> : <span>?</span>}</div>
+                <div className="pr__mcName">{nameLocked ? name.label : 'НЕИЗВЕСТНЫЙ ИГРОК'}</div>
+                {rarityShown && <div className={`pr__pill r-${rarity}`}>{rarityLabel}</div>}
               </div>
             ) : (
-              <>
-                <div className="intro" data-show={phase === 'intro' ? 'true' : 'false'}>
-                  <div className="intro__badge">{card.setKind === 'club' ? 'CLUB PACK' : 'NATIONAL PACK'}</div>
-                  <div className="intro__pulse" />
-                  <div className="intro__text">Открываем пак…</div>
-                  <div className="intro__hint">{card.setKind === 'club' ? 'Клубы · 1–2 карточки' : 'Сборные · 1 карточка'}</div>
-                </div>
-
-                <div className={`slots${phase === 'intro' ? ' slots--hidden' : ''}`} aria-live="polite">
-                  {(() => {
-                    const order: Phase[] = ['intro', 'country', 'role', 'rating', 'player', 'final'];
-                    const idx = order.indexOf(phase);
-                    const countryDone = countryLocked || idx >= order.indexOf('role');
-                    const roleDone = roleLocked || idx >= order.indexOf('rating');
-                    const ratingDone = ratingLocked || idx >= order.indexOf('player');
-                    const playerDone = playerLocked || idx >= order.indexOf('final');
-                    const countrySpinning = phase === 'country' && !countryDone;
-                    const roleSpinning = phase === 'role' && !roleDone;
-                    const ratingSpinning = phase === 'rating' && !ratingDone;
-                    const playerSpinning = phase === 'player' && !playerDone;
-                    const Reel = ({
-                      label,
-                      show,
-                      spinning,
-                      locked,
-                      text,
-                      big,
-                      sub,
-                    }: {
-                      label: string;
-                      show: boolean;
-                      spinning: boolean;
-                      locked: boolean;
-                      text: string | number;
-                      big?: boolean;
-                      sub?: string | null;
-                    }) => (
-                      <div className={`slot-row${show ? ' slot-row--show' : ''} ${locked ? 'slot-row--locked' : ''}`}>
-                        <div className="slot-row__label">{label}</div>
-                        <div className={`slot-reel${big ? ' slot-reel--rating' : ''}`} data-locked={locked ? 'true' : 'false'} data-spinning={spinning ? 'true' : 'false'}>
-                          <span className="slot-reel__scan" aria-hidden="true" />
-                          <span className={`slot-reel__value${big ? ' slot-reel__value--big' : ''}${spinning ? ' slot-reel__value--spinning' : ''}${locked ? ' slot-reel__value--landed' : ''}`}>{text}</span>
-                        </div>
-                        {sub ? <div className="slot-row__sub">{sub}</div> : null}
-                      </div>
-                    );
-                    return (
-                      <>
-                        <Reel
-                          label={card.setKind === 'club' ? 'Клуб' : 'Сборная'}
-                          show={phase !== 'intro'}
-                          spinning={countrySpinning}
-                          locked={countryDone}
-                          text={countryDone ? (card.clubName || card.nationalTeam || '—') : countryText}
-                        />
-                        <Reel
-                          label="Роль / позиция"
-                          show={countryDone || idx >= order.indexOf('role')}
-                          spinning={roleSpinning}
-                          locked={roleDone}
-                          text={roleDone ? ROLE_TITLE_RU[card.roleGroup] : roleText}
-                        />
-                        <div className={`slot-row${roleDone || idx >= order.indexOf('rating') ? ' slot-row--show' : ''} ${ratingDone ? 'slot-row--locked' : ''}`}>
-                          <div className="slot-row__label">Рейтинг</div>
-                          <div className="slot-reel slot-reel--rating" data-locked={ratingDone ? 'true' : 'false'} data-spinning={ratingSpinning ? 'true' : 'false'}>
-                            <span className="slot-reel__scan" aria-hidden="true" />
-                            <span className={`slot-reel__value slot-reel__value--big${ratingSpinning ? ' slot-reel__value--spinning' : ''}${ratingDone ? ' slot-reel__value--landed' : ''}`}>{ratingDone ? card.rating : ratingText}</span>
-                          </div>
-                          {ratingDone && (
-                            <div className={`rarity-charge rarity-charge--${rarity}`}>Редкость раскрывается…</div>
-                          )}
-                        </div>
-                        <Reel
-                          label="Игрок"
-                          show={ratingDone || idx >= order.indexOf('player')}
-                          spinning={playerSpinning}
-                          locked={playerDone}
-                          text={playerDone ? card.playerName : playerText}
-                          sub={playerDone ? rarityLabel : null}
-                        />
-                      </>
-                    );
-                  })()}
-                </div>
-
-                {revealed ? (
-                  <div className="pack-reveal__portrait pack-reveal__portrait--show">
-                    <FutCard card={card} variant={variant} palette={palette} size="lg" interactive />
-                  </div>
-                ) : null}
-              </>
+              <div className="pr__finalCard">
+                <FutCard card={card} variant={variant} palette={palette} size="lg" interactive />
+                <div className={`pr__pill r-${rarity}`}>{rarityLabel}</div>
+              </div>
             )}
+          </div>
 
-            <div className="actions">
-              {!revealed && !collectionComplete && card && (
-                <button type="button" className="btn" onClick={skip}>Пропустить</button>
-              )}
-              <button type="button" className="btn btn--primary" onClick={onClose}>
-                {revealed ? 'В коллекцию' : 'Закрыть'}
-              </button>
+          <div className={`pr__intro ${introShow ? 'is-show' : ''} ${introDissolve ? 'is-dissolve' : ''}`} aria-hidden="true">
+            <div className={`pr__iplaque ${nationLocked ? 'is-locked' : ''}`}>
+              <div className="pr__ilabel">{teamLabel}</div>
+              <div className="pr__ibody">
+                {nation.img ? <img src={nation.img} alt="" /> : nation.flag ? <span className="pr__iflag">{nation.flag}</span> : null}
+                <div className="pr__ival">{nation.label}</div>
+              </div>
             </div>
+            <div className={`pr__iplaque pr__iplaque--player ${nameLocked ? 'is-locked' : ''}`}>
+              <div className="pr__ilabel">Игрок</div>
+              <div className="pr__ibody pr__ibody--player">
+                {name.img ? <img src={name.img} alt="" /> : <div className="pr__iavatar">?</div>}
+                <div className="pr__ival">{name.label}</div>
+              </div>
+            </div>
+            <div className="pr__imeta">
+              <div className={`pr__ichip ${posLocked ? 'is-locked' : ''}`}><span>Роль</span><b style={{ fontSize: pos.length > 18 ? 18 : pos.length > 12 ? 22 : 28 }}>{pos}</b></div>
+              <div className={`pr__ichip ${ratingLocked ? 'is-locked' : ''}`}><span>Рейтинг</span><b>{rating}</b></div>
+            </div>
+          </div>
+        </div>
+
+        <div className="pr__hud">
+          <div className="pr__steps">
+            {['Клуб', 'Роль', 'Рейтинг', 'Редкость', 'Игрок'].map((l, i) => (
+              <span key={l} className={`pr__step ${step === i + 1 ? 'is-on' : step > i + 1 ? 'is-done' : ''}`}>{i + 1}. {l}</span>
+            ))}
+          </div>
+          <div className="pr__actions">
+            <label className="pr__vol">Музыка <input type="range" min={0} max={100} value={Math.round(bgVol * 100)} onChange={(e) => setBgVol(Number(e.target.value) / 100)} /></label>
+            <label className="pr__vol">Звуки <input type="range" min={0} max={100} value={Math.round(fxVol * 100)} onChange={(e) => setFxVol(Number(e.target.value) / 100)} /></label>
+            {!revealed && <button type="button" className="btn" onClick={skip}>Пропустить</button>}
+            {revealed && (
+              <button type="button" className="btn btn--primary" onClick={onClose} disabled={continueVisible && !continueReady}>
+                {continueVisible && !continueReady ? 'Слушай финал...' : 'В коллекцию'}
+              </button>
+            )}
           </div>
         </div>
       </div>
 
       <style jsx>{`
-        .pack-reveal {
-          position: fixed;
-          inset: 0;
-          z-index: 80;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          padding: 18px;
-          overflow: hidden;
-        }
-        .pack-reveal__backdrop {
-          position: absolute;
-          inset: 0;
-          background: radial-gradient(60% 50% at 50% 45%, rgba(10,16,24,0.55), rgba(2,4,8,0.84));
-          backdrop-filter: blur(8px);
-        }
-        .pack-reveal__scene {
-          position: absolute;
-          inset: 0;
-          z-index: 1;
-        }
+        .pr { position:fixed; inset:0; z-index:80; display:flex; align-items:center; justify-content:center; padding:18px; }
+        .pr__bg { position:absolute; inset:0; background: radial-gradient(60% 50% at 50% 45%, rgba(10,16,24,.6), rgba(2,4,8,.88)); backdrop-filter: blur(8px); }
+        .pr__stage { position:relative; z-index:2; width:min(1180px,100%); height:min(760px, calc(100vh - 36px)); border-radius:28px; overflow:hidden; border:1px solid rgba(255,255,255,.08); background: radial-gradient(ellipse 80% 55% at 50% 0%, rgba(84,140,190,.18), transparent 55%), linear-gradient(180deg, #101a28 0%, #070d16 45%, #04080e 100%); box-shadow: 0 40px 120px rgba(0,0,0,.65); }
+        .pr__fx,.pr__fx-a,.pr__fx-b,.pr__fx-c{position:absolute;inset:0;pointer-events:none}
+        .pr__fx-a{background:radial-gradient(ellipse 60% 30% at 50% 10%, rgba(160,220,255,.12), transparent 60%)}
+        .pr__fx-b{background:radial-gradient(ellipse 30% 60% at 15% 50%, rgba(100,180,255,.08), transparent 60%), radial-gradient(ellipse 30% 60% at 85% 50%, rgba(100,180,255,.08), transparent 60%)}
+        .pr__fx-c{opacity:0; transition:opacity .8s ease; background:radial-gradient(ellipse 50% 40% at 50% 50%, rgba(255,215,120,.18), transparent 65%)}
+        .pr__stage--rarity .pr__fx-c{opacity:1}
+        .pr__tunnel{position:absolute; inset:0; perspective:900px; overflow:hidden;}
+        .pr__world{position:absolute; inset:0; transform-style:preserve-3d; transition:transform 1.2s cubic-bezier(.2,.8,.2,1); transform:translateZ(0)}
+        .pr__stage--open .pr__world{transform:translateZ(220px)}
+        .pr__wall,.pr__ceil,.pr__floor,.pr__end{position:absolute;}
+        .pr__wall{top:-10%;bottom:-10%;width:36%; background:linear-gradient(90deg, rgba(10,16,26,.95), rgba(20,35,55,.35));}
+        .pr__wall--l{left:-8%; transform:rotateY(70deg); transform-origin:left center;}
+        .pr__wall--r{right:-8%; transform:rotateY(-70deg); transform-origin:right center; background:linear-gradient(270deg, rgba(10,16,26,.95), rgba(20,35,55,.35));}
+        .pr__ceil{left:-10%;right:-10%;top:-20%;height:45%; background:linear-gradient(180deg, rgba(6,10,18,.95), rgba(30,50,75,.25)); transform:rotateX(-70deg); transform-origin:top center;}
+        .pr__floor{left:-10%;right:-10%;bottom:-20%;height:45%; background:linear-gradient(0deg, rgba(4,8,14,.98), rgba(30,50,75,.2)); transform:rotateX(70deg); transform-origin:bottom center;}
+        .pr__end{left:15%;right:15%;top:12%;bottom:18%; border-radius:40%/20%; background:radial-gradient(ellipse at 50% 40%, rgba(140,210,255,.22), rgba(20,40,70,.15) 35%, rgba(2,4,8,0) 70%); transform:translateZ(-420px);}
 
-        .reveal-stage {
-          position: relative;
-          z-index: 2;
-          width: min(600px, 100%);
-          perspective: 1400px;
-        }
-        .pack-reveal__panel {
-          --accent: #8fd8ff;
-          --accent-2: #e8f7ff;
-          --glow: rgba(120,200,255,0.18);
-          position: relative;
-          width: 100%;
-          border-radius: 26px;
-          padding: 3px;
-          transform: rotateX(3deg) translateY(0);
-          transform-style: preserve-3d;
-          background:
-            linear-gradient(160deg, rgba(255,255,255,0.22), rgba(255,255,255,0.04) 30%, rgba(0,0,0,0.25) 70%, rgba(255,255,255,0.12)),
-            linear-gradient(180deg, rgba(30,40,56,0.95), rgba(8,12,18,0.98));
-          box-shadow:
-            0 1px 0 rgba(255,255,255,0.18) inset,
-            0 -1px 0 rgba(0,0,0,0.5) inset,
-            0 40px 90px rgba(0,0,0,0.7),
-            0 18px 40px rgba(0,0,0,0.45),
-            0 0 0 1px rgba(255,255,255,0.04),
-            0 0 50px -12px var(--glow);
-          transition: transform 500ms cubic-bezier(0.2,0.9,0.2,1), box-shadow 700ms ease, filter 700ms ease;
-          max-height: calc(100vh - 36px);
-        }
-        .reveal-stage--revealed .pack-reveal__panel { transform: rotateX(0deg) translateY(-2px); }
-        .pack-reveal__panel--mystery { --accent: #8fd8ff; --accent-2: #eaf7ff; --glow: rgba(120,200,255,0.16); filter: saturate(0.9); }
-        .pack-reveal__panel--legend { --accent: #ffd978; --accent-2: #fff6d8; --glow: rgba(255,217,120,0.42); }
-        .pack-reveal__panel--epic { --accent: #ddb2ff; --accent-2: #f6eaff; --glow: rgba(200,150,255,0.36); }
-        .pack-reveal__panel--rare { --accent: #9fdcff; --accent-2: #e8f7ff; --glow: rgba(120,200,255,0.3); }
-        .pack-reveal__panel--common { --accent: #c9823f; --accent-2: #ffe0bf; --glow: rgba(168,93,32,0.3); }
-        .pack-reveal__panel--charged {
-          box-shadow:
-            0 1px 0 rgba(255,255,255,0.2) inset,
-            0 -1px 0 rgba(0,0,0,0.5) inset,
-            0 40px 90px rgba(0,0,0,0.7),
-            0 18px 40px rgba(0,0,0,0.45),
-            0 0 0 1px rgba(255,255,255,0.05),
-            0 0 90px -8px var(--glow);
-        }
+        .pr__panel{position:absolute; top:50%; width:min(280px,24vw); padding:16px 18px; border-radius:20px; background:linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.02)), rgba(10,18,28,.42); border:1px solid rgba(170,225,255,.18); box-shadow:0 20px 50px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.12); backdrop-filter:blur(10px); transform:translateY(-50%); transition:all .35s ease; opacity:.9; z-index:5;}
+        .pr__panel--l{left:32px} .pr__panel--r{right:32px}
+        .pr__panel--rating{top:66%}
+        #panelName,.pr__panel--r:nth-of-type(4){top:66%}
+        .pr__panel.is-active{opacity:1; border-color:rgba(170,225,255,.42); box-shadow:0 20px 50px rgba(0,0,0,.35), 0 0 40px rgba(140,210,255,.16)}
+        .pr__panel.is-locked{opacity:1; border-color:rgba(190,235,255,.72); background:linear-gradient(180deg, rgba(170,225,255,.18), rgba(255,255,255,.04)), rgba(10,20,34,.62); box-shadow:0 20px 50px rgba(0,0,0,.35), 0 0 0 1px rgba(220,245,255,.22) inset, 0 0 34px rgba(140,210,255,.28), 0 0 80px rgba(120,200,255,.12); animation:lockFlash .9s ease-out}
+        .pr__panel.is-locked::after{content:''; position:absolute; top:10px; right:12px; width:8px; height:8px; border-radius:50%; background:#b8efff; box-shadow:0 0 10px rgba(184,239,255,.95), 0 0 24px rgba(140,210,255,.65)}
+        @keyframes lockFlash{0%{filter:brightness(1);transform:translateY(-50%) scale(1)}15%{filter:brightness(1.7);transform:translateY(-50%) scale(1.03);box-shadow:0 20px 50px rgba(0,0,0,.35),0 0 0 1px rgba(235,250,255,.7) inset,0 0 90px rgba(190,240,255,.75),0 0 180px rgba(140,210,255,.35)}45%{filter:brightness(1.25);transform:translateY(-50%) scale(1.01)}100%{filter:brightness(1);transform:translateY(-50%) scale(1)}}
+        .pr__plabel{font-size:11px; letter-spacing:.22em; text-transform:uppercase; color:rgba(180,225,255,.75); margin-bottom:10px}
+        .pr__pmedia{display:flex; align-items:center; gap:10px; min-height:64px}
+        .pr__pmedia img{width:44px;height:44px;object-fit:contain;flex:0 0 44px;filter:drop-shadow(0 4px 10px rgba(0,0,0,.35))}
+        .pr__pmedia .pr__pavatar{object-fit:cover;border-radius:50%;background:rgba(255,255,255,.06)}
+        .pr__flag,.pr__iflag{font-size:42px; line-height:1; filter:drop-shadow(0 4px 10px rgba(0,0,0,.35))}
+        .pr__pval{font-family:var(--font-display), system-ui, sans-serif; font-size:28px; line-height:.95; letter-spacing:.02em; color:#eef8ff; min-height:64px; display:flex; align-items:center; overflow-wrap:anywhere}
+        .pr__pmedia .pr__pval{min-height:0}
+        .pr__pval--big{font-size:56px}
 
-        .panel-frame { position: absolute; inset: 0; border-radius: 26px; pointer-events: none; z-index: 3; }
-        .panel-frame::before {
-          content: ''; position: absolute; inset: 7px; border-radius: 20px;
-          border: 1px solid rgba(255,255,255,0.14); box-shadow: 0 0 0 1px rgba(0,0,0,0.35) inset;
-        }
-        .panel-frame::after {
-          content: ''; position: absolute; inset: 10px; border-radius: 17px;
-          border: 1px solid color-mix(in srgb, var(--accent) 35%, transparent);
-          opacity: 0.9; transition: border-color 700ms ease;
-        }
-        .panel-frame__glow {
-          position: absolute; inset: -20%;
-          background: radial-gradient(40% 30% at 50% 0%, var(--glow), transparent 70%);
-          filter: blur(12px); opacity: 0.9; transition: background 700ms ease, opacity 700ms ease;
-        }
-        .panel-frame__shine {
-          position: absolute; top: 3px; left: 12%; right: 12%; height: 38%;
-          border-radius: 22px 22px 60% 60%;
-          background: linear-gradient(180deg, rgba(255,255,255,0.16), rgba(255,255,255,0.03) 55%, transparent);
-          mix-blend-mode: screen; opacity: 0.7;
-        }
-        .panel-frame__corner {
-          position: absolute; width: 26px; height: 26px; border-color: var(--accent); border-style: solid;
-          opacity: 0.85; filter: drop-shadow(0 0 6px var(--glow)); transition: border-color 700ms ease, filter 700ms ease;
-        }
-        .panel-frame__corner--tl { top: 12px; left: 12px; border-width: 2px 0 0 2px; border-radius: 8px 0 0 0; }
-        .panel-frame__corner--tr { top: 12px; right: 12px; border-width: 2px 2px 0 0; border-radius: 0 8px 0 0; }
-        .panel-frame__corner--bl { bottom: 12px; left: 12px; border-width: 0 0 2px 2px; border-radius: 0 0 0 8px; }
-        .panel-frame__corner--br { bottom: 12px; right: 12px; border-width: 0 2px 2px 0; border-radius: 0 0 8px 0; }
+        .pr__center{position:absolute; inset:0; display:flex; align-items:center; justify-content:center; z-index:6; pointer-events:none}
+        .pr__mysteryCard,.pr__finalCard{pointer-events:auto}
+        .pr__mysteryCard{width:min(320px,70vw); aspect-ratio:2/3; border-radius:24px; padding:20px; position:relative; display:flex; flex-direction:column; align-items:center; justify-content:space-between; background:linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.02)), rgba(12,20,32,.55); border:1px solid rgba(170,225,255,.2); box-shadow:0 30px 80px rgba(0,0,0,.45); opacity:0; transform:translateY(20px) scale(.96); transition:all .6s cubic-bezier(.2,.9,.2,1)}
+        .pr__center.is-show .pr__mysteryCard{opacity:1; transform:translateY(0) scale(1)}
+        .pr__mysteryCard.r-legend{box-shadow:0 30px 80px rgba(0,0,0,.45), 0 0 60px rgba(255,215,120,.25); border-color:rgba(255,215,120,.35)}
+        .pr__mysteryCard.r-epic{box-shadow:0 30px 80px rgba(0,0,0,.45), 0 0 50px rgba(200,150,255,.22); border-color:rgba(200,150,255,.35)}
+        .pr__mysteryCard.r-rare{box-shadow:0 30px 80px rgba(0,0,0,.45), 0 0 45px rgba(120,200,255,.2); border-color:rgba(120,200,255,.35)}
+        .pr__mcTop{width:100%; display:flex; justify-content:space-between; align-items:flex-start; font-family:var(--font-display),sans-serif}
+        .pr__mcRating{font-size:52px; line-height:1; color:#fff} .pr__mcPos{font-size:14px; letter-spacing:.12em; color:#dcefff} .pr__mcTeam{font-size:14px; color:#dcefff; text-align:right; max-width:50%}
+        .pr__mcPortrait{width:72%; aspect-ratio:3/4; border-radius:18px; background:rgba(255,255,255,.04); border:1px solid rgba(255,255,255,.08); display:flex; align-items:center; justify-content:center; overflow:hidden; font-family:var(--font-display),sans-serif; font-size:72px; color:rgba(255,255,255,.2)}
+        .pr__mcPortrait img{width:100%;height:100%;object-fit:cover}
+        .pr__mcName{font-family:var(--font-display),sans-serif; font-size:28px; color:#fff; text-align:center; line-height:1}
+        .pr__pill{margin-top:8px; padding:6px 12px; border-radius:999px; font-size:11px; font-weight:800; letter-spacing:.14em; text-transform:uppercase; color:#fff; background:rgba(255,255,255,.08); border:1px solid rgba(255,255,255,.16)}
+        .pr__pill.r-legend{color:#2a1a00;background:linear-gradient(180deg,#ffe7a3,#e1b95a);border-color:rgba(255,231,163,.8)}
+        .pr__pill.r-epic{color:#1f0833;background:linear-gradient(180deg,#e9cfff,#b388ff);border-color:rgba(233,207,255,.8)}
+        .pr__pill.r-rare{color:#062033;background:linear-gradient(180deg,#cfefff,#7fd0ff);border-color:rgba(207,239,255,.8)}
+        .pr__pill.r-common{color:#2a1608;background:linear-gradient(180deg,#ffd8b8,#d08a52);border-color:rgba(255,216,184,.7)}
+        .pr__finalCard{display:flex; flex-direction:column; align-items:center; gap:10px; animation:cardIn .7s cubic-bezier(.2,.9,.2,1)}
+        @keyframes cardIn{from{opacity:0; transform:scale(.88) translateY(20px)} to{opacity:1; transform:scale(1) translateY(0)}}
 
-        .panel-inner {
-          position: relative; z-index: 2; border-radius: 22px; padding: 20px 18px 16px; text-align: center;
-          overflow: auto; max-height: calc(100vh - 48px);
-          background:
-            linear-gradient(180deg, rgba(255,255,255,0.06), transparent 22%),
-            radial-gradient(120% 60% at 50% -10%, rgba(255,255,255,0.08), transparent 55%),
-            linear-gradient(180deg, rgba(18,24,36,0.96), rgba(9,13,19,0.98));
-          box-shadow: 0 1px 0 rgba(255,255,255,0.06) inset, 0 -18px 30px rgba(0,0,0,0.25) inset;
-        }
+        .pr__intro{position:absolute; inset:0; z-index:20; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:18px; padding:28px; opacity:0; pointer-events:none; transform:scale(1.02); background:radial-gradient(ellipse 80% 60% at 50% 45%, rgba(16,30,46,.72), rgba(6,10,18,.88)); transition:opacity .45s ease, transform .45s ease, filter .8s ease}
+        .pr__intro.is-show{opacity:1; transform:scale(1)}
+        .pr__intro.is-dissolve{opacity:0; transform:scale(1.06); filter:blur(14px) brightness(1.25)}
+        .pr__iplaque{position:relative; width:min(560px,78%); border-radius:24px; padding:18px 24px; background:linear-gradient(180deg, rgba(255,255,255,.1), rgba(255,255,255,.03)), rgba(10,18,28,.45); border:1px solid rgba(170,225,255,.28); box-shadow:0 24px 70px rgba(0,0,0,.45), 0 0 60px rgba(120,200,255,.12), inset 0 1px 0 rgba(255,255,255,.18); backdrop-filter:blur(12px)}
+        .pr__iplaque.is-locked{animation:lockFlash .9s ease-out; border-color:rgba(220,245,255,.9); box-shadow:0 24px 70px rgba(0,0,0,.45), 0 0 60px rgba(170,235,255,.45), 0 0 120px rgba(120,200,255,.2), inset 0 1px 0 rgba(255,255,255,.18)}
+        .pr__iplaque--player{width:min(620px,84%); padding:20px 24px}
+        .pr__ilabel{font-size:11px; letter-spacing:.22em; text-transform:uppercase; color:rgba(180,225,255,.8); margin-bottom:10px; text-align:center}
+        .pr__ibody{display:flex; align-items:center; justify-content:center; gap:18px; min-height:76px}
+        .pr__ibody img{width:76px;height:76px;object-fit:contain;filter:drop-shadow(0 8px 24px rgba(0,0,0,.45));flex:0 0 76px}
+        .pr__ibody--player img{width:140px;height:140px;object-fit:cover;border-radius:20px;flex:0 0 140px;background:rgba(255,255,255,.04);box-shadow:0 12px 30px rgba(0,0,0,.35)}
+        .pr__iavatar{width:140px;height:140px;border-radius:20px;display:flex;align-items:center;justify-content:center;font-family:var(--font-display),sans-serif;font-size:64px;color:rgba(255,255,255,.25);background:rgba(255,255,255,.04)}
+        .pr__ival{font-family:var(--font-display),sans-serif; font-size:clamp(34px,4.8vw,60px); line-height:.92; letter-spacing:.03em; color:#f4fbff; text-shadow:0 0 30px rgba(160,225,255,.2); text-align:center}
+        .pr__imeta{display:flex; gap:14px; margin-top:2px}
+        .pr__ichip{display:flex; gap:10px; align-items:baseline; padding:10px 16px; border-radius:999px; background:rgba(10,18,28,.42); border:1px solid rgba(170,225,255,.18); backdrop-filter:blur(8px)}
+        .pr__ichip span{font-size:10px; letter-spacing:.18em; text-transform:uppercase; color:rgba(180,225,255,.72)}
+        .pr__ichip b{font-family:var(--font-display),sans-serif; font-size:28px; line-height:1; color:#eef8ff; min-width:40px; max-width:260px; text-align:center; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
 
-        .intro { display: grid; place-items: center; gap: 8px; padding: 14px 0 10px; transition: opacity 300ms ease, transform 300ms ease, max-height 300ms ease, margin 300ms ease; max-height: 220px; }
-        .intro[data-show='false'] { opacity: 0; transform: translateY(-8px) scale(0.98); max-height: 0; margin: 0; padding: 0; overflow: hidden; }
-        .intro__badge {
-          font-size: 10px; font-weight: 800; letter-spacing: 0.22em; color: var(--accent-2);
-          padding: 5px 10px; border-radius: 999px; border: 1px solid color-mix(in srgb, var(--accent) 45%, transparent);
-          background: linear-gradient(180deg, rgba(255,255,255,0.08), rgba(255,255,255,0.02)); box-shadow: 0 0 18px -4px var(--glow);
-        }
-        .intro__pulse {
-          width: 78px; height: 78px; border-radius: 50%;
-          background: radial-gradient(circle at 35% 30%, rgba(255,255,255,0.35), transparent 30%), radial-gradient(circle, color-mix(in srgb, var(--accent) 30%, transparent), rgba(255,255,255,0.02) 55%, transparent 70%);
-          border: 2px solid color-mix(in srgb, var(--accent) 55%, rgba(255,255,255,0.2));
-          box-shadow: 0 0 0 0 var(--glow), 0 10px 30px rgba(0,0,0,0.35), 0 0 24px -4px var(--glow) inset;
-          animation: pulse 1.5s ease-out infinite;
-        }
-        @keyframes pulse {
-          0% { transform: scale(0.92); box-shadow: 0 0 0 0 var(--glow), 0 10px 30px rgba(0,0,0,0.35); }
-          70% { transform: scale(1); box-shadow: 0 0 0 20px rgba(255,255,255,0), 0 10px 30px rgba(0,0,0,0.35); }
-          100% { transform: scale(0.92); box-shadow: 0 0 0 0 rgba(255,255,255,0), 0 10px 30px rgba(0,0,0,0.35); }
-        }
-        .intro__text { font-family: var(--font-display); font-size: 22px; font-weight: 800; color: #fff; letter-spacing: 0.02em; text-shadow: 0 2px 16px rgba(0,0,0,0.5); }
-        .intro__hint { font-size: 11px; font-weight: 700; letter-spacing: 0.16em; text-transform: uppercase; color: var(--text-faint, #cfc6b8); }
+        .pr__hud{position:absolute; left:18px; right:18px; bottom:18px; z-index:30; display:flex; gap:14px; align-items:flex-end; justify-content:space-between; pointer-events:none}
+        .pr__steps,.pr__actions{pointer-events:auto}
+        .pr__steps{display:flex; gap:8px; flex-wrap:wrap; max-width:58%}
+        .pr__step{font-size:11px; padding:6px 10px; border-radius:999px; color:rgba(255,255,255,.55); background:rgba(10,18,28,.35); border:1px solid rgba(255,255,255,.08)}
+        .pr__step.is-on{color:#fff; border-color:rgba(170,225,255,.35); background:rgba(120,200,255,.12)}
+        .pr__step.is-done{color:rgba(255,255,255,.85)}
+        .pr__actions{display:flex; gap:10px; align-items:center; flex-wrap:wrap; justify-content:flex-end}
+        .pr__vol{display:flex; align-items:center; gap:8px; font-size:12px; color:rgba(255,255,255,.78)}
+        .pr__vol input{width:120px}
 
-        .slots { display: grid; gap: 12px; margin-bottom: 14px; transition: opacity 250ms ease; }
-        .slots--hidden { opacity: 0; max-height: 0; overflow: hidden; margin: 0; }
-        .slot-row { opacity: 0; transform: translateY(12px) translateZ(0); transition: opacity 380ms ease, transform 380ms cubic-bezier(0.2,0.9,0.2,1); }
-        .slot-row--show { opacity: 1; transform: translateY(0) translateZ(0); }
-        .slot-row__label {
-          font-family: var(--font-display); font-size: 10px; font-weight: 800; letter-spacing: 0.18em; text-transform: uppercase;
-          color: color-mix(in srgb, var(--accent-2) 70%, #cfc6b8); margin-bottom: 5px; transition: color 700ms ease;
+        @media (max-width: 900px) {
+          .pr__panel{width:min(220px,34vw); padding:12px}
+          .pr__panel--l{left:12px} .pr__panel--r{right:12px}
+          .pr__pval{font-size:22px; min-height:52px}
+          .pr__pval--big{font-size:44px}
+          .pr__hud{flex-direction:column; align-items:stretch}
+          .pr__steps{max-width:100%}
+          .pr__actions{justify-content:flex-start}
         }
-        .slot-reel {
-          position: relative; min-height: 48px; display: flex; align-items: center; justify-content: center; padding: 10px 14px;
-          border-radius: 14px; overflow: hidden;
-          background: linear-gradient(180deg, rgba(255,255,255,0.06), rgba(255,255,255,0.01) 35%, rgba(0,0,0,0.18)), linear-gradient(180deg, #0b1018, #06090e);
-          border: 1px solid rgba(255,255,255,0.14);
-          box-shadow: 0 1px 0 rgba(255,255,255,0.08) inset, 0 -10px 18px rgba(0,0,0,0.45) inset, 0 10px 24px rgba(0,0,0,0.35);
-          transform: translateZ(8px);
-          transition: border-color 600ms ease, box-shadow 600ms ease;
-        }
-        .slot-reel--rating { min-height: 68px; }
-        .slot-reel__value--big.slot-reel__value--spinning { animation-duration: 0.08s; }
-        .slot-reel[data-spinning='true'] {
-          border-color: color-mix(in srgb, var(--accent) 28%, rgba(255,255,255,0.16));
-          box-shadow: 0 1px 0 rgba(255,255,255,0.08) inset, 0 -10px 18px rgba(0,0,0,0.45) inset, 0 10px 24px rgba(0,0,0,0.35), 0 0 18px -6px var(--glow);
-        }
-        .slot-reel[data-locked='true'] {
-          border-color: color-mix(in srgb, var(--accent) 55%, rgba(255,255,255,0.18));
-          box-shadow: 0 1px 0 rgba(255,255,255,0.1) inset, 0 -10px 18px rgba(0,0,0,0.45) inset, 0 0 0 1px color-mix(in srgb, var(--accent) 18%, transparent) inset, 0 10px 24px rgba(0,0,0,0.35), 0 0 26px -6px var(--glow);
-        }
-        .slot-reel::before, .slot-reel::after { content: ''; position: absolute; left: 0; right: 0; height: 10px; pointer-events: none; z-index: 1; }
-        .slot-reel::before { top: 0; background: linear-gradient(180deg, rgba(6,9,14,0.85), transparent); }
-        .slot-reel::after { bottom: 0; background: linear-gradient(0deg, rgba(6,9,14,0.85), transparent); }
-        .slot-reel__scan {
-          position: absolute; inset: -40% -20%;
-          background: linear-gradient(115deg, transparent 35%, rgba(255,255,255,0.08) 48%, transparent 60%);
-          transform: translateX(-30%); opacity: 0.28; pointer-events: none; z-index: 1;
-        }
-        .slot-reel[data-locked='true'] .slot-reel__scan {
-          opacity: 0.55; background: linear-gradient(115deg, transparent 35%, color-mix(in srgb, var(--accent) 28%, rgba(255,255,255,0.12)) 48%, transparent 60%);
-        }
-
-        .slot-reel__value {
-          position: relative; z-index: 3; font-family: var(--font-display); font-size: 23px; font-weight: 800; color: #fff;
-          text-shadow: 0 2px 14px rgba(0,0,0,0.55), 0 0 18px rgba(255,255,255,0.05);
-          will-change: transform, opacity;
-          line-height: 1.15;
-          padding: 2px 4px;
-          max-width: 100%;
-          overflow-wrap: anywhere;
-        }
-        .slot-reel__value--spinning {
-          color: rgba(255,255,255,0.92);
-          animation: reel-text-spin 0.09s linear infinite alternate;
-        }
-        @keyframes reel-text-spin {
-          from { transform: translateY(-2px); opacity: 0.9; }
-          to { transform: translateY(2px); opacity: 1; }
-        }
-        .slot-reel__value--landed {
-          color: #fff;
-          animation: value-land 0.45s cubic-bezier(0.2,0.9,0.2,1) both;
-        }
-        @keyframes value-land {
-          0% { opacity: 0.5; transform: translateY(6px) scale(0.99); }
-          60% { opacity: 1; transform: translateY(-1px) scale(1.01); }
-          100% { opacity: 1; transform: translateY(0) scale(1); }
-        }
-        .slot-reel__value--big {
-          font-size: 50px; line-height: 1; letter-spacing: -0.03em; font-variant-numeric: tabular-nums;
-          background: linear-gradient(180deg, #fff, #d8e4ee); -webkit-background-clip: text; background-clip: text; color: transparent;
-          filter: drop-shadow(0 10px 18px rgba(0,0,0,0.3));
-        }
-        .pack-reveal__panel--legend .slot-reel__value--big { background: linear-gradient(180deg, #fff9e3, #ffd978 60%, #ffbf3f); -webkit-background-clip: text; background-clip: text; }
-        .pack-reveal__panel--epic .slot-reel__value--big { background: linear-gradient(180deg, #fbf2ff, #ddb2ff 60%, #c084fc); -webkit-background-clip: text; background-clip: text; }
-        .pack-reveal__panel--rare .slot-reel__value--big { background: linear-gradient(180deg, #f2fbff, #9fdcff 60%, #67c8ff); -webkit-background-clip: text; background-clip: text; }
-        .pack-reveal__panel--common .slot-reel__value--big { background: linear-gradient(180deg, #ffecd8, #d89452 60%, #a85d2a); -webkit-background-clip: text; background-clip: text; }
-        .slot-row--locked .slot-reel__value--landed { transform: scale(1.02); }
-        .slot-row__sub {
-          font-size: 13px; font-weight: 800; color: var(--accent); margin-top: 5px; letter-spacing: 0.1em; text-transform: uppercase;
-          text-shadow: 0 0 18px var(--glow); transition: color 700ms ease, text-shadow 700ms ease;
-        }
-
-        .rarity-charge {
-          margin-top: 6px; font-size: 11px; font-weight: 800; letter-spacing: 0.12em; text-transform: uppercase;
-          color: var(--accent); opacity: 0.95; animation: charge-in 0.5s ease both;
-        }
-        .rarity-charge--legend { text-shadow: 0 0 16px rgba(255,217,120,0.5); }
-        .rarity-charge--epic { text-shadow: 0 0 16px rgba(200,150,255,0.45); }
-        .rarity-charge--rare { text-shadow: 0 0 16px rgba(120,200,255,0.4); }
-        @keyframes charge-in { from { opacity: 0; transform: translateY(4px); } to { opacity: 0.95; transform: translateY(0); } }
-
-        .pack-reveal__portrait {
-          margin: 16px auto 4px; width: fit-content; opacity: 0; transform: scale(0.68) translateY(30px) rotateX(14deg);
-          filter: drop-shadow(0 34px 50px rgba(0, 0, 0, 0.6));
-          transition: opacity 0.75s ease 0.05s, transform 0.85s cubic-bezier(0.2, 0.9, 0.2, 1) 0.05s;
-        }
-        .pack-reveal__portrait--show { opacity: 1; transform: scale(1) translateY(0) rotateX(0deg); }
-
-        .actions { display: flex; align-items: center; justify-content: center; gap: 10px; margin-top: 18px; flex-wrap: wrap; }
-        .pack-reveal__done { padding: 18px 0 8px; }
-
-        @media (max-width: 560px) {
-          .pack-reveal { padding: 12px; }
-          .pack-reveal__panel { transform: rotateX(1.5deg); border-radius: 22px; }
-          .panel-inner { padding: 16px 14px 14px; }
-          .slot-reel__value { font-size: 20px; }
-          .slot-reel__value--big { font-size: 42px; }
+        @media (max-width: 640px) {
+          .pr { padding:8px; }
+          .pr__stage { height: calc(100vh - 16px); border-radius:20px; }
+          .pr__panel{width:44vw; top:auto; bottom:120px; transform:none}
+          .pr__panel--l{left:8px} .pr__panel--r{right:8px}
+          .pr__panel--rating{bottom:210px; top:auto}
+          .pr__panel.is-locked,.pr__panel.is-active{transform:none}
+          @keyframes lockFlash{0%{filter:brightness(1);transform:scale(1)}15%{filter:brightness(1.7);transform:scale(1.03)}45%{filter:brightness(1.25);transform:scale(1.01)}100%{filter:brightness(1);transform:scale(1)}}
+          .pr__intro{padding:16px; gap:12px}
+          .pr__iplaque,.pr__iplaque--player{width:100%; padding:14px}
+          .pr__ibody--player img,.pr__iavatar{width:96px;height:96px;flex-basis:96px}
+          .pr__ival{font-size:32px}
+          .pr__imeta{flex-wrap:wrap; justify-content:center}
+          .pr__vol input{width:90px}
         }
         @media (prefers-reduced-motion: reduce) {
-          .intro__pulse, .slot-reel__value--spinning { animation: none; }
-          .slot-row, .pack-reveal__portrait, .pack-reel__panel, .reveal-stage, .intro, .slots, .slot-reel__value--landed { transition: none; transform: none; animation: none; opacity: 1; filter: none; }
+          .pr__world,.pr__intro,.pr__mysteryCard,.pr__finalCard,.pr__panel,.pr__fx-c{transition:none; animation:none}
         }
       `}</style>
     </div>

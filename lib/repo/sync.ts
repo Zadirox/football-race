@@ -415,6 +415,47 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
     }
   };
 
+  const findFootballDataFallback = async (
+    row: {
+      external_id: string; league_code: string; league_title: string;
+      home_name: string; away_name: string; kickoff_utc: Date;
+    },
+    target: { provider: 'football-data' | 'sstats'; externalId: string },
+    opts?: { timeoutMs?: number },
+  ): Promise<NormalizedMatch[]> => {
+    if (!hasFootballData) return [];
+    const timeoutMs = Math.max(2_000, Math.min(opts?.timeoutMs ?? 8_000, 12_000));
+    const mh = normTeamKey(row.home_name);
+    const ma = normTeamKey(row.away_name);
+    const from = new Date(row.kickoff_utc.getTime() - 6 * 60 * 60 * 1000);
+    const to = new Date(row.kickoff_utc.getTime() + 6 * 60 * 60 * 1000);
+    const candidates = await sql<{ external_id: string; home_name: string; away_name: string }[]>`
+      select external_id, home_name, away_name
+      from matches
+      where provider = 'football-data'
+        and kickoff_utc >= ${from.toISOString()}::timestamptz
+        and kickoff_utc <= ${to.toISOString()}::timestamptz
+      limit 40
+    `;
+    const cand = candidates.find((c) => sameTeamLoose(normTeamKey(c.home_name), mh) && sameTeamLoose(normTeamKey(c.away_name), ma));
+    if (!cand) return [];
+    try {
+      const fd = await fetchFootballDataMatch({ token: env.footballDataToken!, matchId: cand.external_id });
+      requestsUsed += fd.requestsUsed;
+      if (fd.httpStatus) httpStatus = fd.httpStatus;
+      if (!fd.match) return [];
+      const nm = normalizeMatch(fd.match);
+      if (!nm) return [];
+      const out: NormalizedMatch[] = [nm];
+      if (!(target.provider === nm.provider && target.externalId === nm.externalId)) {
+        out.push({ ...nm, provider: target.provider, externalId: target.externalId, raw: { refresh: 'fd-fallback', fdExternalId: cand.external_id, target: target.externalId, at: now.toISOString() } });
+      }
+      return out;
+    } catch {
+      return [];
+    }
+  };
+
   // 2.5) Early targeted refresh for in-scope live/started matches — must run before slow club comp loop.
   try {
     const liveRows = await sql<{
@@ -515,6 +556,16 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
               else sstatsGroups.push([fb]);
             }
             errors.push(`early-refresh/fd-fallback/${row.external_id}: used sstats same-game`);
+            recovered = true;
+          }
+        } else if (row.provider === 'sstats' && hasFootballData && Date.now() < processingDeadlineMs - 3_000) {
+          const fbs = await findFootballDataFallback(row, { provider: 'sstats', externalId: row.external_id }, { timeoutMs: isLiveMode ? 4_000 : 8_000 }).catch(() => [] as NormalizedMatch[]);
+          if (fbs.length) {
+            for (const fb of fbs) {
+              if (fb.provider === 'football-data') fdGroups.push([fb]);
+              else sstatsGroups.push([fb]);
+            }
+            errors.push(`early-refresh/sstats-fallback/${row.external_id}: used football-data same-game`);
             recovered = true;
           }
         }
@@ -879,6 +930,20 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
               }
             }
             errors.push(`refresh/fd-fallback/${row.external_id}: used sstats same-game`);
+            recovered = true;
+          }
+        } else if (row.provider === 'sstats' && hasFootballData && Date.now() < processingDeadlineMs - 3_000) {
+          const fbs = await findFootballDataFallback(row, { provider: 'sstats', externalId: row.external_id }, { timeoutMs: isLiveMode ? 4_000 : 8_000 }).catch(() => [] as NormalizedMatch[]);
+          if (fbs.length) {
+            for (const fb of fbs) {
+              normalized.push(fb);
+              if (fb.leagueCode === 'UNL') inScopeNormalized.push(fb);
+              else {
+                const comp = CLUB_COMPETITION_BY_LEAGUE_CODE[fb.leagueCode];
+                if (comp && (comp.scope !== 'whitelist_only' || clubMatchInWhitelistScope(fb))) inScopeNormalized.push(fb);
+              }
+            }
+            errors.push(`refresh/sstats-fallback/${row.external_id}: used football-data same-game`);
             recovered = true;
           }
         }

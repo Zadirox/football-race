@@ -442,7 +442,7 @@ export function PackOpenReveal({ card, collectionComplete, variant = 'fut', pale
             <div className="pr__plabel">Рейтинг</div>
             <div className="pr__pval pr__pval--big">{rating}</div>
           </div>
-          <div className={`pr__panel pr__panel--r ${nameLocked ? 'is-locked' : step >= 1 ? 'is-active' : ''}`}>
+          <div className={`pr__panel pr__panel--r pr__panel--player ${nameLocked ? 'is-locked' : step >= 1 ? 'is-active' : ''}`}>
             <div className="pr__plabel">Игрок</div>
             <div className="pr__pmedia">
               {name.img ? <img src={name.img} alt="" className="pr__pavatar" /> : null}
@@ -527,10 +527,9 @@ export function PackOpenReveal({ card, collectionComplete, variant = 'fut', pale
         .pr__floor{left:-10%;right:-10%;bottom:-20%;height:45%; background:linear-gradient(0deg, rgba(4,8,14,.98), rgba(30,50,75,.2)); transform:rotateX(70deg); transform-origin:bottom center;}
         .pr__end{left:15%;right:15%;top:12%;bottom:18%; border-radius:40%/20%; background:radial-gradient(ellipse at 50% 40%, rgba(140,210,255,.22), rgba(20,40,70,.15) 35%, rgba(2,4,8,0) 70%); transform:translateZ(-420px);}
 
-        .pr__panel{position:absolute; top:50%; width:min(280px,24vw); padding:16px 18px; border-radius:20px; background:linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.02)), rgba(10,18,28,.42); border:1px solid rgba(170,225,255,.18); box-shadow:0 20px 50px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.12); backdrop-filter:blur(10px); transform:translateY(-50%); transition:all .35s ease; opacity:.9; z-index:5;}
+        .pr__panel{position:absolute; top:32%; width:min(280px,24vw); padding:16px 18px; border-radius:20px; background:linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.02)), rgba(10,18,28,.42); border:1px solid rgba(170,225,255,.18); box-shadow:0 20px 50px rgba(0,0,0,.35), inset 0 1px 0 rgba(255,255,255,.12); backdrop-filter:blur(10px); transform:translateY(-50%); transition:all .35s ease; opacity:.9; z-index:5;}
         .pr__panel--l{left:32px} .pr__panel--r{right:32px}
-        .pr__panel--rating{top:66%}
-        #panelName,.pr__panel--r:nth-of-type(4){top:66%}
+        .pr__panel--rating,.pr__panel--player{top:68%}
         .pr__panel.is-active{opacity:1; border-color:rgba(170,225,255,.42); box-shadow:0 20px 50px rgba(0,0,0,.35), 0 0 40px rgba(140,210,255,.16)}
         .pr__panel.is-locked{opacity:1; border-color:rgba(190,235,255,.72); background:linear-gradient(180deg, rgba(170,225,255,.18), rgba(255,255,255,.04)), rgba(10,20,34,.62); box-shadow:0 20px 50px rgba(0,0,0,.35), 0 0 0 1px rgba(220,245,255,.22) inset, 0 0 34px rgba(140,210,255,.28), 0 0 80px rgba(120,200,255,.12); animation:lockFlash .9s ease-out}
         .pr__panel.is-locked::after{content:''; position:absolute; top:10px; right:12px; width:8px; height:8px; border-radius:50%; background:#b8efff; box-shadow:0 0 10px rgba(184,239,255,.95), 0 0 24px rgba(140,210,255,.65)}

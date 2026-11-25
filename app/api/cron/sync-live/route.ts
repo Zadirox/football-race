@@ -20,7 +20,7 @@ async function run(request: Request): Promise<Response> {
     return NextResponse.json({ ok: false, error: "UNAUTHORIZED" }, { status: 401 });
   }
 
-  for (let attempt = 0; attempt < 2; attempt++) {
+  for (let attempt = 0; attempt < 3; attempt++) {
     try {
       const report = await syncFixtures({ budgetMs: CRON_BUDGET_MS, mode: "live" });
 
@@ -39,9 +39,10 @@ async function run(request: Request): Promise<Response> {
       return NextResponse.json(report);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      if (isConnectionEnded(error) && attempt === 0) {
-        console.warn("[sync-live] connection ended, retrying once", message);
+      if (isConnectionEnded(error) && attempt < 2) {
+        console.warn(`[sync-live] connection ended, retrying (${attempt + 1}/2)`, message);
         await closeDb().catch(() => {});
+        await new Promise((r) => setTimeout(r, 400 * (attempt + 1)));
         continue;
       }
       console.error("[sync-live] exception", message);

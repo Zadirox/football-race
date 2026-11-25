@@ -159,7 +159,7 @@ const CLUB_ENTRIES: Entry[] = [
   { ru: 'АЕК Афины', short: 'АЕК', aliases: ['AEK Athens FC', 'AEK Athens', 'AEK'] },
   { ru: 'Славия Прага', short: 'СЛП', aliases: ['Slavia Praha', 'Slavia Prague', 'SK Slavia Praha', 'SK Slavia Prague'] },
   { ru: 'Слован Братислава', short: 'СЛБ', aliases: ['Slovan Bratislava', 'ŠK Slovan Bratislava', 'Sl. Bratislava', 'SK Slovan Bratislava'] },
-  { ru: 'Шахтёр Донецк', short: 'ШАХ', aliases: ['Shakhtar Donetsk', 'Shakhtar', 'FC Shakhtar Donetsk'] },
+  { ru: 'Шахтёр Донецк', short: 'ШАХ', aliases: ['Shakhtar Donetsk', 'Shakhtar', 'Shaktar', 'FC Shakhtar Donetsk', 'FK Shakhtar Donetsk'] },
   { ru: 'Сабах', short: 'САБ', aliases: ['Sabah FA', 'Sabah', 'Sabah FK', 'Sabah Baku', 'Sabah Masazir'] },
 
   // Частые соперники (не в whitelist)

@@ -467,7 +467,7 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
       }
 
       // C/variant-3: no FD row in DB — bounded direct API lookup by date window.
-      if (Date.now() >= deadlineMs - 4_000) return [];
+      if (Date.now() >= deadlineMs - 2_500) return [];
       const dayFromDate = new Date(row.kickoff_utc.getTime() - 24 * 60 * 60 * 1000);
       const dayToDate = new Date(row.kickoff_utc.getTime() + 24 * 60 * 60 * 1000);
       const fromDay = dayFromDate.toISOString().slice(0, 10);

@@ -312,23 +312,25 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
   }
   }
 
-  // 2) football-data first (B): reserve/guarantee FD before slow sstats club comp loop, so FD is not starved.
-  // В live mode пропускаем широкий FD listing: экономим квоту (10 req/min), live обновится через targeted ID refresh.
-  if (!isLiveMode && hasFootballData && !fdQuotaExhausted && Date.now() < processingDeadlineMs - 4_000) {
+  // 2) football-data listing: in live mode PRIMARY live-score source (A tactic).
+  // One request per run, matched to in-scope matchday matches by team names.
+  let fdListedMatches: NormalizedMatch[] = [];
+  if (hasFootballData && !fdQuotaExhausted && Date.now() < processingDeadlineMs - 4_000) {
     try {
       const fixtures = await fetchFixtures({ token: env.footballDataToken!, from: window.from, to: window.to });
       fetchedTotal += fixtures.matches.length;
       requestsUsed += fixtures.requestsUsed;
       httpStatus = fixtures.httpStatus;
-      fdGroups.push(normalizeMatches(fixtures.matches));
+      fdListedMatches = normalizeMatches(fixtures.matches);
+      fdGroups.push(fdListedMatches);
     } catch (error) {
-      const message = error instanceof Error ? error.message : 'Ошибка получения матчей';
+      const message = error instanceof Error ? error.message : 'football-data fetch error';
       errors.push(message);
       if (isQuotaError(error)) {
         fdQuotaExhausted = true;
       }
     }
-  } else if (!isLiveMode && hasFootballData && !fdQuotaExhausted) {
+  } else if (hasFootballData && !fdQuotaExhausted) {
     errors.push('football-data: недостаточно бюджета на fetch');
   }
 
@@ -529,6 +531,76 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
       `;
     } catch { /* best-effort live update */ }
   };
+
+  // 2.4) Live mode (A tactic): primary live score from FD listing - one request, no sstats dependency.
+  if (isLiveMode && fdListedMatches.length > 0) {
+    try {
+      const liveScopeRows = await sql<{
+        provider: string; external_id: string; league_code: string; league_title: string;
+        home_name: string; home_logo: string | null; away_name: string; away_logo: string | null;
+        kickoff_utc: Date; status: string; minute: number | null;
+        home_score: number | null; away_score: number | null; ht_home_score: number | null; ht_away_score: number | null;
+        corners_home: number | null; corners_away: number | null; yellow_cards_home: number | null; yellow_cards_away: number | null;
+        red_cards_home: number | null; red_cards_away: number | null; possession_home: number | null; possession_away: number | null;
+        shots_on_target_home: number | null; shots_on_target_away: number | null;
+      }[]>`
+        select m.provider, m.external_id, m.league_code, m.league_title,
+               m.home_name, m.home_logo, m.away_name, m.away_logo,
+               m.kickoff_utc, m.status, m.minute,
+               m.home_score, m.away_score, m.ht_home_score, m.ht_away_score,
+               m.corners_home, m.corners_away, m.yellow_cards_home, m.yellow_cards_away,
+               m.red_cards_home, m.red_cards_away, m.possession_home, m.possession_away,
+               m.shots_on_target_home, m.shots_on_target_away
+        from matchday_matches mm
+        join matchdays md on md.id = mm.matchday_id
+        join matches m on m.id = mm.match_id
+        where md.season_id = ${season.id}
+          and md.game_date >= ${window.from}::date
+          and md.game_date <= ${window.to}::date
+          and mm.in_scope = true
+          and m.status not in ('FT','PST','CANC','ABD')
+          and m.kickoff_utc <= now() + interval '15 minutes'
+        order by case when m.status in ('LIVE','HT') then 0 else 1 end, m.kickoff_utc asc
+        limit 30
+      `;
+      for (const row of liveScopeRows) {
+        if (Date.now() >= processingDeadlineMs - 6_000) break;
+        const mh = normTeamKey(row.home_name);
+        const ma = normTeamKey(row.away_name);
+        const targetTime = new Date(row.kickoff_utc).getTime();
+        const fd = fdListedMatches.find((m) => {
+          if (Math.abs(m.kickoffUtc.getTime() - targetTime) > 3 * 60 * 60 * 1000) return false;
+          return sameTeamLoose(normTeamKey(m.homeName), mh) && sameTeamLoose(normTeamKey(m.awayName), ma);
+        });
+        if (!fd) continue;
+        const nm: NormalizedMatch = {
+          ...fd,
+          provider: row.provider as NormalizedMatch['provider'],
+          externalId: row.external_id,
+          leagueCode: row.league_code,
+          leagueTitle: row.league_title,
+          homeName: row.home_name,
+          homeLogo: row.home_logo,
+          awayName: row.away_name,
+          awayLogo: row.away_logo,
+          kickoffUtc: new Date(row.kickoff_utc),
+          status: fd.status,
+          minute: fd.minute,
+          homeScore: fd.homeScore,
+          awayScore: fd.awayScore,
+          htHomeScore: fd.htHomeScore,
+          htAwayScore: fd.htAwayScore,
+          raw: { refresh: 'fd-live-primary', fdExternalId: fd.externalId, at: now.toISOString() },
+        };
+        await quickUpdateInScopeMatch(nm);
+        fdGroups.push([fd]);
+        sstatsGroups.push([nm]);
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      errors.push(`fd-live-primary: ${message}`);
+    }
+  }
 
   // 2.5) Early targeted refresh for in-scope live/started matches — must run before slow club comp loop.
   try {

@@ -76,15 +76,22 @@ export function PredictionsClient({ snapshot }: { snapshot: SeasonSnapshot }) {
     });
   }, [snapshot.questions, viewingPast]);
 
-  const hasLiveMatches = !viewingPast && snapshot.matches.some((m) => m.status === 'LIVE' || m.status === 'HT');
+  const shouldPollLive = !viewingPast && snapshot.matches.some((m) => {
+    if (m.status === 'LIVE' || m.status === 'HT') return true;
+    if (m.status === 'FT' || m.status === 'PST' || m.status === 'CANC' || m.status === 'ABD') return false;
+    const kickoff = Date.parse(m.kickoffUtc);
+    if (Number.isNaN(kickoff)) return false;
+    const now = Date.now();
+    return kickoff <= now + 15 * 60_000 && kickoff >= now - 6 * 60 * 60_000;
+  });
 
   useEffect(() => {
-    if (!hasLiveMatches || demo) return;
+    if (!shouldPollLive || demo) return;
     const id = setInterval(() => {
       router.refresh();
     }, 30_000);
     return () => clearInterval(id);
-  }, [hasLiveMatches, demo, router]);
+  }, [shouldPollLive, demo, router]);
 
   useEffect(() => {
     setLeague(null);
@@ -317,7 +324,7 @@ export function PredictionsClient({ snapshot }: { snapshot: SeasonSnapshot }) {
         </div>
       )}
 
-      {hasLiveMatches && (
+      {shouldPollLive && (
         <div style={{ marginBottom: 16 }}>
           <Notice tone="info">Идут матчи: счёт и статистика обновляются автоматически (примерно каждые 30 секунд при живых матчах) по мере поступления данных. В вопросах показывается текущее состояние условий (например, «сейчас: Да»), когда его можно определить по данным матча.</Notice>
         </div>

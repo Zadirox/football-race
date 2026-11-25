@@ -55,8 +55,15 @@ export function MatchesClient({ matches }: { matches: MatchView[] }) {
   const visible = league ? matches.filter((m) => m.leagueCode === league) : matches;
 
   useEffect(() => {
-    const hasLive = matches.some((m) => m.status === 'LIVE' || m.status === 'HT');
-    if (!hasLive) return;
+    const now = Date.now();
+    const shouldPoll = matches.some((m) => {
+      if (m.status === 'LIVE' || m.status === 'HT') return true;
+      if (m.status === 'FT' || m.status === 'PST' || m.status === 'CANC' || m.status === 'ABD') return false;
+      const kickoff = Date.parse(m.kickoffUtc);
+      if (Number.isNaN(kickoff)) return false;
+      return kickoff <= now + 15 * 60_000 && kickoff >= now - 6 * 60 * 60_000;
+    });
+    if (!shouldPoll) return;
     const id = setInterval(() => {
       router.refresh();
     }, 30000);

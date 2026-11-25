@@ -19,6 +19,7 @@ import {
   fanSectorResolveSchema,
   roleChangeSchema,
   syncFixturesSchema,
+  syncMatchReviewResolveSchema,
 } from '@/lib/actions/admin-schemas';
 import { getViewer, type Viewer } from '@/lib/auth/session';
 import { hasDatabase, serverEnv } from '@/lib/env';
@@ -33,6 +34,7 @@ import {
   setRole,
   updateMatch,
 } from '@/lib/repo/admin-tools';
+import { resolveSyncMatchReview } from '@/lib/repo/sync-reviews';
 import { expirePending } from '@/lib/repo/pending';
 import { advanceMatchdays, syncFixtures } from '@/lib/repo/sync';
 
@@ -285,6 +287,37 @@ export async function reviewLineupBonusAction(input: unknown): Promise<AdminRunR
     await reviewManualLineupBonus(viewer.profileId, parsed.data);
     revalidateAdmin();
     return { ok: true, message: parsed.data.reviewed ? 'Отмечено как проверенное.' : 'Возвращено в очередь.' };
+  } catch (error) {
+    return toResult(error);
+  }
+}
+
+/** Разбор подозрительного совпадения матча из sync (1A/2A). */
+export async function resolveSyncMatchReviewAction(input: unknown): Promise<AdminRunResult> {
+  if (!hasDatabase()) return demoOnly();
+  try {
+    const viewer = await requireAdmin();
+    const parsed = syncMatchReviewResolveSchema.safeParse(input);
+    if (!parsed.success) return invalidInput(parsed.error) ?? { ok: false, message: 'Проверь поля' };
+    const result = await resolveSyncMatchReview({
+      id: parsed.data.reviewId,
+      status: parsed.data.status,
+      note: parsed.data.note ?? null,
+      actorId: viewer.profileId,
+    });
+    if (!result.ok) {
+      const reasonMap: Record<string, string> = {
+        TABLE_MISSING: 'Таблица проверки синка ещё не создана (нужна миграция).',
+        NOT_FOUND_OR_ALREADY_RESOLVED: 'Запись уже разобрана или не найдена.',
+        CONFIG_MISSING: 'База не подключена.',
+      };
+      return { ok: false, message: reasonMap[result.reason ?? ''] ?? `Не удалось обновить: ${result.reason ?? 'unknown'}` };
+    }
+    revalidateAdmin();
+    return {
+      ok: true,
+      message: parsed.data.status === 'resolved' ? 'Совпадение отмечено как разобранное.' : 'Совпадение помечено как пропущенное.',
+    };
   } catch (error) {
     return toResult(error);
   }

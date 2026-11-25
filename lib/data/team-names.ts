@@ -119,7 +119,7 @@ const CLUB_ENTRIES: Entry[] = [
   { ru: 'Борнмут', short: 'БОР', aliases: ['Bournemouth', 'AFC Bournemouth'] },
   { ru: 'Атлетико Мадрид', short: 'АТМ', aliases: ['Atletico Madrid', 'Atlético Madrid', 'Atlético de Madrid', 'Atletico', 'Atleti', 'Club Atlético de Madrid'] },
   { ru: 'Барселона', short: 'БАР', aliases: ['Barcelona', 'FC Barcelona', 'Barça', 'Barca'] },
-  { ru: 'Реал Бетис', short: 'БЕТ', aliases: ['Real Betis', 'Betis'] },
+  { ru: 'Реал Бетис', short: 'БЕТ', aliases: ['Real Betis', 'Betis', 'Бетис'] },
   { ru: 'Реал Мадрид', short: 'РМА', aliases: ['Real Madrid'] },
   { ru: 'Вильярреал', short: 'ВИЛ', aliases: ['Villarreal', 'Villarreal CF'] },
   { ru: 'Атлетик Бильбао', short: 'АТБ', aliases: ['Athletic Club', 'Athletic Bilbao', 'Athletic'] },
@@ -158,7 +158,7 @@ const CLUB_ENTRIES: Entry[] = [
   { ru: 'ЛАСК', short: 'ЛАС', aliases: ['Lask Linz', 'LASK', 'LASK Linz'] },
   { ru: 'АЕК Афины', short: 'АЕК', aliases: ['AEK Athens FC', 'AEK Athens', 'AEK'] },
   { ru: 'Славия Прага', short: 'СЛП', aliases: ['Slavia Praha', 'Slavia Prague', 'SK Slavia Praha', 'SK Slavia Prague'] },
-  { ru: 'Слован Братислава', short: 'СЛБ', aliases: ['Slovan Bratislava', 'ŠK Slovan Bratislava'] },
+  { ru: 'Слован Братислава', short: 'СЛБ', aliases: ['Slovan Bratislava', 'ŠK Slovan Bratislava', 'Sl. Bratislava', 'SK Slovan Bratislava'] },
   { ru: 'Шахтёр Донецк', short: 'ШАХ', aliases: ['Shakhtar Donetsk', 'Shakhtar', 'FC Shakhtar Donetsk'] },
   { ru: 'Сабах', short: 'САБ', aliases: ['Sabah FA', 'Sabah', 'Sabah FK', 'Sabah Baku', 'Sabah Masazir'] },
 
@@ -189,7 +189,7 @@ const CLUB_ENTRIES: Entry[] = [
   { ru: 'Хетафе', short: 'ХЕТ', aliases: ['Getafe', 'Getafe CF'] },
   { ru: 'Ле-Ман', short: 'ЛЕМ', aliases: ['Le Mans', 'Le Mans FC'] },
   { ru: 'Лорьян', short: 'ЛОР', aliases: ['Lorient', 'FC Lorient'] },
-  { ru: 'Расинг Сантандер', short: 'РАС', aliases: ['Racing Santander', 'Real Racing Club'] },
+  { ru: 'Расинг Сантандер', short: 'РАС', aliases: ['Racing Santander', 'Real Racing Club', 'Racing de Santander', 'Real Racing Club de Santander', 'Santander'] },
   { ru: 'Труа', short: 'ТРУ', aliases: ['Troyes', 'ESTAC Troyes'] },
   { ru: 'Гавр', short: 'ГАВ', aliases: ['Le Havre', 'Le Havre AC'] },
   { ru: 'Леванте', short: 'ЛЕВ', aliases: ['Levante', 'Levante UD'] },
@@ -203,7 +203,68 @@ const CLUB_ENTRIES: Entry[] = [
   { ru: 'Майнц 05', short: 'МАЙ', aliases: ['Mainz', 'Mainz 05', '1. FSV Mainz 05'] },
   { ru: 'Кёльн', short: 'КЁЛ', aliases: ['1. FC Köln', 'FC Koln', '1. FC Koln', 'Koln', 'Cologne'] },
   { ru: 'Фиорентина', short: 'ФИО', aliases: ['Fiorentina', 'ACF Fiorentina'] },
-  { ru: 'Монца', short: 'МОН', aliases: ['Monza', 'AC Monza'] },
+  { ru: 'Монца', short: 'МНЦ', aliases: ['Monza', 'AC Monza'] },
+
+  // Частые клубы (еврокубки / топ-5 лиги), для снижения ложных suspicious в 1A/2A.
+  { ru: 'Вест Хэм', short: 'ВХЮ', aliases: ['West Ham', 'West Ham United'] },
+  { ru: 'Кристал Пэлас', short: 'КРИ', aliases: ['Crystal Palace'] },
+  { ru: 'Вулверхэмптон', short: 'ВУЛ', aliases: ['Wolverhampton', 'Wolverhampton Wanderers', 'Wolves'] },
+  { ru: 'Эвертон', short: 'ЭВЕ', aliases: ['Everton'] },
+  { ru: 'Брентфорд', short: 'БРЕ', aliases: ['Brentford'] },
+  { ru: 'Бернли', short: 'БЕР', aliases: ['Burnley'] },
+  { ru: 'Шеффилд Юнайтед', short: 'ШЮ', aliases: ['Sheffield United', 'Sheffield Utd'] },
+  { ru: 'Лутон Таун', short: 'ЛУТ', aliases: ['Luton Town', 'Luton'] },
+  { ru: 'Лацио', short: 'ЛАЦ', aliases: ['Lazio', 'SS Lazio'] },
+  { ru: 'Болонья', short: 'БЛН', aliases: ['Bologna', 'Bologna FC 1909'] },
+  { ru: 'Удинезе', short: 'УДИ', aliases: ['Udinese', 'Udinese Calcio'] },
+  { ru: 'Дженоа', short: 'ДЖЕ', aliases: ['Genoa', 'Genoa CFC'] },
+  { ru: 'Лечче', short: 'ЛЕЧ', aliases: ['Lecce', 'US Lecce'] },
+  { ru: 'Эмполи', short: 'ЭМП', aliases: ['Empoli', 'Empoli FC'] },
+  { ru: 'Сассуоло', short: 'САС', aliases: ['Sassuolo', 'US Sassuolo'] },
+  { ru: 'Верона', short: 'ВРН', aliases: ['Hellas Verona', 'Verona'] },
+  { ru: 'Жирона', short: 'ЖИР', aliases: ['Girona', 'Girona FC'] },
+  { ru: 'Мальорка', short: 'МЛР', aliases: ['Mallorca', 'RCD Mallorca'] },
+  { ru: 'Алавес', short: 'АЛА', aliases: ['Alaves', 'Deportivo Alavés', 'Deportivo Alaves'] },
+  { ru: 'Лас-Пальмас', short: 'ЛПА', aliases: ['Las Palmas', 'UD Las Palmas'] },
+  { ru: 'Реал Вальядолид', short: 'ВЛД', aliases: ['Real Valladolid', 'Valladolid'] },
+  { ru: 'Кадис', short: 'КАД', aliases: ['Cadiz', 'Cádiz', 'Cádiz CF', 'Cadiz CF'] },
+  { ru: 'Альмерия', short: 'АЛМ', aliases: ['Almeria', 'UD Almería', 'UD Almeria'] },
+  { ru: 'Гранада', short: 'ГРА', aliases: ['Granada', 'Granada CF'] },
+  { ru: 'Фрайбург', short: 'ФРБ', aliases: ['Freiburg', 'SC Freiburg'] },
+  { ru: 'Вердер Бремен', short: 'ВРД', aliases: ['Werder Bremen', 'SV Werder Bremen', 'Werder'] },
+  { ru: 'Вольфсбург', short: 'ВОЛ', aliases: ['Wolfsburg', 'VfL Wolfsburg'] },
+  { ru: 'Бохум', short: 'БОХ', aliases: ['Bochum', 'VfL Bochum'] },
+  { ru: 'Хайденхайм', short: 'ХАЙ', aliases: ['Heidenheim', '1. FC Heidenheim', '1. FC Heidenheim 1846'] },
+  { ru: 'Дармштадт', short: 'ДАР', aliases: ['Darmstadt', 'SV Darmstadt 98', 'Darmstadt 98'] },
+  { ru: 'Сент-Этьен', short: 'СЭТ', aliases: ['Saint-Etienne', 'AS Saint-Étienne', 'AS Saint-Etienne', 'St Etienne'] },
+  { ru: 'Брест', short: 'БРС', aliases: ['Brest', 'Stade Brestois 29', 'Stade Brestois'] },
+  { ru: 'Страсбур', short: 'СТР', aliases: ['Strasbourg', 'RC Strasbourg', 'RC Strasbourg Alsace'] },
+  { ru: 'Нант', short: 'НАН', aliases: ['Nantes', 'FC Nantes'] },
+  { ru: 'Реймс', short: 'РЕЙ', aliases: ['Reims', 'Stade de Reims', 'Stade Reims'] },
+  { ru: 'Монпелье', short: 'МПЛ', aliases: ['Montpellier', 'Montpellier HSC'] },
+  { ru: 'Анже', short: 'АНЖ', aliases: ['Angers', 'Angers SCO'] },
+  { ru: 'Мец', short: 'МЕЦ', aliases: ['Metz', 'FC Metz'] },
+  { ru: 'Рейнджерс', short: 'РНД', aliases: ['Rangers', 'Rangers FC'] },
+  { ru: 'Селтик', short: 'СЛТ', aliases: ['Celtic', 'Celtic FC'] },
+  { ru: 'Олимпиакос', short: 'ОЛИ', aliases: ['Olympiacos', 'Olympiacos Piraeus', 'Olympiakos', 'Olympiakos Piraeus'] },
+  { ru: 'ПАОК', short: 'ПАО', aliases: ['PAOK', 'PAOK Thessaloniki'] },
+  { ru: 'ФК Копенгаген', short: 'КОП', aliases: ['Copenhagen', 'FC Copenhagen', 'FC København', 'Kobenhavn'] },
+  { ru: 'Мидтьюлланн', short: 'МИД', aliases: ['Midtjylland', 'FC Midtjylland'] },
+  { ru: 'Мальмё', short: 'МЛМ', aliases: ['Malmo', 'Malmö', 'Malmö FF', 'Malmo FF'] },
+  { ru: 'Юнг Бойз', short: 'ЮБ', aliases: ['Young Boys', 'BSC Young Boys'] },
+  { ru: 'Базель', short: 'БАЗ', aliases: ['Basel', 'FC Basel', 'FC Basel 1893'] },
+  { ru: 'Зальцбург', short: 'ЗАЛ', aliases: ['Salzburg', 'RB Salzburg', 'Red Bull Salzburg', 'FC Salzburg'] },
+  { ru: 'Штурм', short: 'ШТР', aliases: ['Sturm Graz', 'Sturm', 'SK Sturm Graz'] },
+  { ru: 'Легия', short: 'ЛЕГ', aliases: ['Legia Warsaw', 'Legia Warszawa', 'Legia'] },
+  { ru: 'Динамо Загреб', short: 'ДЗА', aliases: ['Dinamo Zagreb', 'GNK Dinamo Zagreb'] },
+  { ru: 'Црвена Звезда', short: 'ЦРЗ', aliases: ['Crvena Zvezda', 'Red Star Belgrade', 'FK Crvena zvezda'] },
+  { ru: 'Спарта Прага', short: 'СПП', aliases: ['Sparta Prague', 'Sparta Praha', 'AC Sparta Praha'] },
+  { ru: 'Ференцварош', short: 'ФЕР', aliases: ['Ferencvaros', 'Ferencváros', 'Ferencvárosi TC'] },
+  { ru: 'Харт оф Мидлотиан', short: 'ХОМ', aliases: ['Heart of Midlothian', 'Heart Of Midlothian', 'Hearts'] },
+  { ru: 'Университатя Крайова', short: 'УКР', aliases: ['Universitatea Craiova', 'CS Universitatea Craiova', 'U Craiova', 'CSU Craiova'] },
+  { ru: 'Омония', short: 'ОМО', aliases: ['Omonia Nicosia', 'Omonia', 'AC Omonia'] },
+  { ru: 'Лиллестрём', short: 'ЛИЛ', aliases: ['Lillestrom', 'Lillestrøm', 'Lillestrom SK', 'Lillestrøm SK'] },
+  { ru: 'Интер Эскальдес', short: 'ИНЭ', aliases: ["Inter Club d'Escaldes", 'Inter Escaldes', 'Inter Club Escaldes'] },
 ];
 
 const INDEX = new Map<string, TeamDisplay>();
@@ -242,4 +303,40 @@ export function teamNameRu(name: string | null | undefined): string {
 /** Короткое обозначение (для компактных карточек). */
 export function teamShort(name: string | null | undefined): string {
   return teamDisplay(name).short;
+}
+
+function lookupKnown(raw: string): TeamDisplay | null {
+  const n = norm(raw);
+  const direct = INDEX.get(n);
+  if (direct) return direct;
+  // Провайдеры часто добавляют суффиксы/префиксы клуба.
+  const stripped = n
+    .replace(/^(fc|cf|afc|sc|ac|as|ss|ssc|rc|cd|ud|us|vfb|vfl|tsg|bsc)\s+/i, '')
+    .replace(/\s+(fc|cf|afc|sc|ac|as|ss|ssc|rc|cd|ud|us)$/i, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+  if (stripped && stripped !== n) {
+    const found = INDEX.get(stripped);
+    if (found) return found;
+  }
+  return null;
+}
+
+/** Имя команды известно в поддерживаемом списке соответствий. */
+export function isKnownTeamName(name: string | null | undefined): boolean {
+  const raw = (name ?? '').trim();
+  if (!raw) return false;
+  return lookupKnown(raw) !== null;
+}
+
+/**
+ * Стабильный канонический ключ команды для дедупа/склейки матчей.
+ * Возвращает null, если команда не найдена в поддерживаемом списке (1A/2A).
+ */
+export function canonicalTeamKey(name: string | null | undefined): string | null {
+  const raw = (name ?? '').trim();
+  if (!raw) return null;
+  const found = lookupKnown(raw);
+  if (!found) return null;
+  return norm(found.name);
 }

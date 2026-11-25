@@ -13,6 +13,7 @@ import { enrichSstatsMatchesWithStats, fetchSstatsFixtures, fetchSstatsGameDetai
 import { normalizeMatch, normalizeMatches, type NormalizedMatch } from '@/lib/data/normalize';
 import { generateMatchQuestions } from '@/lib/data/questions';
 import { teamNameRu } from '@/lib/data/team-names';
+import { canonicalMatchKey } from '@/lib/data/match-identity';
 import { syncWindow } from '@/lib/data/sync-window';
 import { isAppError } from '@/lib/errors';
 import { grantPacksForResolvedMatchday } from '@/lib/repo/cards-grants';
@@ -175,12 +176,14 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
 
   const sql = db();
 
-  const SYNC_LOCK_KEY = 918273645; // stable advisory lock key for syncFixtures
+  const SYNC_LOCK_KEY_FULL = 918273645;
+  const SYNC_LOCK_KEY_LIVE = 918273646;
+  const syncLockKey = isLiveMode ? SYNC_LOCK_KEY_LIVE : SYNC_LOCK_KEY_FULL;
   let lockAcquired = false;
   const errors: string[] = [];
   try {
     const [lockRow] = await sql<{ locked: boolean }[]>`
-      select pg_try_advisory_lock(${SYNC_LOCK_KEY}) as locked
+      select pg_try_advisory_lock(${syncLockKey}) as locked
     `;
     lockAcquired = lockRow?.locked === true;
   } catch (error) {
@@ -1315,7 +1318,62 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
 
       if (!saved) continue;
 
-      // Поиск канонического матча в матчдэе (тот же матч, другой provider/id) для дедупа.
+      // Каноничность матча (1A) + защита от дублей (C/2A).
+      const identity = canonicalMatchKey({ homeName: match.homeName, awayName: match.awayName });
+      const canonicalKey = identity.key;
+
+      if (identity.suspicious) {
+        savedMatches += 1;
+        errors.push(`suspicious:${match.provider}:${match.externalId}:${identity.reason ?? 'unknown'}`);
+        try {
+          await tx`
+            insert into sync_match_reviews (
+              season_id, matchday_id, provider, external_id, league_code,
+              home_name, away_name, kickoff_utc, canonical_key_candidate, reason, payload, status, updated_at
+            ) values (
+              ${season.id}, ${matchdayId}, ${match.provider}, ${match.externalId}, ${match.leagueCode},
+              ${match.homeName}, ${match.awayName}, ${match.kickoffUtc}, ${canonicalKey},
+              ${identity.reason ?? 'suspicious'},
+              ${tx.json({ source: 'sync', mode, match: { home: match.homeName, away: match.awayName, status: match.status } } as any)},
+              'pending', now()
+            )
+            on conflict (matchday_id, provider, external_id) do update set
+              reason = excluded.reason,
+              payload = excluded.payload,
+              home_name = excluded.home_name,
+              away_name = excluded.away_name,
+              kickoff_utc = excluded.kickoff_utc,
+              updated_at = now()
+            where sync_match_reviews.status = 'pending'
+          `;
+        } catch (reviewError) {
+          const msg = reviewError instanceof Error ? reviewError.message : String(reviewError);
+          if (!msg.includes('sync_match_reviews') && !msg.includes('does not exist')) {
+            errors.push(`review:${match.provider}:${match.externalId}:${msg}`);
+          }
+        }
+        continue;
+      }
+
+      // Поиск канонического матча в матчдэе: сначала по canonical_key (DB guard), затем fallback.
+      let linkedByKey: { match_id: string; provider: string; external_id: string } | null = null;
+      if (canonicalKey) {
+        try {
+          const rows = await tx<{ match_id: string; provider: string; external_id: string }[]>`
+            select mm.match_id, m.provider, m.external_id
+            from matchday_matches mm
+            join matches m on m.id = mm.match_id
+            where mm.matchday_id = ${matchdayId} and mm.canonical_key = ${canonicalKey}
+            limit 1
+          `;
+          linkedByKey = rows[0] ?? null;
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          if (!msg.includes('canonical_key') && !msg.includes('does not exist')) throw e;
+          // Migration 0016 not applied yet — fallback below.
+        }
+      }
+
       const linked = await tx<{ id: string; provider: string; external_id: string; home_name: string; away_name: string; kickoff_utc: Date }[]>`
         select m.id, m.provider, m.external_id, m.home_name, m.away_name, m.kickoff_utc
         from matchday_matches mm
@@ -1338,7 +1396,9 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
       };
 
       let canonical: (typeof linked)[number] | null =
-        linked.find((m) => m.provider === match.provider && m.external_id === match.externalId) ?? null;
+        (linkedByKey ? linked.find((m) => m.id === linkedByKey!.match_id) ?? null : null) ??
+        linked.find((m) => m.provider === match.provider && m.external_id === match.externalId) ??
+        null;
 
       if (!canonical) {
         let best: { m: (typeof linked)[number]; score: number; dt: number } | null = null;
@@ -1355,11 +1415,10 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
             best = { m, score: total, dt };
           }
         }
-        // Require at least some team-name overlap; time-only proximity must not merge different matches.
         if (best && best.score >= 10) canonical = best.m;
       }
 
-      const targetMatchId = canonical?.id ?? saved.id;
+      let targetMatchId = canonical?.id ?? saved.id;
 
       // Приоритет sstats при конфликте: не перезаписывать sstats-каноникал данными другого провайдера.
       const shouldOverwriteCanonical =
@@ -1404,11 +1463,58 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
 
       savedMatches += 1;
 
-      await tx`
-        insert into matchday_matches (matchday_id, match_id)
-        values (${matchdayId}, ${targetMatchId})
-        on conflict do nothing
-      `;
+      let attached = false;
+      if (canonicalKey) {
+        try {
+          const ins = await tx<{ matchday_id: string }[]>`
+            insert into matchday_matches (matchday_id, match_id, canonical_key)
+            values (${matchdayId}, ${targetMatchId}, ${canonicalKey})
+            on conflict (matchday_id, canonical_key) do nothing
+            returning matchday_id
+          `;
+          attached = ins.length > 0;
+          if (!attached) {
+            const existing = await tx<{ match_id: string }[]>`
+              select match_id from matchday_matches
+              where matchday_id = ${matchdayId} and canonical_key = ${canonicalKey}
+              limit 1
+            `;
+            if (existing[0] && existing[0].match_id !== targetMatchId) {
+              errors.push(`dedup:${canonicalKey}:${match.provider}:${match.externalId}->${existing[0].match_id}`);
+              // Привязываемся к уже каноническому матчу этого дня.
+              targetMatchId = existing[0].match_id;
+            }
+          }
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          if (!msg.includes('canonical_key') && !msg.includes('does not exist')) throw e;
+          await tx`
+            insert into matchday_matches (matchday_id, match_id)
+            values (${matchdayId}, ${targetMatchId})
+            on conflict do nothing
+          `;
+          attached = true;
+        }
+      } else {
+        await tx`
+          insert into matchday_matches (matchday_id, match_id)
+          values (${matchdayId}, ${targetMatchId})
+          on conflict do nothing
+        `;
+        attached = true;
+      }
+
+      if (canonicalKey) {
+        try {
+          await tx`
+            update matchday_matches
+               set canonical_key = ${canonicalKey}
+             where matchday_id = ${matchdayId}
+               and match_id = ${targetMatchId}
+               and canonical_key is null
+          `;
+        } catch { /* migration not applied or already set */ }
+      }
 
       // Вопросы генерируем один раз на матч в матчдэе.
       if (!(await questionExists(matchdayId, targetMatchId))) {
@@ -1551,7 +1657,7 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
   };
   } finally {
     if (lockAcquired) {
-      await sql`select pg_advisory_unlock(${SYNC_LOCK_KEY})`.catch(() => {});
+      await sql`select pg_advisory_unlock(${syncLockKey})`.catch(() => {});
     }
   }
 }

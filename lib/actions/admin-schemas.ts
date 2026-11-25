@@ -82,6 +82,14 @@ export const lineupBonusReviewSchema = z.object({
 
 export type LineupBonusReviewInput = z.infer<typeof lineupBonusReviewSchema>;
 
+export const syncMatchReviewResolveSchema = z.object({
+  reviewId: z.uuid(),
+  status: z.enum(['resolved', 'ignored']),
+  note: z.string().trim().max(500).optional().nullable(),
+});
+
+export type SyncMatchReviewResolveInput = z.infer<typeof syncMatchReviewResolveSchema>;
+
 const gameDateString = z.string().regex(/^\d{4}-\d{2}-\d{2}$/, 'Формат даты: ГГГГ-ММ-ДД');
 
 export const syncFixturesSchema = z

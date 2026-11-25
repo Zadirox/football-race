@@ -4,10 +4,12 @@ import { formatRuDateRange, formatRuDateTimeMsk, formatRuDayMonth } from '@/lib/
 import { serverEnv } from '@/lib/env';
 import { listInvites } from '@/lib/repo/invites';
 import { listManualLineupBonusSlots, listPendingForAdmin } from '@/lib/repo/admin-tools';
+import { listSyncMatchReviews } from '@/lib/repo/sync-reviews';
 import { loadSeasonSnapshot } from '@/lib/repo/season';
 import { AdminActions } from './AdminActions';
 import { AdminTools } from './AdminTools';
 import { InvitesAdmin } from './InvitesAdmin';
+import { SyncReviewsAdmin } from './SyncReviewsAdmin';
 
 function timeMsk(iso: string | undefined): string {
   if (!iso) return '—';
@@ -17,10 +19,11 @@ function timeMsk(iso: string | undefined): string {
 export default async function AdminPage() {
   const snapshot = await loadSeasonSnapshot();
   const env = serverEnv();
-  const [pending, invites, manualBonusSlots] = await Promise.all([
+  const [pending, invites, manualBonusSlots, syncReviews] = await Promise.all([
     listPendingForAdmin(),
     listInvites(),
     env.cardsEnabled ? listManualLineupBonusSlots() : Promise.resolve([]),
+    listSyncMatchReviews(50),
   ]);
   const checks: Array<[string, boolean, string]> = [
     ['DATABASE_URL', env.databaseUrl !== null, 'подключение к Postgres'],
@@ -88,6 +91,8 @@ export default async function AdminPage() {
       <AdminActions enabled={!snapshot.demo} />
 
       <InvitesAdmin enabled={!snapshot.demo} invites={invites} />
+
+      <SyncReviewsAdmin enabled={!snapshot.demo} reviews={syncReviews} />
 
       <AdminTools
         enabled={!snapshot.demo}

@@ -14,7 +14,7 @@ describe('artSrcFor', () => {
     expect(artSrcFor(undefined)).toBeNull();
     expect(artSrcFor('1')).toBeNull();
     expect(artSrcFor('00')).toBeNull();
-    expect(artSrcFor('21')).toBeNull();
+    expect(artSrcFor('38')).toBeNull();
     expect(artSrcFor('xx')).toBeNull();
   });
 });

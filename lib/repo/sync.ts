@@ -1523,14 +1523,29 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
       let attached = false;
       if (canonicalKey) {
         try {
-          const ins = await tx<{ matchday_id: string }[]>`
+          const ins = await tx<{ matchday_id: string; inserted: boolean }[]>`
             insert into matchday_matches (matchday_id, match_id, canonical_key)
             values (${matchdayId}, ${targetMatchId}, ${canonicalKey})
-            on conflict (matchday_id, canonical_key) where canonical_key is not null do nothing
-            returning matchday_id
+            on conflict (matchday_id, match_id) do update
+              set canonical_key = coalesce(matchday_matches.canonical_key, excluded.canonical_key)
+            returning matchday_id, (xmax = 0) as inserted
           `;
           attached = ins.length > 0;
-          if (!attached) {
+          if (ins[0] && !ins[0].inserted) {
+            const dup = await tx<{ match_id: string }[]>`
+              select match_id from matchday_matches
+              where matchday_id = ${matchdayId} and canonical_key = ${canonicalKey} and match_id <> ${targetMatchId}
+              limit 1
+            `;
+            if (dup[0]) {
+              errors.push(`dedup:${canonicalKey}:${match.provider}:${match.externalId}->${dup[0].match_id}`);
+              targetMatchId = dup[0].match_id;
+            }
+          }
+        } catch (e) {
+          const msg = e instanceof Error ? e.message : String(e);
+          const isCanonicalConflict = msg.includes('matchday_matches_canonical') || (msg.includes('duplicate key') && msg.includes('canonical'));
+          if (isCanonicalConflict) {
             const existing = await tx<{ match_id: string }[]>`
               select match_id from matchday_matches
               where matchday_id = ${matchdayId} and canonical_key = ${canonicalKey}
@@ -1538,19 +1553,19 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
             `;
             if (existing[0] && existing[0].match_id !== targetMatchId) {
               errors.push(`dedup:${canonicalKey}:${match.provider}:${match.externalId}->${existing[0].match_id}`);
-              // Привязываемся к уже каноническому матчу этого дня.
               targetMatchId = existing[0].match_id;
             }
+            attached = true;
+          } else if (!msg.includes('canonical_key') && !msg.includes('does not exist')) {
+            throw e;
+          } else {
+            await tx`
+              insert into matchday_matches (matchday_id, match_id)
+              values (${matchdayId}, ${targetMatchId})
+              on conflict do nothing
+            `;
+            attached = true;
           }
-        } catch (e) {
-          const msg = e instanceof Error ? e.message : String(e);
-          if (!msg.includes('canonical_key') && !msg.includes('does not exist')) throw e;
-          await tx`
-            insert into matchday_matches (matchday_id, match_id)
-            values (${matchdayId}, ${targetMatchId})
-            on conflict do nothing
-          `;
-          attached = true;
         }
       } else {
         await tx`

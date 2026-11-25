@@ -1526,7 +1526,7 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
           const ins = await tx<{ matchday_id: string }[]>`
             insert into matchday_matches (matchday_id, match_id, canonical_key)
             values (${matchdayId}, ${targetMatchId}, ${canonicalKey})
-            on conflict (matchday_id, canonical_key) do nothing
+            on conflict (matchday_id, canonical_key) where canonical_key is not null do nothing
             returning matchday_id
           `;
           attached = ins.length > 0;

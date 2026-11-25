@@ -334,6 +334,7 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
 
   const normTeamKey = (s: string) => teamNameRu(s).toLowerCase().replace(/ё/g, 'е').replace(/[^a-zа-я0-9]+/gi, ' ').trim();
   const sameTeamLoose = (a: string, b: string) => a === b || a.includes(b) || b.includes(a);
+  const fdApiFixtureCache = new Map<string, NormalizedMatch[] | null>();
   const findSstatsFallback = async (
     row: {
       external_id: string; league_code: string; league_title: string;
@@ -425,36 +426,78 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
       home_name: string; away_name: string; kickoff_utc: Date;
     },
     target: { provider: 'football-data' | 'sstats'; externalId: string },
-    opts?: { timeoutMs?: number },
+    opts?: { timeoutMs?: number; deadlineMs?: number },
   ): Promise<NormalizedMatch[]> => {
     if (!hasFootballData || fdQuotaExhausted) return [];
-    const timeoutMs = Math.max(2_000, Math.min(opts?.timeoutMs ?? 8_000, 12_000));
+    const deadlineMs = opts?.deadlineMs ?? processingDeadlineMs;
+    if (Date.now() >= deadlineMs - 2_500) return [];
     const mh = normTeamKey(row.home_name);
     const ma = normTeamKey(row.away_name);
     const from = new Date(row.kickoff_utc.getTime() - 6 * 60 * 60 * 1000);
     const to = new Date(row.kickoff_utc.getTime() + 6 * 60 * 60 * 1000);
-    const candidates = await sql<{ external_id: string; home_name: string; away_name: string }[]>`
-      select external_id, home_name, away_name
-      from matches
-      where provider = 'football-data'
-        and kickoff_utc >= ${from.toISOString()}::timestamptz
-        and kickoff_utc <= ${to.toISOString()}::timestamptz
-      limit 40
-    `;
-    const cand = candidates.find((c) => sameTeamLoose(normTeamKey(c.home_name), mh) && sameTeamLoose(normTeamKey(c.away_name), ma));
-    if (!cand) return [];
-    try {
-      const fd = await fetchFootballDataMatch({ token: env.footballDataToken!, matchId: cand.external_id });
-      requestsUsed += fd.requestsUsed;
-      if (fd.httpStatus) httpStatus = fd.httpStatus;
-      if (!fd.match) return [];
-      const nm = normalizeMatch(fd.match);
-      if (!nm) return [];
+
+    const buildOut = (nm: NormalizedMatch, fdExternalId: string, refresh: string): NormalizedMatch[] => {
       const out: NormalizedMatch[] = [nm];
       if (!(target.provider === nm.provider && target.externalId === nm.externalId)) {
-        out.push({ ...nm, provider: target.provider, externalId: target.externalId, raw: { refresh: 'fd-fallback', fdExternalId: cand.external_id, target: target.externalId, at: now.toISOString() } });
+        out.push({ ...nm, provider: target.provider, externalId: target.externalId, raw: { refresh, fdExternalId, target: target.externalId, at: now.toISOString() } });
       }
       return out;
+    };
+
+    try {
+      const candidates = await sql<{ external_id: string; home_name: string; away_name: string }[]>`
+        select external_id, home_name, away_name
+        from matches
+        where provider = 'football-data'
+          and kickoff_utc >= ${from.toISOString()}::timestamptz
+          and kickoff_utc <= ${to.toISOString()}::timestamptz
+        limit 40
+      `;
+      const cand = candidates.find((c) => sameTeamLoose(normTeamKey(c.home_name), mh) && sameTeamLoose(normTeamKey(c.away_name), ma));
+      if (cand) {
+        if (Date.now() >= deadlineMs - 2_000) return [];
+        const remaining = Math.max(2_000, deadlineMs - Date.now() - 1_000);
+        const fd = await fetchFootballDataMatch({ token: env.footballDataToken!, matchId: cand.external_id, timeoutMs: Math.min(8_000, remaining) });
+        requestsUsed += fd.requestsUsed;
+        if (fd.httpStatus) httpStatus = fd.httpStatus;
+        if (!fd.match) return [];
+        const nm = normalizeMatch(fd.match);
+        if (!nm) return [];
+        return buildOut(nm, cand.external_id, 'fd-fallback');
+      }
+
+      // C/variant-3: no FD row in DB — bounded direct API lookup by date window.
+      if (Date.now() >= deadlineMs - 4_000) return [];
+      const dayFromDate = new Date(row.kickoff_utc.getTime() - 24 * 60 * 60 * 1000);
+      const dayToDate = new Date(row.kickoff_utc.getTime() + 24 * 60 * 60 * 1000);
+      const fromDay = dayFromDate.toISOString().slice(0, 10);
+      const toDay = dayToDate.toISOString().slice(0, 10);
+      const cacheKey = `${fromDay}:${toDay}`;
+      let apiMatches = fdApiFixtureCache.get(cacheKey);
+      if (apiMatches === undefined) {
+        try {
+          const remaining = Math.max(2_000, deadlineMs - Date.now() - 1_500);
+          const fixtures = await fetchFixtures({ token: env.footballDataToken!, from: fromDay, to: toDay, timeoutMs: Math.min(8_000, remaining) });
+          requestsUsed += fixtures.requestsUsed;
+          fetchedTotal += fixtures.matches.length;
+          if (fixtures.httpStatus) httpStatus = fixtures.httpStatus;
+          apiMatches = normalizeMatches(fixtures.matches);
+          fdApiFixtureCache.set(cacheKey, apiMatches);
+        } catch (error) {
+          if (isQuotaError(error)) fdQuotaExhausted = true;
+          fdApiFixtureCache.set(cacheKey, null);
+          return [];
+        }
+      }
+      if (!apiMatches || apiMatches.length === 0) return [];
+
+      const targetTime = row.kickoff_utc.getTime();
+      const apiCand = apiMatches.find((m) => {
+        if (Math.abs(m.kickoffUtc.getTime() - targetTime) > 3 * 60 * 60 * 1000) return false;
+        return sameTeamLoose(normTeamKey(m.homeName), mh) && sameTeamLoose(normTeamKey(m.awayName), ma);
+      });
+      if (!apiCand) return [];
+      return buildOut(apiCand, apiCand.externalId, 'fd-fallback-api');
     } catch (error) {
       if (isQuotaError(error)) fdQuotaExhausted = true;
       return [];
@@ -518,9 +561,12 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
       limit ${isLiveMode ? 16 : 8}
     `;
     let earlyBudget = isLiveMode ? 4 : 4;
+    let earlySlowFails = 0;
     for (const row of liveRows) {
       if (earlyBudget <= 0) break;
-      if (Date.now() >= processingDeadlineMs - 8_000) break;
+      if (Date.now() >= processingDeadlineMs - (isLiveMode ? 10_000 : 8_000)) break;
+      if (earlySlowFails >= 2 && Date.now() >= processingDeadlineMs - 14_000) break;
+      const matchStartedAt = Date.now();
       try {
         if (row.provider === 'football-data' && hasFootballData && !fdQuotaExhausted) {
           earlyBudget -= 1;
@@ -554,7 +600,7 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
         } else if (row.provider === 'sstats' && env.sstatsEnabled) {
           earlyBudget -= 1;
           requestsUsed += 1;
-          const detail = await fetchSstatsGameDetail({ id: row.external_id, apiKey: env.sstatsApiKey, timeoutMs: isLiveMode ? 5_000 : 8_000 });
+          const detail = await fetchSstatsGameDetail({ id: row.external_id, apiKey: env.sstatsApiKey, timeoutMs: isLiveMode ? 4_000 : 8_000 });
           const core = detail.core;
           const nm: NormalizedMatch = {
             provider: 'sstats',
@@ -617,6 +663,10 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
           }
         }
         if (!recovered) errors.push(`early-refresh/${row.provider}/${row.external_id}: ${message}`);
+        earlySlowFails = (Date.now() - matchStartedAt > 3_000) ? earlySlowFails + 1 : 0;
+      }
+      if (!errors.length || !errors[errors.length - 1]?.startsWith(`early-refresh/${row.provider}/${row.external_id}:`)) {
+        earlySlowFails = 0;
       }
     }
   } catch (error) {
@@ -876,9 +926,12 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
     `;
     const seen = new Set(normalized.map((m) => `${m.provider}:${m.externalId}`));
     let refreshBudget = isLiveMode ? 4 : 6; // protect FD quota / cron budget
+    let staleSlowFails = 0;
     for (const row of staleRows) {
       if (refreshBudget <= 0) break;
-      if (Date.now() >= processingDeadlineMs - 4_000) break;
+      if (Date.now() >= processingDeadlineMs - (isLiveMode ? 8_000 : 4_000)) break;
+      if (staleSlowFails >= 2 && Date.now() >= processingDeadlineMs - 12_000) break;
+      const staleMatchStartedAt = Date.now();
       const key = `${row.provider}:${row.external_id}`;
       // Refresh even if already in window listing: listing can be stale (NS/old minute/score).
       if (seen.has(key)) {
@@ -1016,6 +1069,10 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
           }
         }
         if (!recovered) errors.push(`refresh/${row.provider}/${row.external_id}: ${message}`);
+        staleSlowFails = (Date.now() - staleMatchStartedAt > 3_000) ? staleSlowFails + 1 : 0;
+      }
+      if (!errors.length || !errors[errors.length - 1]?.startsWith(`refresh/${row.provider}/${row.external_id}:`)) {
+        staleSlowFails = 0;
       }
     }
   } catch (error) {

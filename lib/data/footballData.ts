@@ -32,6 +32,7 @@ export async function fetchFixtures(input: {
   token: string;
   from: string;
   to: string;
+  timeoutMs?: number;
   fetchImpl?: typeof fetch;
 }): Promise<FixtureFetch> {
   const url = new URL(`${BASE_URL}/matches`);
@@ -46,7 +47,7 @@ export async function fetchFixtures(input: {
     response = await doFetch(url, {
       headers: { 'X-Auth-Token': input.token },
       cache: 'no-store',
-      signal: AbortSignal.timeout(TIMEOUT_MS),
+      signal: AbortSignal.timeout(Math.max(2_000, Math.min(input.timeoutMs ?? TIMEOUT_MS, 20_000))),
     });
   } catch (error) {
     throw new AppError('SYNC_PROVIDER_DOWN', `Провайдер не ответил: ${(error as Error).message}`);
@@ -80,6 +81,7 @@ export async function fetchFixtures(input: {
 export async function fetchFootballDataMatch(input: {
   token: string;
   matchId: string | number;
+  timeoutMs?: number;
   fetchImpl?: typeof fetch;
 }): Promise<{ match: ProviderMatch | null; httpStatus: number; requestsUsed: number }> {
   const url = `${BASE_URL}/matches/${encodeURIComponent(String(input.matchId))}`;
@@ -89,7 +91,7 @@ export async function fetchFootballDataMatch(input: {
     response = await doFetch(url, {
       headers: { 'X-Auth-Token': input.token },
       cache: 'no-store',
-      signal: AbortSignal.timeout(TIMEOUT_MS),
+      signal: AbortSignal.timeout(Math.max(2_000, Math.min(input.timeoutMs ?? TIMEOUT_MS, 20_000))),
     });
   } catch (error) {
     throw new AppError('SYNC_PROVIDER_DOWN', `Провайдер не ответил: ${(error as Error).message}`);

@@ -1,7 +1,7 @@
 # Working State
 
 ## Current goal
-Стабилизация синка/источников live-обновлений матчей, счёта и предиктов (вариант C: сначала стабилизация, потом упрощение). Согласовано: 1A — каноничность матча по поддерживаемому списку соответствий команд; 2A — подозрительные совпадения не добавлять автоматически, помечать на проверку. Выбран вариант B: усиление безопасности данных перед выкладкой. Реализованы базовый контур синка, миграция 0016, расширение списка соответствий команд и простая очередь проверки в админке; сухая проверка на недавних игровых днях подготовлена, но не запускалась против реальной базы (нужно отдельное подтверждение).
+Стабилизация синка/источников live-обновлений матчей, счёта и предиктов (вариант C: сначала стабилизация, потом упрощение). Фаза 1 (1A/2A/B) выложена в `e2e4cd8`. 2026-11-26: выбран и реализован локально вариант 3 (C) для залипших live-матчей при тайм-ауте основного источника: ограниченный поиск той же игры в запасном источнике по окну даты/названиям команд, когда в БД нет пары запасного источника; изоляция зависающих матчей по бюджету/последовательным тайм-аутам. Изменения не закоммичены/не выложены.
 
 ## Completed
 - G1a fix patch (code+tests): `lib/data/club-phase.ts` (Barça alias, DOMESTIC_LEAGUE_ROSTER, G1 helpers), `lib/repo/sync.ts` (comp-aware scope check), `tests/unit/data.test.ts` (+5 tests).
@@ -35,6 +35,8 @@
 - 2026-11-25, стабилизация sync/live: выбран вариант **C** (сначала стабилизация, потом упрощение). Уточнения: **1A** — каноничность матча определяется поддерживаемым списком соответствий команд; **2A** — подозрительные совпадения не добавлять автоматически, помечать на проверку. Реализация/миграции/деплой/DB-мутации — только после отдельных подтверждений.
 
 ## Not done / risks
+- Variant 3 sync fix локально, не закоммичен/не выложен. 4 матча 2026-11-25 20:00 (1635724,1635735,1635682,1635673) всё ещё NS в БД до следующего успешного sync после выкладки/восстановления источника; ручная правка — только по отдельному подтверждению.
+- Новый FD listing fallback увеличивает использование квоты football-data при сбоях sstats (ограничено кэшем на окно дат за прогон и только fallback-путь); мониторить sync_runs/errors/quota.
 - G1a code patch is local/uncommitted (not pushed/deployed). Until deployed, future syncs may still ingest bad matches on old code.
 - Sync advisory lock lowers race risk but does not add a DB-level uniqueness guarantee for logical same-match duplicates; monitor future sync runs. Also, cross-language name variants (RU/EN) can bypass exact-name checks; any future duplicate audit should include fuzzy/teamNameRu-aware matching.
 - 558522 Hull-Brighton FD sstats-shaped raw anomaly was cleaned as part of 22.11 duplicate cleanup (discarded NS/in_scope false copy); the remaining 560646 is the kept FT answered copy. Verify no UI/reporting side effects.
@@ -50,7 +52,7 @@
 - DB mutations with explicit approvals in this project history include: A+ 22.11; 1B+2A1 21.11 + orphaned prediction score_events removal; live board updates for 11-18 placement, 20->21-37 fix, cell 59->20, top-balance swaps 52/56/58/66/72/78 (2026-11-25); duplicate match cleanup 22.11/24.11.
 
 ## Next step
-- **Sync phase 1 (C/1A/2A, вариант B, в работе):** кодовый контур готов локально: миграция `supabase/migrations/0016_sync_match_canonical_guard.sql` (canonical_key + `sync_match_reviews`), канонизация/проверка подозрительных матчей, раздельные lock-ключи live/full, расширенное окно опроса на матчах/прогнозах, расширенный список соответствий команд, очередь проверки в админке + действие разбора. Подготовлен read-only dry-run скрипт `tmp/dry-run-sync-identity.mjs`. Перед выкладкой нужно отдельно подтвердить: запуск dry-run против реальной БД (только чтение), применение миграции 0016, изменение расписания cron-job.org (live/full), деплой, и как обрабатывать unknown-команды/очередь на старте.
+- Получить отдельное подтверждение на коммит/пуш/деплой variant 3 sync fix (изменения локальные, `tsc`+tests PASS). После выкладки наблюдать ближайшие sync-live прогоны и ошибки по 1635724/1635735/1635682/1635673; при необходимости отдельно согласовать ручную/admin-коррекцию, если источники не восстановятся.
 - Проверить в приложении новую сцену открытия пака (клубный/сборный пак, очередь нескольких карт, пропуск, завершение, звук/громкость, мобильный вид). Довести по результатам QA.
 - После проверки отдельно решить: коммит/пуш/деплой изменений открытия пака и добавленных звуковых ассетов `public/sounds/packs/`.
 - Отдельно решить судьбу локального G1a guardrail patch (коммит/пуш/деплой) и временных `tmp/` скриптов.

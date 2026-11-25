@@ -484,16 +484,21 @@ export function GameHud({ snapshot }: { snapshot: SeasonSnapshot }) {
       // Показываем выпавшее число перед обновлением данных с сервера.
       if (result.roll) {
         settleTumble(result.roll.base);
+        const nextTo = typeof result.roll.to === 'number' ? result.roll.to : result.roll.from;
+        const awaiting = (result.roll.needsTactics ? 'tactics' : (result.roll.awaiting ?? null)) as PendingBody['kind'] | null;
+        const eventText = result.roll.needsTactics
+          ? 'Тактическая схема: выбери, оставить бросок или изменить его на ±1.'
+          : result.roll.eventText
+            ? `${result.roll.eventText}${awaiting ? ' Нужно выбрать действие.' : ''}`
+            : 'Бросок принят. Обновляем ход...';
         setLastRoll({
           base: result.roll.base,
           value: result.roll.value,
           tier: result.roll.tier,
           from: result.roll.from,
-          to: result.roll.from,
-          eventText: result.roll.needsTactics
-            ? 'Тактическая схема: выбери, оставить бросок или изменить его на ±1.'
-            : 'Бросок принят. Обновляем ход...',
-          awaiting: result.roll.needsTactics ? 'tactics' : null,
+          to: nextTo,
+          eventText,
+          awaiting,
         });
         clearTumbleTimers();
         setTumble({ tier: result.roll.tier, face: result.roll.base, settled: true });

@@ -69,6 +69,12 @@ export type RollResult = {
   tier: DiceTier;
   from: number;
   needsTactics: boolean;
+  /** �?�?�?�>�?���? �?�?�?��?�?�> �� �?�� ��>��'���/�?�?�+�<�'��? (��?�>�� �?�?�+�<�'��� �?�?�?�?��ؐ�?�>�?�?�?). */
+  to?: number;
+  /** �?���?���?��� �?�<�+�?�?�� ���?�?�>�� �?�?�+�<�'��?, ��?�>�� ��?�'�? �?�?�?��?�?�> �?�?. */
+  awaiting?: string | null;
+  /** �����'��? �?�?�+�<�'��? �?�� ��>��'��?. */
+  eventText?: string | null;
 };
 
 export type ActionResult =
@@ -216,6 +222,9 @@ export async function submitRollAction(input: {
         tier,
         from: ctx.position,
         needsTactics: plan.needsTactics,
+        to: ctx.position,
+        awaiting: plan.needsTactics ? 'tactics' : null,
+        eventText: null,
       };
 
       if (plan.needsTactics) {
@@ -263,8 +272,13 @@ export async function submitRollAction(input: {
         return info;
       }
 
-      await moveAndResolve(tx, ctx, plan.state, plan.value, roll.id);
-      return info;
+      const moveResult = await moveAndResolve(tx, ctx, plan.state, plan.value, roll.id);
+      return {
+        ...info,
+        to: moveResult.state.position,
+        awaiting: moveResult.awaiting,
+        eventText: moveResult.log,
+      };
     });
 
     revalidateGame();

@@ -244,7 +244,7 @@ async function loadFromDatabase(viewer: SeasonViewer): Promise<SeasonSnapshot> {
   const matchday = matchdayRows[0] ?? null;
   const viewerId = viewer?.profileId ?? null;
 
-  const [matchRows, questionRows, activityRows, pendingRows] = matchday
+  const [matchRows, questionRows, activityRows] = matchday
     ? await Promise.all([
         sql<MatchRow[]>`
           select
@@ -327,19 +327,21 @@ async function loadFromDatabase(viewer: SeasonViewer): Promise<SeasonSnapshot> {
           order by created_at desc
           limit 40
         `,
-        sql<PendingRow[]>`
-          select id, event_id, kind, payload, expires_at
-          from pending_actions
-          where season_id = ${season.id}
-            and profile_id = ${viewerId}::uuid
-            and resolved_at is null
-            and expires_at > now()
-            and event_id is not null
-          order by (case when payload->>'waiting' = 'true' then 1 else 0 end) asc, created_at desc
-          limit 1
-        `,
       ])
-    : [[], [], [], []];
+    : [[], [], []];
+
+  const pendingRows = viewerId
+    ? await sql<PendingRow[]>`
+        select id, event_id, kind, payload, expires_at
+        from pending_actions
+        where season_id = ${season.id}
+          and profile_id = ${viewerId}::uuid
+          and resolved_at is null
+          and expires_at > now()
+        order by (case when payload->>'waiting' = 'true' then 1 else 0 end) asc, created_at desc
+        limit 1
+      `
+    : [];
 
   const players = toPlayerViews(playerRows, effectRows, viewerId);
   const cells = maskSecretCells(toCellViews(cellRows), players);

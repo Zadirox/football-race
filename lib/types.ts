@@ -138,7 +138,7 @@ export type MeView = {
 
 export type PendingChoiceView = {
   id: string;
-  eventId: string;
+  eventId: string | null;
   kind:
     | 'var'
     | 'passage'

@@ -136,7 +136,7 @@ export type ActivityRow = {
 
 export type PendingRow = {
   id: string;
-  event_id: string;
+  event_id: string | null;
   kind: string;
   payload: unknown;
   expires_at: string | Date;
@@ -398,7 +398,7 @@ export function toPendingChoice(row: PendingRow | null): PendingChoiceView | nul
 
   return {
     id: row.id,
-    eventId: row.event_id,
+    eventId: row.event_id ?? null,
     kind: row.kind as PendingChoiceView['kind'],
     payload,
     expiresAt: toIsoOr(row.expires_at, DATE_FALLBACK),

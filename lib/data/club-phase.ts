@@ -163,9 +163,9 @@ export function matchWhitelistClub(teamName: string | null | undefined): ClubWhi
   const direct = WHITELIST_ALIAS_INDEX.get(norm);
   if (direct) return direct;
 
-  // Conservative token-overlap fallback (avoids false positives on short names).
+  // Conservative token-overlap fallback (avoids false positives on short/generic names).
   for (const [aliasNorm, club] of WHITELIST_ALIAS_INDEX.entries()) {
-    if (aliasNorm.length < 5 || norm.length < 5) continue;
+    if (aliasNorm.length < 6 || norm.length < 5) continue;
     if (norm === aliasNorm) return club;
     if (norm.includes(aliasNorm) || aliasNorm.includes(norm)) return club;
   }
@@ -268,7 +268,7 @@ export function isAllowedDomesticRosterOpponent(leagueCode: string, teamName: st
   if (set.has(norm)) return true;
   // conservative includes fallback, same spirit as whitelist matching
   for (const aliasNorm of set) {
-    if (aliasNorm.length < 5 || norm.length < 5) continue;
+    if (aliasNorm.length < 6 || norm.length < 5) continue;
     if (norm.includes(aliasNorm) || aliasNorm.includes(norm)) return true;
   }
   return false;

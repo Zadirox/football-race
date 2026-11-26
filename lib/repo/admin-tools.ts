@@ -14,6 +14,7 @@ import type { TransactionSql } from 'postgres';
 import type {
   DiceGrantInput,
   FanSectorResolveInput,
+  LineupBonusBatchSubmitInput,
   LineupBonusManualInput,
   MatchUpdateInput,
   PackGrantInput,
@@ -24,6 +25,8 @@ import { db } from '@/lib/db';
 import { hasDatabase } from '@/lib/env';
 import { AppError } from '@/lib/errors';
 import { LINEUP_POINTS, type CardRarity } from '@/lib/game/cards';
+import { computeBonusPoints, normalizeBatchDecision, shouldCreateCorrectionEntry } from '@/lib/game/card-bonus-batch';
+import type { AdminCardBonusBatchResultView, CardBonusReportItemView } from '@/lib/types';
 import { DICE_SIDES } from '@/lib/game/dice';
 import { makePlayer, moveBy } from '@/lib/game/engine';
 import { expiryDecision, isExpirableKind } from '@/lib/game/pending-expiry';
@@ -531,8 +534,246 @@ export async function reviewManualLineupBonus(
   });
 }
 
-export async function listManualLineupBonusSlots(): Promise<AdminManualLineupSlotView[]> {
+export async function submitManualLineupBonusBatch(
+  actorId: string,
+  input: LineupBonusBatchSubmitInput,
+): Promise<AdminCardBonusBatchResultView> {
+  const sql = db();
+  const visibleSlotIds = Array.from(new Set(input.visibleSlotIds));
+  const selectedSet = new Set(input.selectedAwardedSlotIds.filter((id) => visibleSlotIds.includes(id)));
+  const decision = normalizeBatchDecision({ visibleSlotIds, selectedSlotIds: Array.from(selectedSet) });
+
+  return await sql.begin(async (tx) => {
+    const rows = await tx<
+      {
+        id: string;
+        season_id: string;
+        match_id: string;
+        profile_id: string;
+        card_instance_id: string;
+        match_status: string;
+        kickoff_utc: string | Date;
+        role_group: string | null;
+        rarity: CardRarity | null;
+        rating: number | string | null;
+        card_name: string;
+        card_team_name: string | null;
+        card_photo_url: string | null;
+        home_name: string;
+        away_name: string;
+        nickname: string;
+        slot: 'GK' | 'OF1' | 'OF2';
+        prev_awarded: boolean | null;
+        prev_points: number | string | null;
+      }[]
+    >`
+      select ls.id,
+             ls.season_id,
+             ls.match_id,
+             ls.profile_id,
+             ls.card_instance_id,
+             m.status as match_status,
+             m.kickoff_utc,
+             c.role_group,
+             c.rarity,
+             c.rating,
+             c.player_name as card_name,
+             coalesce(nt.name, c.nationality) as card_team_name,
+             c.photo_url as card_photo_url,
+             m.home_name,
+             m.away_name,
+             pr.nickname,
+             ls.slot,
+             lcr.awarded as prev_awarded,
+             lcr.points as prev_points
+        from lineup_slots ls
+        join matches m on m.id = ls.match_id
+        join profiles pr on pr.id = ls.profile_id
+        join card_instances ci on ci.id = ls.card_instance_id
+        join cards c on c.id = ci.card_id
+        left join national_teams nt on nt.id = c.national_team_id
+        left join lineup_card_results lcr on lcr.lineup_slot_id = ls.id
+       where ls.id in ${tx(visibleSlotIds)}
+       for update of ls
+    `;
+
+    if (rows.length !== visibleSlotIds.length) {
+      throw new AppError('NOT_FOUND', 'Некоторые слоты состава не найдены');
+    }
+
+    const byId = new Map(rows.map((r) => [r.id, r]));
+    const reportItems: CardBonusReportItemView[] = [];
+    let awardedCount = 0;
+    let noPointsCount = 0;
+    let totalPointsAwarded = 0;
+    const affectedProfiles = new Set<string>();
+
+    for (const slotId of visibleSlotIds) {
+      const slot = byId.get(slotId);
+      if (!slot) throw new AppError('NOT_FOUND', 'Слот состава не найден');
+      const role = slot.role_group;
+      if (role !== 'GK' && role !== 'DEF' && role !== 'MID' && role !== 'FWD') {
+        throw new AppError('INVALID_INPUT', 'Ручной бонус доступен только для карточек состава (вратарь, защитник, полузащитник, нападающий)');
+      }
+      if (slot.match_status !== 'FT') {
+        throw new AppError('EVENT_NOT_CHOOSABLE', 'Бонус можно начислить только после финального свистка (FT)');
+      }
+      const kickoffMs = new Date(slot.kickoff_utc).getTime();
+      if (!Number.isFinite(kickoffMs) || kickoffMs > Date.now()) {
+        throw new AppError('EVENT_NOT_CHOOSABLE', 'Матч ещё не начался');
+      }
+      if (!slot.rarity || !(slot.rarity in LINEUP_POINTS)) {
+        throw new AppError('CONFIG_MISSING', 'Не удалось определить редкость карточки');
+      }
+
+      const rarity = slot.rarity as CardRarity;
+      const points = computeBonusPoints(rarity);
+      const shouldAward = decision[slotId] === true;
+      const refTable = 'lineup_slot';
+      const refId = slot.id;
+      const before = slot.prev_awarded == null ? null : { awarded: slot.prev_awarded === true, points: toNum(slot.prev_points) };
+      const after = { awarded: shouldAward, points: shouldAward ? points : 0 };
+
+      await tx`
+        insert into lineup_card_results (
+          lineup_slot_id, profile_id, match_id, card_instance_id,
+          rarity, points, awarded, method, awarded_at, awarded_by, reason, reviewed_at, reviewed_by
+        )
+        values (
+          ${slot.id}, ${slot.profile_id}, ${slot.match_id}, ${slot.card_instance_id},
+          ${rarity}, ${after.points}, ${shouldAward}, 'manual',
+          ${shouldAward ? tx`now()` : null}, ${shouldAward ? actorId : null},
+          ${shouldAward ? 'batch_award' : 'batch_no_points'}, now(), ${actorId}
+        )
+        on conflict (lineup_slot_id)
+        do update set
+          profile_id = excluded.profile_id,
+          match_id = excluded.match_id,
+          card_instance_id = excluded.card_instance_id,
+          rarity = excluded.rarity,
+          points = excluded.points,
+          awarded = excluded.awarded,
+          method = 'manual',
+          awarded_at = excluded.awarded_at,
+          awarded_by = excluded.awarded_by,
+          reason = excluded.reason,
+          reviewed_at = now(),
+          reviewed_by = ${actorId}
+      `;
+
+      if (shouldAward) {
+        await tx`
+          insert into score_events (season_id, profile_id, kind, points, ref_table, ref_id)
+          values (${slot.season_id}, ${slot.profile_id}, 'lineup_bonus', ${points}, ${refTable}, ${refId})
+          on conflict (season_id, profile_id, kind, ref_table, ref_id)
+          do update set points = excluded.points
+        `;
+      } else {
+        await tx`
+          delete from score_events
+           where season_id = ${slot.season_id}
+             and profile_id = ${slot.profile_id}
+             and kind = 'lineup_bonus'
+             and ref_table = ${refTable}
+             and ref_id = ${refId}
+        `;
+      }
+
+      if (shouldAward) { awardedCount += 1; totalPointsAwarded += points; }
+      else { noPointsCount += 1; }
+      affectedProfiles.add(slot.profile_id);
+
+      reportItems.push({
+        reportId: '',
+        profileId: slot.profile_id,
+        lineupSlotId: slot.id,
+        matchId: slot.match_id,
+        awarded: shouldAward,
+        points: after.points,
+        cardName: slot.card_name,
+        cardPhotoUrl: slot.card_photo_url,
+        cardTeamName: slot.card_team_name,
+        slot: slot.slot,
+        roleGroup: role as CardBonusReportItemView['roleGroup'],
+        rarity,
+        rating: toNum(slot.rating),
+        homeTeamName: slot.home_name,
+        awayTeamName: slot.away_name,
+        kickoffAt: toIsoDate(slot.kickoff_utc),
+        source: 'batch',
+        createdAt: new Date().toISOString(),
+        isNew: true,
+      });
+
+      if (shouldCreateCorrectionEntry(before, after)) {
+        // correction recorded as a report item in same batch; audit below captures details
+      }
+    }
+
+    const seasonId = rows[0]?.season_id;
+    if (!seasonId) throw new AppError('NOT_FOUND', 'Сезон не найден');
+
+    const [reportRow] = await tx<{ id: string; created_at: string | Date }[]>`
+      insert into card_bonus_reports (season_id, actor_id, source, summary)
+      values (${seasonId}, ${actorId}, 'batch', ${JSON.stringify({
+        processedCount: visibleSlotIds.length,
+        awardedCount,
+        noPointsCount,
+        totalPointsAwarded,
+        playersAffected: affectedProfiles.size,
+        filterDay: input.filterDay ?? null,
+      })}::jsonb)
+      returning id, created_at
+    `;
+    if (!reportRow) throw new AppError('CONFLICT', 'Не удалось создать отчёт начисления');
+
+    const reportCreatedAt = toIsoDate(reportRow.created_at);
+    for (const item of reportItems) {
+      item.reportId = reportRow.id;
+      item.createdAt = reportCreatedAt;
+      await tx`
+        insert into card_bonus_report_items (
+          report_id, season_id, profile_id, lineup_slot_id, match_id, card_instance_id,
+          awarded, points, slot, role_group, rarity, rating,
+          card_name, card_photo_url, card_team_name,
+          home_team_name, away_team_name, kickoff_at, created_at
+        )
+        values (
+          ${reportRow.id}, ${seasonId}, ${item.profileId}, ${item.lineupSlotId}, ${item.matchId}, ${byId.get(item.lineupSlotId)!.card_instance_id},
+          ${item.awarded}, ${item.points}, ${item.slot}, ${item.roleGroup}, ${item.rarity}, ${item.rating},
+          ${item.cardName}, ${item.cardPhotoUrl}, ${item.cardTeamName},
+          ${item.homeTeamName}, ${item.awayTeamName}, ${item.kickoffAt}, ${reportCreatedAt}::timestamptz
+        )
+      `;
+    }
+
+    await audit(tx, actorId, 'lineup_bonus.batch_submit', 'card_bonus_report', reportRow.id, null, {
+      visibleSlotIds,
+      selectedAwardedSlotIds: Array.from(selectedSet),
+      processedCount: visibleSlotIds.length,
+      awardedCount,
+      noPointsCount,
+      totalPointsAwarded,
+      playersAffected: affectedProfiles.size,
+      filterDay: input.filterDay ?? null,
+    });
+
+    return {
+      reportId: reportRow.id,
+      processedCount: visibleSlotIds.length,
+      awardedCount,
+      noPointsCount,
+      totalPointsAwarded,
+      playersAffected: affectedProfiles.size,
+      items: reportItems,
+    } satisfies AdminCardBonusBatchResultView;
+  });
+}
+
+export async function listManualLineupBonusSlots(opts?: { day?: string; includeProcessed?: boolean }): Promise<AdminManualLineupSlotView[]> {
   if (!hasDatabase()) return [];
+  const includeProcessed = opts?.includeProcessed ?? true;
+  const day = opts?.day ?? null;
 
   const sql = db();
   const rows = await sql<
@@ -584,6 +825,8 @@ export async function listManualLineupBonusSlots(): Promise<AdminManualLineupSlo
       left join lineup_card_results lcr on lcr.lineup_slot_id = ls.id
      where m.status = 'FT'
        and c.role_group in ('GK', 'DEF', 'MID', 'FWD')
+       ${day ? sql`and (m.kickoff_utc at time zone 'Europe/Moscow')::date = ${day}::date` : sql``}
+       ${includeProcessed ? sql`` : sql`and lcr.reviewed_at is null`}
      order by coalesce((lcr.reviewed_at is not null), false) asc, m.kickoff_utc desc, pr.nickname asc, ls.slot asc
      limit 300
   `;

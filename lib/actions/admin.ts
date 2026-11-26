@@ -11,6 +11,7 @@
 import { revalidatePath } from 'next/cache';
 import {
   diceGrantSchema,
+  lineupBonusBatchSubmitSchema,
   lineupBonusManualSchema,
   lineupBonusReviewSchema,
   matchUpdateSchema,
@@ -32,6 +33,7 @@ import {
   grantPackToProfile,
   reviewManualLineupBonus,
   setRole,
+  submitManualLineupBonusBatch,
   updateMatch,
 } from '@/lib/repo/admin-tools';
 import { resolveSyncMatchReview } from '@/lib/repo/sync-reviews';
@@ -271,6 +273,27 @@ export async function awardLineupBonusAction(input: unknown): Promise<AdminRunRe
     return {
       ok: true,
       message: parsed.data.triggered ? 'Бонус состава засчитан' : 'Бонус состава снят',
+    };
+  } catch (error) {
+    return toResult(error);
+  }
+}
+
+export async function submitLineupBonusBatchAction(input: unknown): Promise<AdminRunResult & { report?: import('@/lib/types').AdminCardBonusBatchResultView }> {
+  if (!hasDatabase()) return demoOnly();
+  if (!serverEnv().cardsEnabled) return { ok: false, message: 'Раздел карточек и составов временно недоступен' };
+  try {
+    const viewer = await requireAdmin();
+    const parsed = lineupBonusBatchSubmitSchema.safeParse(input);
+    if (!parsed.success) return invalidInput(parsed.error) ?? { ok: false, message: 'Проверь поля' };
+    const report = await submitManualLineupBonusBatch(viewer.profileId, parsed.data);
+    revalidateAdmin();
+    revalidatePath('/lineups');
+    revalidatePath('/ratings');
+    return {
+      ok: true,
+      message: `Обработано: ${report.processedCount}, начислено: ${report.awardedCount}, без очков: ${report.noPointsCount}`,
+      report,
     };
   } catch (error) {
     return toResult(error);

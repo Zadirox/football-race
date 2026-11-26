@@ -273,3 +273,52 @@ export type MatchLineupView = {
   locked: boolean;
   slots: LineupSlotView[];
 };
+
+export type CardBonusReportSource = 'batch' | 'historical';
+
+export type CardBonusReportItemView = {
+  reportId: string;
+  profileId: string;
+  lineupSlotId: string;
+  matchId: string;
+  awarded: boolean;
+  points: number;
+  cardName: string;
+  cardPhotoUrl: string | null;
+  cardTeamName: string | null;
+  slot: LineupSlotKind;
+  roleGroup: CardRoleGroup;
+  rarity: CardRarity;
+  rating: number;
+  homeTeamName: string;
+  awayTeamName: string;
+  kickoffAt: string;
+  source: CardBonusReportSource;
+  createdAt: string;
+  seenAt?: string | null;
+  isNew?: boolean;
+};
+
+export type CardBonusReportView = {
+  reportId: string;
+  createdAt: string;
+  source: CardBonusReportSource;
+  totalPoints: number;
+  awardedCount: number;
+  items: CardBonusReportItemView[];
+};
+
+export type CardBonusReportsStateView = {
+  unseenCount: number;
+  reports: CardBonusReportView[];
+};
+
+export type AdminCardBonusBatchResultView = {
+  reportId: string;
+  processedCount: number;
+  awardedCount: number;
+  noPointsCount: number;
+  totalPointsAwarded: number;
+  playersAffected: number;
+  items: CardBonusReportItemView[];
+};

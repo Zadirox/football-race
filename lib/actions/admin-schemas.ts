@@ -82,6 +82,14 @@ export const lineupBonusReviewSchema = z.object({
 
 export type LineupBonusReviewInput = z.infer<typeof lineupBonusReviewSchema>;
 
+export const lineupBonusBatchSubmitSchema = z.object({
+  visibleSlotIds: z.array(z.uuid()).min(1).max(200),
+  selectedAwardedSlotIds: z.array(z.uuid()).max(200),
+  filterDay: z.string().regex(/^\d{4}-\d{2}-\d{2}$/).optional(),
+});
+
+export type LineupBonusBatchSubmitInput = z.infer<typeof lineupBonusBatchSubmitSchema>;
+
 export const syncMatchReviewResolveSchema = z.object({
   reviewId: z.uuid(),
   status: z.enum(['resolved', 'ignored']),

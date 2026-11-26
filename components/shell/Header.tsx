@@ -6,6 +6,7 @@ import { useEffect, useMemo, useState } from 'react';
 import { play } from '@/lib/audio';
 import { signOutAction } from '@/lib/auth/actions';
 import { getUnopenedPacksCountAction } from '@/lib/actions/cards';
+import { CardBonusReportsBadge } from '@/components/cards/CardBonusReportsBadge';
 import type { MeView } from '@/lib/types';
 
 type HeaderProps = {
@@ -219,6 +220,7 @@ export function Header({ me, meAvatarUrl, closesAt, demo, cardsEnabled }: Header
       </nav>
 
       <div className="topbar__actions">
+        <CardBonusReportsBadge enabled={!!cardsEnabled} isLoggedIn={!!me} />
         {me ? (
           <Link href="/profile/me" className="icon-btn icon-btn--profile" title={`${me.nickname} · ${me.role}`} aria-label={`Мой профиль: ${me.nickname}`}>
             {meAvatarUrl ? (

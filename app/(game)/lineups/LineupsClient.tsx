@@ -1,7 +1,6 @@
 'use client';
 
-import { useEffect, useMemo, useState, useTransition } from 'react';
-import { useRouter } from 'next/navigation';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { removeLineupSlotAction, saveLineupSlotAction } from '@/lib/actions/lineups';
 import { CardTile } from '@/components/cards/CardTile';
 import { Notice } from '@/components/ui/Panel';
@@ -9,6 +8,7 @@ import { teamDisplay } from '@/lib/data/team-names';
 import { LINEUP_POINTS } from '@/lib/game/cards';
 import { canLineupCardPlayMatch, isClubContestMatch, lineupCardTeamLabel } from '@/lib/game/lineup-eligibility';
 import { RARITY_LABEL_RU, ROLE_LABEL_RU, teamFlag } from '@/lib/game/cards-ui';
+import { makeLineupSlotKey, shouldApplySaveResult, type LineupAutosaveState } from '@/lib/game/lineup-autosave';
 import type { LineupSlotKind, MatchLineupView, OwnedCardView } from '@/lib/types';
 
 type Props = {
@@ -19,9 +19,9 @@ type Props = {
 const SLOTS: LineupSlotKind[] = ['OF1', 'OF2', 'GK'];
 
 const SLOT_META: Record<LineupSlotKind, { title: string; short: string; hint: string }> = {
-  GK: { title: 'Вратарь', short: 'GK', hint: 'Только GK своей команды' },
-  OF1: { title: 'Полевой 1', short: 'OF', hint: 'DEF / MID / FWD своей команды' },
-  OF2: { title: 'Полевой 2', short: 'OF', hint: 'DEF / MID / FWD своей команды' },
+  GK: { title: 'Вратарь', short: 'GK', hint: 'Только GK карты этой команды' },
+  OF1: { title: 'Полевой 1', short: 'OF', hint: 'DEF / MID / FWD этой команды' },
+  OF2: { title: 'Полевой 2', short: 'OF', hint: 'DEF / MID / FWD этой команды' },
 };
 
 const PITCH_SLOT_CLASS: Record<LineupSlotKind, string> = {
@@ -45,7 +45,6 @@ function cardShort(card: OwnedCardView): string {
   return `${card.playerName} · ${ROLE_LABEL_RU[card.roleGroup]} · ${card.rating}${team ? ` · ${team}` : ''}`;
 }
 
-
 function teamInitials(name: string): string {
   const parts = name.trim().split(/\s+/).filter(Boolean);
   const letters = parts.slice(0, 2).map((p) => p[0]?.toUpperCase() ?? '').join('');
@@ -58,11 +57,16 @@ function TeamBadge({ name, logo }: { name: string; logo: string | null }) {
   }
   return <span className="team-badge team-badge--fallback" aria-hidden="true">{teamInitials(name)}</span>;
 }
+
+type SlotRuntime = {
+  confirmedCardId: string;
+  desiredCardId: string;
+  state: LineupAutosaveState;
+  error: string | null;
+};
+
 export function LineupsClient({ matches, ownedCards }: Props) {
-  const router = useRouter();
-  const [pending, startTransition] = useTransition();
   const [feedback, setFeedback] = useState<{ ok: boolean; message: string } | null>(null);
-  const [busyKey, setBusyKey] = useState<string | null>(null);
 
   const byMatchSelection = useMemo(() => {
     const map = new Map<string, Map<LineupSlotKind, string>>();
@@ -74,53 +78,130 @@ export function LineupsClient({ matches, ownedCards }: Props) {
     return map;
   }, [matches]);
 
-  const [selections, setSelections] = useState(byMatchSelection);
+  const buildRuntime = useCallback((source: Map<string, Map<LineupSlotKind, string>>) => {
+    const next: Record<string, SlotRuntime> = {};
+    for (const m of matches) {
+      for (const slot of SLOTS) {
+        const key = makeLineupSlotKey(m.matchId, slot);
+        const cardId = source.get(m.matchId)?.get(slot) ?? '';
+        next[key] = { confirmedCardId: cardId, desiredCardId: cardId, state: 'idle', error: null };
+      }
+    }
+    return next;
+  }, [matches]);
+
+  const [runtime, setRuntime] = useState<Record<string, SlotRuntime>>(() => buildRuntime(byMatchSelection));
+  const runtimeRef = useRef(runtime);
+  runtimeRef.current = runtime;
+
+  const requestIdsRef = useRef<Record<string, number>>({});
+  const queuesRef = useRef<Record<string, Promise<void>>>({});
 
   useEffect(() => {
-    setSelections(byMatchSelection);
-  }, [byMatchSelection]);
-
-  const setSlot = (matchId: string, slot: LineupSlotKind, cardInstanceId: string) => {
-    setSelections((prev) => {
-      const next = new Map(prev);
-      const m = new Map(next.get(matchId) ?? []);
-      if (cardInstanceId) m.set(slot, cardInstanceId);
-      else m.delete(slot);
-      next.set(matchId, m);
+    // Sync confirmed state from server refresh/initial load; keep in-flight slots intact.
+    setRuntime((prev) => {
+      const next = { ...prev };
+      for (const m of matches) {
+        for (const slot of SLOTS) {
+          const key = makeLineupSlotKey(m.matchId, slot);
+          const serverCardId = byMatchSelection.get(m.matchId)?.get(slot) ?? '';
+          const cur = next[key];
+          if (!cur) {
+            next[key] = { confirmedCardId: serverCardId, desiredCardId: serverCardId, state: 'idle', error: null };
+            continue;
+          }
+          if (cur.state === 'saving') continue;
+          const desiredChangedLocally = cur.desiredCardId !== cur.confirmedCardId;
+          if (desiredChangedLocally) continue;
+          next[key] = { ...cur, confirmedCardId: serverCardId, desiredCardId: serverCardId, state: cur.state === 'error' ? 'error' : 'idle', error: cur.state === 'error' ? cur.error : null };
+        }
+      }
       return next;
     });
-  };
+  }, [matches, byMatchSelection]);
 
-  const save = (matchId: string, slot: LineupSlotKind) => {
-    const cardInstanceId = selections.get(matchId)?.get(slot);
+  const selections = useMemo(() => {
+    const map = new Map<string, Map<LineupSlotKind, string>>();
+    for (const m of matches) {
+      const slots = new Map<LineupSlotKind, string>();
+      for (const slot of SLOTS) {
+        const key = makeLineupSlotKey(m.matchId, slot);
+        const cardId = runtime[key]?.desiredCardId ?? byMatchSelection.get(m.matchId)?.get(slot) ?? '';
+        if (cardId) slots.set(slot, cardId);
+      }
+      map.set(m.matchId, slots);
+    }
+    return map;
+  }, [matches, runtime, byMatchSelection]);
+
+  const enqueueSave = useCallback((matchId: string, slot: LineupSlotKind, desiredCardId: string | null) => {
+    const key = makeLineupSlotKey(matchId, slot);
+    const requestId = (requestIdsRef.current[key] ?? 0) + 1;
+    requestIdsRef.current[key] = requestId;
+    setRuntime((prev) => {
+      const cur = prev[key] ?? { confirmedCardId: '', desiredCardId: '', state: 'idle' as const, error: null };
+      return { ...prev, [key]: { ...cur, desiredCardId: desiredCardId ?? '', state: 'saving', error: null } };
+    });
+
+    const prevPromise = queuesRef.current[key] ?? Promise.resolve();
+    const run = prevPromise.catch(() => undefined).then(async () => {
+      const latest = requestIdsRef.current[key] ?? 0;
+      if (!shouldApplySaveResult({ requestId, latestRequestId: latest })) return;
+      const res = desiredCardId
+        ? await saveLineupSlotAction({ matchId, slot, cardInstanceId: desiredCardId })
+        : await removeLineupSlotAction({ matchId, slot });
+
+      const stillLatest = requestIdsRef.current[key] ?? 0;
+      if (!shouldApplySaveResult({ requestId, latestRequestId: stillLatest })) return;
+
+      setRuntime((prev) => {
+        const cur = prev[key];
+        if (!cur) return prev;
+        if (res.ok) {
+          return { ...prev, [key]: { ...cur, confirmedCardId: desiredCardId ?? '', desiredCardId: desiredCardId ?? '', state: 'saved', error: null } };
+        }
+        return {
+          ...prev,
+          [key]: {
+            ...cur,
+            desiredCardId: cur.confirmedCardId,
+            state: 'error',
+            error: res.message,
+          },
+        };
+      });
+      setFeedback(res.ok ? { ok: true, message: res.message } : { ok: false, message: res.message });
+      if (res.ok) {
+        setTimeout(() => {
+          setRuntime((prev) => {
+            const cur = prev[key];
+            if (!cur || cur.state !== 'saved') return prev;
+            if ((requestIdsRef.current[key] ?? 0) !== requestId) return prev;
+            return { ...prev, [key]: { ...cur, state: 'idle' } };
+          });
+        }, 1500);
+      }
+    });
+    queuesRef.current[key] = run;
+  }, []);
+
+  const setSlot = useCallback((matchId: string, slot: LineupSlotKind, cardInstanceId: string) => {
+    const key = makeLineupSlotKey(matchId, slot);
+    const cur = runtimeRef.current[key];
+    const prev = cur?.desiredCardId ?? '';
+    if (prev === cardInstanceId) return;
     if (!cardInstanceId) {
-      setFeedback({ ok: false, message: 'Выберите карточку для слота' });
+      enqueueSave(matchId, slot, null);
       return;
     }
-    const key = `${matchId}:${slot}`;
-    setBusyKey(key);
-    setFeedback(null);
-    startTransition(async () => {
-      const res = await saveLineupSlotAction({ matchId, slot, cardInstanceId });
-      setFeedback(res);
-      setBusyKey(null);
-      if (res.ok) router.refresh();
-    });
-  };
+    enqueueSave(matchId, slot, cardInstanceId);
+  }, [enqueueSave]);
 
-  const clear = (matchId: string, slot: LineupSlotKind) => {
-    const key = `${matchId}:${slot}:clear`;
-    setBusyKey(key);
-    setFeedback(null);
-    startTransition(async () => {
-      const res = await removeLineupSlotAction({ matchId, slot });
-      setFeedback(res);
-      setBusyKey(null);
-      if (res.ok) router.refresh();
-    });
-  };
+  const clear = useCallback((matchId: string, slot: LineupSlotKind) => {
+    enqueueSave(matchId, slot, null);
+  }, [enqueueSave]);
 
-  const eligibleCards = (match: MatchLineupView, slot: LineupSlotKind) => {
+  const eligibleCards = useCallback((match: MatchLineupView, slot: LineupSlotKind) => {
     const selectedInMatch = new Set(
       (['GK', 'OF1', 'OF2'] as LineupSlotKind[])
         .filter((s) => s !== slot)
@@ -137,12 +218,12 @@ export function LineupsClient({ matches, ownedCards }: Props) {
         leagueCode: match.leagueCode ?? null,
       });
     });
-  };
+  }, [ownedCards, selections]);
 
   if (matches.length === 0) {
     return (
       <Notice tone="info">
-        Нет матчей, где у вас есть хотя бы одна подходящая карточка команды-участницы.
+        Нет матчей, по которым можно поставить карточки игроков.
       </Notice>
     );
   }
@@ -157,8 +238,9 @@ export function LineupsClient({ matches, ownedCards }: Props) {
 
       <div className="card" style={{ marginBottom: 16, padding: 12 }}>
         <p className="card__text" style={{ margin: 0 }}>
-          Состав на матч: <strong>1 вратарь + 2 полевых</strong> своей команды. Можно менять до начала матча.
-          Потенциальный бонус: <strong>10/20/30/40</strong> за Common/Rare/Epic/Legend (если условие бонуса выполнится).
+          Состав на матч: <strong>1 вратарь + 2 полевых</strong> этой команды. Можно менять до дедлайна матча.
+          Потенциал бонуса: <strong>10/20/30/40</strong> за Common/Rare/Epic/Legend (если условие бонуса выполнено).
+          Изменения сохраняются автоматически.
         </p>
       </div>
 
@@ -200,17 +282,18 @@ export function LineupsClient({ matches, ownedCards }: Props) {
                 {SLOTS.map((slot) => {
                   const slotState = match.slots.find((s) => s.slot === slot) ?? { matchId: match.matchId, slot, card: null };
                   const currentCard = slotState.card ?? null;
-                  const chosen = selections.get(match.matchId)?.get(slot) ?? '';
+                  const key = makeLineupSlotKey(match.matchId, slot);
+                  const rt = runtime[key];
+                  const chosen = rt?.desiredCardId ?? (currentCard?.instanceId ?? '');
                   const options = eligibleCards(match, slot);
-                  const key = `${match.matchId}:${slot}`;
                   const meta = SLOT_META[slot];
                   const selectedCard = chosen ? (ownedCards.find((c) => c.instanceId === chosen) ?? currentCard) : currentCard;
                   const potential = selectedCard ? LINEUP_POINTS[selectedCard.rarity] : null;
 
-                  let bonusLine = 'Бонус ещё не рассчитан';
+                  let bonusLine = 'Бонус ещё не проверен';
                   let bonusTone: 'muted' | 'good' | 'bad' = 'muted';
                   if (slotState.bonusAwarded) {
-                    bonusLine = `Бонус начислен: +${slotState.bonusPoints ?? 0} (${slotState.bonusMethod === 'auto' ? 'авто' : 'ручной'})`;
+                    bonusLine = `Бонус начислен: +${slotState.bonusPoints ?? 0} (${slotState.bonusMethod === 'auto' ? 'авто' : 'вручную'})`;
                     bonusTone = 'good';
                   } else if (slotState.bonusMethod) {
                     bonusLine = 'Бонус не начислен';
@@ -220,12 +303,18 @@ export function LineupsClient({ matches, ownedCards }: Props) {
                   }
 
                   const teamLabel = selectedCard ? lineupCardTeamLabel(selectedCard) : '';
+                  const saveState = rt?.state ?? 'idle';
+                  const saveError = rt?.error ?? null;
+                  const isSaving = saveState === 'saving';
 
                   return (
                     <div key={slot} className={PITCH_SLOT_CLASS[slot]}>
                       <div className="slot__head">
                         <span className="slot__badge">{meta.short}</span>
                         <span className="slot__title">{meta.title}</span>
+                        <span className="slot__autosave" data-state={saveState} aria-live="polite">
+                          {saveState === 'saving' ? 'Сохраняем…' : saveState === 'saved' ? 'Сохранено' : saveState === 'error' ? 'Ошибка' : ''}
+                        </span>
                       </div>
 
                       <div className="slot__body">
@@ -233,9 +322,6 @@ export function LineupsClient({ matches, ownedCards }: Props) {
                           <div className="slot__card">
                             <CardTile card={selectedCard} size="sm" interactive={false} />
                             {teamLabel && <div className="slot__preview-note">{teamLabel}</div>}
-                            {chosen && chosen !== (currentCard?.instanceId ?? '') && (
-                              <div className="slot__preview-note">Черновик (не сохранён)</div>
-                            )}
                           </div>
                         ) : (
                           <div className="slot__empty">
@@ -253,7 +339,7 @@ export function LineupsClient({ matches, ownedCards }: Props) {
                             <select
                               className="select"
                               value={chosen}
-                              disabled={locked || pending}
+                              disabled={locked || isSaving}
                               onChange={(e) => setSlot(match.matchId, slot, e.target.value)}
                               aria-label={`${meta.title}: выбрать карточку`}
                             >
@@ -263,7 +349,7 @@ export function LineupsClient({ matches, ownedCards }: Props) {
                                   {cardShort(c)} · {RARITY_LABEL_RU[c.rarity]} (+{LINEUP_POINTS[c.rarity]})
                                 </option>
                               ))}
-                              {currentCard && !options.some((o) => o.instanceId === currentCard.instanceId) && (
+                              {currentCard && !options.some((o) => o.instanceId === currentCard.instanceId) && chosen === currentCard.instanceId && (
                                 <option value={currentCard.instanceId}>
                                   {cardShort(currentCard)} · {RARITY_LABEL_RU[currentCard.rarity]} (+{LINEUP_POINTS[currentCard.rarity]})
                                 </option>
@@ -274,29 +360,21 @@ export function LineupsClient({ matches, ownedCards }: Props) {
                           <div className="slot__actions">
                             <button
                               type="button"
-                              className="btn btn--sm btn--primary"
-                              disabled={locked || pending || !chosen}
-                              onClick={() => save(match.matchId, slot)}
-                            >
-                              {busyKey === key ? 'Сохранение…' : 'Сохранить'}
-                            </button>
-                            <button
-                              type="button"
                               className="btn btn--sm"
-                              disabled={locked || pending || (!currentCard && !chosen)}
+                              disabled={locked || isSaving || !chosen}
                               onClick={() => clear(match.matchId, slot)}
                             >
-                              {busyKey === `${key}:clear` ? '…' : 'Убрать'}
+                              Убрать
                             </button>
                           </div>
 
                           <div className="slot__hint">
-                            {locked ? (
-                              <span>Изменения недоступны: матч начался.</span>
+                            {saveError ? <span style={{ color: '#ff9c88' }}>{saveError}</span> : locked ? (
+                              <span>Изменение недоступно: матч начался.</span>
                             ) : options.length > 0 ? (
-                              <span>Доступно подходящих: {options.length}. {meta.hint}.</span>
+                              <span>Доступно карточек: {options.length}. {meta.hint}.</span>
                             ) : (
-                              <span>Нет подходящих карточек. Нужна {slot === 'GK' ? 'карточка GK' : 'полевая карточка (DEF/MID/FWD)'} команды-участницы этого матча.</span>
+                              <span>Нет подходящих карточек. Нужна {slot === 'GK' ? 'карточка GK' : 'полевая карточка (DEF/MID/FWD)'} этой команды в этом матче.</span>
                             )}
                           </div>
                         </div>
@@ -457,6 +535,10 @@ export function LineupsClient({ matches, ownedCards }: Props) {
           font-size: 11px; font-weight: 800; letter-spacing: .08em;
         }
         .slot__title { font-family: var(--font-display); font-size: 14px; font-weight: 800; color: #fff; }
+        .slot__autosave { margin-left: auto; font-size: 11px; font-weight: 700; color: var(--text-faint, #cfc6b8); min-height: 16px; }
+        .slot__autosave[data-state="saving"] { color: #ffcc80; }
+        .slot__autosave[data-state="saved"] { color: var(--lime, #c8f25a); }
+        .slot__autosave[data-state="error"] { color: #ff9c88; }
 
         .slot__body {
           display: grid;

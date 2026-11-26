@@ -672,7 +672,19 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
         } else if (row.provider === 'sstats' && env.sstatsEnabled) {
           earlyBudget -= 1;
           requestsUsed += 1;
-          const detail = await fetchSstatsGameDetail({ id: row.external_id, apiKey: env.sstatsApiKey, timeoutMs: isLiveMode ? 4_000 : 8_000 });
+          let detail;
+          const sstatsTimeoutMs = isLiveMode ? 4_000 : 8_000;
+          try {
+            detail = await fetchSstatsGameDetail({ id: row.external_id, apiKey: env.sstatsApiKey, timeoutMs: sstatsTimeoutMs });
+          } catch (e) {
+            const canFallbackFd = hasFootballData && !fdQuotaExhausted && Date.now() < processingDeadlineMs - 3_000;
+            if (!canFallbackFd && Date.now() < processingDeadlineMs - 2_000) {
+              requestsUsed += 1;
+              detail = await fetchSstatsGameDetail({ id: row.external_id, apiKey: env.sstatsApiKey, timeoutMs: sstatsTimeoutMs * 2 });
+            } else {
+              throw e;
+            }
+          }
           const core = detail.core;
           const nm: NormalizedMatch = {
             provider: 'sstats',
@@ -1060,11 +1072,27 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
         } else if (row.provider === 'sstats' && env.sstatsEnabled) {
           refreshBudget -= 1;
           requestsUsed += 1;
-          const detail = await fetchSstatsGameDetail({
-            id: row.external_id,
-            apiKey: env.sstatsApiKey,
-            timeoutMs: isLiveMode ? 5_000 : 8_000,
-          });
+          let detail;
+          const sstatsTimeoutMs = isLiveMode ? 5_000 : 8_000;
+          try {
+            detail = await fetchSstatsGameDetail({
+              id: row.external_id,
+              apiKey: env.sstatsApiKey,
+              timeoutMs: sstatsTimeoutMs,
+            });
+          } catch (e) {
+            const canFallbackFd = hasFootballData && !fdQuotaExhausted && Date.now() < processingDeadlineMs - 3_000;
+            if (!canFallbackFd && Date.now() < processingDeadlineMs - 2_000) {
+              requestsUsed += 1;
+              detail = await fetchSstatsGameDetail({
+                id: row.external_id,
+                apiKey: env.sstatsApiKey,
+                timeoutMs: sstatsTimeoutMs * 2,
+              });
+            } else {
+              throw e;
+            }
+          }
           const core = detail.core;
           const nm: NormalizedMatch = {
             provider: 'sstats',

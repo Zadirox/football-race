@@ -9,6 +9,7 @@ type MatchdayResultRow = {
   game_date: string | Date;
   profile_id: string;
   nickname: string;
+  avatar_url?: string | null;
   answered: string | number | null;
   correct: string | number | null;
   total: string | number | null;
@@ -51,6 +52,7 @@ export function mapMatchdayResultRows(rows: MatchdayResultRow[]): MatchdayResult
     gameDate: toIsoDate(row.game_date),
     profileId: String(row.profile_id),
     nickname: String(row.nickname),
+    avatarUrl: row.avatar_url ?? null,
     answered: Math.max(0, toInt(row.answered)),
     correct: Math.max(0, toInt(row.correct)),
     total: Math.max(0, toInt(row.total)),
@@ -100,6 +102,7 @@ export async function loadMatchdayResults(seasonId: string, matchdayId: string):
       md.game_date::text as game_date,
       sp.profile_id,
       p.nickname,
+      p.avatar_url,
       coalesce(ans.answered, 0)::int as answered,
       coalesce(ans.correct, 0)::int as correct,
       coalesce(md.q_total, qtot.total, 0)::int as total,

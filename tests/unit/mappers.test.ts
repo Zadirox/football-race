@@ -114,6 +114,7 @@ describe('маппинг игроков', () => {
     expect(toRatingsSeed(players)[1]!).toEqual({
       profileId: 'p-2',
       nickname: 'Аня',
+      avatarUrl: null,
       position: 80,
       finishedAt: '2026-11-12T20:00:00.000Z',
       points: 400,

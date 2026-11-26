@@ -424,6 +424,7 @@ export function toRatingsSeed(players: PlayerView[]): SeasonSnapshot['ratingsSee
   return players.map((player) => ({
     profileId: player.profileId,
     nickname: player.nickname,
+    avatarUrl: player.avatarUrl ?? null,
     position: player.position,
     finishedAt: player.finishedAt,
     points: player.points,

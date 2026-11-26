@@ -169,6 +169,7 @@ export type MatchdayResultView = {
   gameDate: string;
   profileId: string;
   nickname: string;
+  avatarUrl?: string | null;
   answered: number;
   correct: number;
   total: number;

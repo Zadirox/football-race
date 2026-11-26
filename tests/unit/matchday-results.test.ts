@@ -23,6 +23,7 @@ describe('matchday results mapping', () => {
         gameDate: '2026-11-13',
         profileId: 'p1',
         nickname: 'Аня',
+        avatarUrl: null,
         answered: 8,
         correct: 6,
         total: 10,

@@ -24,30 +24,38 @@ function formatGameDate(gameDate: string): string {
   return date.toLocaleDateString('ru-RU', { day: 'numeric', month: 'short', timeZone: 'Europe/Moscow' });
 }
 
-function Avatar({ name }: { name: string }) {
+function Avatar({ name, avatarUrl }: { name: string; avatarUrl?: string | null }) {
   return (
     <span
       className="avatar avatar--sm"
       aria-hidden="true"
-      style={{ background: `linear-gradient(150deg, ${avatarColor(name, 0)}, ${avatarColor(name, 1)})` }}
+      style={{
+        background: avatarUrl ? undefined : `linear-gradient(150deg, ${avatarColor(name, 0)}, ${avatarColor(name, 1)})`,
+        overflow: 'hidden',
+      }}
     >
-      {name.slice(0, 1).toUpperCase()}
+      {avatarUrl ? (
+        // eslint-disable-next-line @next/next/no-img-element
+        <img src={avatarUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover', display: 'block' }} />
+      ) : (
+        name.slice(0, 1).toUpperCase()
+      )}
     </span>
   );
 }
 
-function PlayerCell({ nickname, profileId, meId }: { nickname: string; profileId: string; meId: string | null }) {
+function PlayerCell({ nickname, avatarUrl, profileId, meId }: { nickname: string; avatarUrl?: string | null; profileId: string; meId: string | null }) {
   return (
     <Link href={`/profile/${profileId}`} className="player-cell" style={{ color: 'inherit', textDecoration: 'none' }}>
-      <Avatar name={nickname} />
+      <Avatar name={nickname} avatarUrl={avatarUrl} />
       <span>{nickname}</span>
-      {profileId === meId && <span className="chip chip--positive">ты</span>}
+      {profileId === meId && <span className="chip chip--positive">Вы</span>}
     </Link>
   );
 }
 
 function SeasonPlayerCell({ row, meId }: { row: RatingRow; meId: string | null }) {
-  return <PlayerCell nickname={row.nickname} profileId={row.profileId} meId={meId} />;
+  return <PlayerCell nickname={row.nickname} avatarUrl={row.avatarUrl} profileId={row.profileId} meId={meId} />;
 }
 
 export function RatingsClient({
@@ -241,7 +249,7 @@ function DayResultsView({
                   {row.rank ? `#${row.rank}` : `#${index + 1}`}
                 </td>
                 <td data-label="Участник">
-                  <PlayerCell nickname={row.nickname} profileId={row.profileId} meId={meId} />
+                  <PlayerCell nickname={row.nickname} avatarUrl={row.avatarUrl} profileId={row.profileId} meId={meId} />
                 </td>
                 <td data-label="Верно">
                   <strong>{row.correct}</strong>

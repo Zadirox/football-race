@@ -107,7 +107,37 @@ export function AdminTools({ enabled, players, matches, pending, manualBonusSlot
   const filteredSlots = useMemo(() => filterDay === 'all' ? localSlots : localSlots.filter((s) => dayMsk(s.kickoffAt) === filterDay), [localSlots, filterDay]);
   const active = useMemo(() => filteredSlots.filter((s) => !s.reviewedAt), [filteredSlots]);
   const processed = useMemo(() => filteredSlots.filter((s) => !!s.reviewedAt), [filteredSlots]);
-  const list = showProcessedBonuses ? filteredSlots : active;
+  const list = useMemo(() => {
+    const base = showProcessedBonuses ? filteredSlots : active;
+    return [...base].sort((a, b) => {
+      const ka = dayMsk(a.kickoffAt);
+      const kb = dayMsk(b.kickoffAt);
+      if (ka !== kb) return kb.localeCompare(ka);
+      const ma = `${a.homeTeamName}|${a.awayTeamName}|${a.kickoffAt}`;
+      const mb = `${b.homeTeamName}|${b.awayTeamName}|${b.kickoffAt}`;
+      if (ma !== mb) return a.kickoffAt.localeCompare(b.kickoffAt) || ma.localeCompare(mb);
+      if (a.nickname !== b.nickname) return a.nickname.localeCompare(b.nickname, 'ru');
+      return a.slot.localeCompare(b.slot);
+    });
+  }, [showProcessedBonuses, filteredSlots, active]);
+
+  const groupedList = useMemo(() => {
+    const groups: Array<{ key: string; matchLabel: string; kickoffAt: string; items: typeof list }> = [];
+    const byKey = new Map<string, (typeof groups)[number]>();
+    for (const item of list) {
+      const key = item.matchId;
+      const home = teamDisplay(item.homeTeamName);
+      const away = teamDisplay(item.awayTeamName);
+      let g = byKey.get(key);
+      if (!g) {
+        g = { key, matchLabel: `${home.name} — ${away.name}`, kickoffAt: item.kickoffAt, items: [] };
+        byKey.set(key, g);
+        groups.push(g);
+      }
+      g.items.push(item);
+    }
+    return groups;
+  }, [list]);
 
   useEffect(() => {
     setSelected((prev) => {
@@ -298,44 +328,56 @@ export function AdminTools({ enabled, players, matches, pending, manualBonusSlot
               {localSlots.length === 0 ? <p className="card__text">Нет слотов состава по завершённым матчам.</p> : list.length === 0 ? (
                 <p className="card__text">{showProcessedBonuses ? 'Нет карточек в выбранном фильтре.' : 'В выбранном фильтре нет активных карточек.'}</p>
               ) : (
-                <div className="admin-bonus-list">
-                  {list.map((item) => {
-                    const home = teamDisplay(item.homeTeamName);
-                    const away = teamDisplay(item.awayTeamName);
-                    const isBusy = busy === 'bonus' && busySlotId === item.slotId;
-                    const processedItem = !!item.reviewedAt;
-                    const checked = selected[item.slotId] === true;
-                    return (
-                      <div key={item.slotId} className={`admin-bonus-item${processedItem ? ' is-reviewed' : ''}`}>
-                        <div className="admin-bonus-item__main">
-                          <div className="admin-bonus-item__top" style={{ alignItems: 'center' }}>
-                            {!processedItem ? (
-                              <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
-                                <input type="checkbox" checked={checked} disabled={!enabled || pendingTx} onChange={(e) => setSelected((prev) => ({ ...prev, [item.slotId]: e.target.checked }))} />
-                                <span className="card__meta">Принесла очки</span>
-                              </label>
-                            ) : (
-                              <span className={item.awarded ? 'chip chip--positive' : 'chip chip--muted'}>{item.awarded ? `+${item.points} зачтено` : '0 оч.'}</span>
-                            )}
-                            <span className="chip chip--info">{item.slot} · {ROLE_LABEL[item.roleGroup]}</span>
-                            <span className="card__meta">{RARITY_LABEL[item.rarity]} · {item.rating}</span>
-                            {processedItem && <span className="chip chip--muted">обработано</span>}
-                          </div>
-                          <div className="list-row__title">{item.nickname} — {item.cardName} {item.cardTeamName ? `(${item.cardTeamName})` : ''}</div>
-                          <div className="list-row__meta">{home.name} — {away.name} · {kickoffLabel(item.kickoffAt)} МСК · {processedItem ? (item.awarded ? `статус: засчитан (${item.method ?? 'manual'})` : 'статус: без очков') : `потенциал: ${item.points} оч.`}</div>
-                        </div>
-                        <div className="admin-bonus-item__actions">
-                          {processedItem ? (
-                            <button type="button" className="btn btn--sm btn--ghost" disabled={!enabled || pendingTx} title={disabledHint} onClick={() => runReturnToQueue(item.slotId)}>
-                              {isBusy ? '…' : 'Вернуть в очередь'}
-                            </button>
-                          ) : (
-                            <span className="card__meta">Будет отправлено: {checked ? `+${item.points}` : '0'}</span>
-                          )}
-                        </div>
+                <div className="admin-bonus-list" style={{ display: 'grid', gap: 14 }}>
+                  {groupedList.map((group) => (
+                    <div key={group.key} className="admin-bonus-match-group">
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 8, padding: '6px 10px', borderRadius: 10, background: 'rgba(255,255,255,.04)', border: '1px solid rgba(255,255,255,.08)' }}>
+                        <span style={{ fontWeight: 800 }}>{group.matchLabel}</span>
+                        <span className="card__meta">{kickoffLabel(group.kickoffAt)} МСК</span>
+                        <span className="chip chip--muted" style={{ marginLeft: 'auto' }}>{group.items.length} карт.</span>
                       </div>
-                    );
-                  })}
+                      <div style={{ display: 'grid', gap: 8 }}>
+                        {group.items.map((item) => {
+                          const isBusy = busy === 'bonus' && busySlotId === item.slotId;
+                          const processedItem = !!item.reviewedAt;
+                          const checked = selected[item.slotId] === true;
+                          return (
+                            <div key={item.slotId} className={`admin-bonus-item${processedItem ? ' is-reviewed' : ''}`}>
+                              <div className="admin-bonus-item__main">
+                                <div className="admin-bonus-item__top" style={{ alignItems: 'center' }}>
+                                  {!processedItem ? (
+                                    <label style={{ display: 'inline-flex', alignItems: 'center', gap: 8 }}>
+                                      <input type="checkbox" checked={checked} disabled={!enabled || pendingTx} onChange={(e) => setSelected((prev) => ({ ...prev, [item.slotId]: e.target.checked }))} />
+                                      <span className="card__meta">Принесла очки</span>
+                                    </label>
+                                  ) : (
+                                    <span className={item.awarded ? 'chip chip--positive' : 'chip chip--muted'}>{item.awarded ? `+${item.points} зачтено` : '0 оч.'}</span>
+                                  )}
+                                  <span className="chip chip--info">{item.slot} · {ROLE_LABEL[item.roleGroup]}</span>
+                                  <span className="card__meta">{RARITY_LABEL[item.rarity]} · {item.rating}</span>
+                                  {processedItem && <span className="chip chip--muted">обработано</span>}
+                                </div>
+                                <div className="list-row__title" style={{ display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap' }}>
+                                  <span>{item.nickname} — {item.cardName}</span>
+                                  {item.cardTeamName ? <span className="chip chip--muted" title={`Клуб/команда: ${item.cardTeamName}`} style={{ fontSize: 11 }}>{item.cardTeamName}</span> : null}
+                                </div>
+                                <div className="list-row__meta">{processedItem ? (item.awarded ? `статус: засчитан (${item.method ?? 'manual'})` : 'статус: без очков') : `потенциал: ${item.points} оч.`}</div>
+                              </div>
+                              <div className="admin-bonus-item__actions">
+                                {processedItem ? (
+                                  <button type="button" className="btn btn--sm btn--ghost" disabled={!enabled || pendingTx} title={disabledHint} onClick={() => runReturnToQueue(item.slotId)}>
+                                    {isBusy ? '…' : 'Вернуть в очередь'}
+                                  </button>
+                                ) : (
+                                  <span className="card__meta">Будет отправлено: {checked ? `+${item.points}` : '0'}</span>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  ))}
                 </div>
               )}
             </section>

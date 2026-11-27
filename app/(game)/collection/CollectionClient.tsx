@@ -93,6 +93,7 @@ export function CollectionClient({ packs, cards, progresses }: Props) {
   const [packList, setPackList] = useState(packs);
   const [openingId, setOpeningId] = useState<string | null>(null);
   const [preopen, setPreopen] = useState<SetTab | null>(null);
+  const [preopenImgError, setPreopenImgError] = useState(false);
   const [revealQueue, setRevealQueue] = useState<OwnedCardView[]>([]);
   const [revealIndex, setRevealIndex] = useState(0);
   const [revealComplete, setRevealComplete] = useState(false);
@@ -210,6 +211,7 @@ export function CollectionClient({ packs, cards, progresses }: Props) {
     const tab = SET_TABS.find((t) => t.id === grant.setId) ?? activeTab;
     setError(null);
     setOpeningId(grant.id);
+    setPreopenImgError(false);
     setPreopen(tab);
     preloadRevealSfx();
     playRevealStart();
@@ -275,14 +277,27 @@ export function CollectionClient({ packs, cards, progresses }: Props) {
             <div className="pack-preopen__halo" />
             <div className="pack-preopen__ring pack-preopen__ring--a" />
             <div className="pack-preopen__ring pack-preopen__ring--b" />
-            <div className="pack-preopen__pack">
-              <div className="pack-preopen__pack-face">
-                <span className="pack-preopen__kicker">{preopen.preopenKicker}</span>
-                <span className="pack-preopen__title">{preopen.preopenTitle}</span>
-                <span className="pack-preopen__sub">{preopen.kind === 'club' ? '1–2 карточки' : '1 карточка'}</span>
+            {!preopenImgError ? (
+              <div className="pack-preopen__art">
+                {/* eslint-disable-next-line @next/next/no-img-element */}
+                <img
+                  src={`/packs/${preopen.kind}-pack.png`}
+                  alt=""
+                  className="pack-preopen__art-img"
+                  onError={() => setPreopenImgError(true)}
+                />
+                <div className="pack-preopen__sheen" />
               </div>
-              <div className="pack-preopen__sheen" />
-            </div>
+            ) : (
+              <div className="pack-preopen__pack">
+                <div className="pack-preopen__pack-face">
+                  <span className="pack-preopen__kicker">{preopen.preopenKicker}</span>
+                  <span className="pack-preopen__title">{preopen.preopenTitle}</span>
+                  <span className="pack-preopen__sub">{preopen.kind === 'club' ? '1–2 карточки' : '1 карточка'}</span>
+                </div>
+                <div className="pack-preopen__sheen" />
+              </div>
+            )}
             <div className="pack-preopen__sparks" aria-hidden="true">
               <span /><span /><span /><span /><span /><span /><span /><span />
             </div>

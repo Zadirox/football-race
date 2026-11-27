@@ -3533,6 +3533,27 @@ html:not([data-pack-opening='true']) .game-hud {
   animation: preopen-sheen 1.8s ease-in-out infinite;
   mix-blend-mode: screen;
 }
+.pack-preopen__art {
+  position: relative;
+  width: min(72%, 320px);
+  aspect-ratio: 0.72;
+  display: grid;
+  place-items: center;
+  animation: preopen-pack 1.8s cubic-bezier(0.2, 0.9, 0.2, 1) both;
+  filter: drop-shadow(0 30px 60px rgba(0,0,0,0.55)) drop-shadow(0 0 40px rgba(120,210,255,0.18));
+}
+.pack-preopen__art-img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  display: block;
+  user-select: none;
+  -webkit-user-drag: none;
+}
+.pack-preopen__art .pack-preopen__sheen {
+  border-radius: 18px;
+  opacity: 0.55;
+}
 .pack-preopen__sparks { position: absolute; inset: 0; }
 .pack-preopen__sparks span {
   position: absolute; width: 6px; height: 6px; border-radius: 50%;
@@ -3574,7 +3595,7 @@ html:not([data-pack-opening='true']) .game-hud {
 }
 @keyframes preopen-caption { from { opacity: 0.6; } to { opacity: 1; } }
 @media (prefers-reduced-motion: reduce) {
-  .pack-preopen__bg, .pack-preopen__halo, .pack-preopen__ring, .pack-preopen__pack,
+  .pack-preopen__bg, .pack-preopen__halo, .pack-preopen__ring, .pack-preopen__pack, .pack-preopen__art,
   .pack-preopen__sheen, .pack-preopen__sparks span, .pack-preopen__caption { animation: none !important; }
 }
 

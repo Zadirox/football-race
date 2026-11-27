@@ -123,6 +123,13 @@ function rarityPillLabel(r: CardRarity) {
   return 'Обычная';
 }
 
+function legendRevealVideoUrl(card: OwnedCardView): string | null {
+  if (card.rarity !== 'legend' || card.setKind !== 'club') return null;
+  const base = card.photoUrl?.split('/').pop()?.replace(/\.[^.]+$/, '')?.trim();
+  if (!base) return null;
+  return `/videos/legendary-reveals/${encodeURIComponent(base)}.mp4`;
+}
+
 export function PackOpenReveal({ card, collectionComplete, variant = 'fut', palette = 'fut', onClose, poolCards = [] }: Props) {
   const [phase, setPhase] = useState<Phase>('intro');
   const [revealed, setRevealed] = useState(false);
@@ -140,10 +147,14 @@ export function PackOpenReveal({ card, collectionComplete, variant = 'fut', pale
   const [introDissolve, setIntroDissolve] = useState(false);
   const [continueReady, setContinueReady] = useState(false);
   const [continueVisible, setContinueVisible] = useState(false);
+  const [legendVideoUrl, setLegendVideoUrl] = useState<string | null>(null);
+  const [legendVideoVisible, setLegendVideoVisible] = useState(false);
+  const [legendVideoBlocked, setLegendVideoBlocked] = useState(false);
   const [fxVol, setFxVol] = useState(0.8);
   const [bgVol, setBgVol] = useState(0.65);
 
   const cancelledRef = useRef(false);
+  const mountedRef = useRef(true);
   const timersRef = useRef<number[]>([]);
   const audioCtxRef = useRef<AudioContext | null>(null);
   const bgSourceRef = useRef<AudioBufferSourceNode | HTMLAudioElement | null>(null);
@@ -151,7 +162,10 @@ export function PackOpenReveal({ card, collectionComplete, variant = 'fut', pale
   const bgStopTimerRef = useRef<number | null>(null);
   const bgTokenRef = useRef(0);
   const lastBgRef = useRef(-1);
-  const revealAudioRef = useRef<HTMLAudioElement | null>(null);
+  const revealAudioRef = useRef<HTMLVideoElement | HTMLAudioElement | null>(null);
+  const legendVideoRef = useRef<HTMLVideoElement | null>(null);
+  const legendVideoAvailableRef = useRef<string | null>(null);
+  const legendVideoTriggeredRef = useRef(false);
   const fxVolRef = useRef(0.8);
   const bgVolRef = useRef(0.65);
 
@@ -258,7 +272,13 @@ export function PackOpenReveal({ card, collectionComplete, variant = 'fut', pale
     void a.play().catch(() => {});
   };
 
-  useEffect(() => () => { cancelledRef.current = true; clearTimers(); stopBg(); stopReveal(); }, []);
+  useEffect(() => () => {
+    mountedRef.current = false;
+    cancelledRef.current = true;
+    clearTimers();
+    stopBg(); stopReveal();
+    if (legendVideoRef.current) { try { legendVideoRef.current.pause(); } catch {} legendVideoRef.current = null; }
+  }, []);
 
   useEffect(() => {
     if (bgGainRef.current) bgGainRef.current.gain.value = bgVol;
@@ -271,9 +291,38 @@ export function PackOpenReveal({ card, collectionComplete, variant = 'fut', pale
   }, [fxVol]);
 
   useEffect(() => {
+    if (legendVideoRef.current) legendVideoRef.current.volume = fxVol;
+  }, [fxVol, legendVideoVisible]);
+
+  useEffect(() => {
     document.documentElement.setAttribute('data-pack-opening', 'true');
     return () => { document.documentElement.removeAttribute('data-pack-opening'); };
   }, []);
+
+  useEffect(() => {
+    const candidate = card ? legendRevealVideoUrl(card) : null;
+    if (!candidate) { setLegendVideoUrl(null); legendVideoAvailableRef.current = null; return; }
+    let cancelled = false;
+    const probe = document.createElement('video');
+    probe.preload = 'metadata';
+    probe.muted = true;
+    probe.playsInline = true;
+    const cleanup = () => {
+      probe.removeEventListener('loadedmetadata', onReady);
+      probe.removeEventListener('canplay', onReady);
+      probe.removeEventListener('error', onErr);
+      probe.src = '';
+    };
+    const onReady = () => { if (cancelled) return; legendVideoAvailableRef.current = candidate; setLegendVideoUrl(candidate); cleanup(); };
+    const onErr = () => { if (cancelled) return; legendVideoAvailableRef.current = null; setLegendVideoUrl(null); cleanup(); };
+    probe.addEventListener('loadedmetadata', onReady);
+    probe.addEventListener('canplay', onReady);
+    probe.addEventListener('error', onErr);
+    probe.src = candidate;
+    try { probe.load(); } catch { onErr(); }
+    const timeout = window.setTimeout(onErr, 5000);
+    return () => { cancelled = true; window.clearTimeout(timeout); cleanup(); };
+  }, [card?.instanceId, card?.rarity, card?.setKind, card?.photoUrl]);
 
   const data = useMemo(() => {
     if (!card) return null;
@@ -326,6 +375,10 @@ export function PackOpenReveal({ card, collectionComplete, variant = 'fut', pale
     setNationLocked(false); setPosLocked(false); setRatingLocked(false); setNameLocked(false);
     setRarityShown(false); setIntroShow(false); setIntroDissolve(false);
     setContinueReady(false); setContinueVisible(false);
+    setLegendVideoUrl(null); setLegendVideoVisible(false); setLegendVideoBlocked(false);
+    legendVideoAvailableRef.current = null;
+    legendVideoTriggeredRef.current = false;
+    if (legendVideoRef.current) { try { legendVideoRef.current.pause(); } catch {} legendVideoRef.current = null; }
 
     if (!card) { setRevealed(true); setPhase('final'); return; }
     preloadRevealSfx(card.rarity);
@@ -349,13 +402,44 @@ export function PackOpenReveal({ card, collectionComplete, variant = 'fut', pale
       tick();
     };
 
+    const startLegendVideoNow = () => {
+      if (!data || !card || legendVideoTriggeredRef.current || cancelledRef.current) return;
+      const videoUrl = legendVideoAvailableRef.current;
+      if (!videoUrl) return;
+      legendVideoTriggeredRef.current = true;
+      clearTimers();
+      stopBg();
+      setNation(data.finalNation); setPos(data.posFull); setRating(data.rating); setName(data.finalName);
+      setNationLocked(true); setPosLocked(true); setRatingLocked(true); setNameLocked(true);
+      setRarityShown(true); setStep(5); setIntroShow(false); setIntroDissolve(false);
+      setLegendVideoVisible(true);
+      setLegendVideoBlocked(false);
+      window.setTimeout(() => {
+        const el = legendVideoRef.current;
+        if (!el || cancelledRef.current) return;
+        el.volume = fxVolRef.current;
+        el.currentTime = 0;
+        const p = el.play();
+        if (p && typeof p.catch === 'function') {
+          p.catch(() => { if (!cancelledRef.current) setLegendVideoBlocked(true); });
+        }
+      }, 60);
+    };
+
     later(() => setPhase('spin'), 600);
     later(() => {
       setStep(1); setIntroShow(true);
       if (!data) return;
       runSlot({ pool: data.nationPool, target: data.finalNation, duration: 7000, onTick: (v) => setNation(v), onDone: () => { setNation(data.finalNation); setNationLocked(true); } });
       runSlot({ pool: data.posPool, target: data.posFull, duration: 12000, tickSound: false, onTick: (v) => setPos(v), onDone: () => { setPos(data.posFull); setPosLocked(true); } });
-      runSlot({ pool: data.ratingPool, target: data.rating, duration: 17500, tickSound: false, onTick: (v) => setRating(v), onDone: () => { setRating(data.rating); setRatingLocked(true); } });
+      runSlot({
+        pool: data.ratingPool, target: data.rating, duration: 17500, tickSound: false,
+        onTick: (v) => setRating(v),
+        onDone: () => {
+          setRating(data.rating); setRatingLocked(true);
+          if (legendVideoAvailableRef.current) later(startLegendVideoNow, 1500);
+        },
+      });
       runSlot({ pool: data.namePool, target: data.finalName, duration: 24000, tickSound: false, onTick: (v) => setName(v), onDone: () => { setName(data.finalName); setNameLocked(true); } });
     }, 1000);
 
@@ -366,17 +450,55 @@ export function PackOpenReveal({ card, collectionComplete, variant = 'fut', pale
     later(() => { setStep(4); setRarityShown(true); sfx.rarity(); }, 19000);
     later(() => setStep(5), 20000);
     later(() => {
-      setRevealed(true); setPhase('final'); stopBg(); playRevealSound(card.rarity);
-      setContinueVisible(true);
-      later(() => setContinueReady(true), 4000);
+      if (legendVideoTriggeredRef.current || cancelledRef.current) return;
+      stopBg();
+      const videoUrl = legendVideoAvailableRef.current;
+      if (videoUrl) {
+        startLegendVideoNow();
+      } else {
+        setRevealed(true); setPhase('final'); if (card) playRevealSound(card.rarity);
+        setContinueVisible(true);
+        later(() => setContinueReady(true), 4000);
+      }
     }, 25500);
 
-    return () => { cancelledRef.current = true; clearTimers(); stopBg(); stopReveal(); };
+    return () => {
+      cancelledRef.current = true;
+      clearTimers();
+      stopBg(); stopReveal();
+      if (legendVideoRef.current) { try { legendVideoRef.current.pause(); } catch {} }
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [card?.instanceId, collectionComplete]);
 
+  const finalizeAfterLegendVideo = () => {
+    if (!mountedRef.current) return;
+    const el = legendVideoRef.current;
+    if (el) { try { el.pause(); } catch {} }
+    setLegendVideoVisible(false);
+    setLegendVideoBlocked(false);
+    setRevealed(true);
+    setPhase('final');
+    if (card) playRevealSound(card.rarity);
+    setContinueVisible(true);
+    setContinueReady(false);
+    later(() => setContinueReady(true), 4000);
+  };
+
+  const retryLegendVideo = () => {
+    const el = legendVideoRef.current;
+    if (!el) return;
+    setLegendVideoBlocked(false);
+    el.volume = fxVolRef.current;
+    el.currentTime = 0;
+    const p = el.play();
+    if (p && typeof p.catch === 'function') {
+      p.catch(() => setLegendVideoBlocked(true));
+    }
+  };
+
   const skip = () => {
-    if (!card || revealed) return;
+    if (!card || revealed || legendVideoVisible) return;
     cancelledRef.current = true;
     clearTimers();
     stopBg(); stopReveal();
@@ -389,7 +511,7 @@ export function PackOpenReveal({ card, collectionComplete, variant = 'fut', pale
   };
 
   const onPrimary = () => { if (!revealed) { skip(); return; } onClose(); };
-  const onBackdrop = () => { if (revealed) onClose(); else skip(); };
+  const onBackdrop = () => { if (revealed) onClose(); else if (!legendVideoVisible) skip(); };
 
   const rarity = card?.rarity ?? 'common';
   const rarityLabel = rarityPillLabel(rarity);
@@ -488,6 +610,31 @@ export function PackOpenReveal({ card, collectionComplete, variant = 'fut', pale
           </div>
         </div>
 
+        {legendVideoVisible && legendVideoUrl && (
+          <div className="pr__legendVideo" aria-label="Легендарное видео">
+            <div className="pr__legendVideoGlow" aria-hidden="true" />
+            <video
+              ref={legendVideoRef}
+              className="pr__legendVideoEl"
+              src={legendVideoUrl}
+              playsInline
+              preload="auto"
+              onEnded={finalizeAfterLegendVideo}
+              onError={finalizeAfterLegendVideo}
+            />
+            <div className="pr__legendVideoTop">
+              <span className="pr__legendVideoBadge">Легендарный момент</span>
+              <span className="pr__legendVideoName">{card.playerName}</span>
+            </div>
+            {legendVideoBlocked && (
+              <button type="button" className="pr__legendVideoPlay" onClick={retryLegendVideo}>
+                <span className="pr__legendVideoPlayIcon">▶</span>
+                <span>Нажмите, чтобы включить видео</span>
+              </button>
+            )}
+          </div>
+        )}
+
         <div className="pr__hud">
           <div className="pr__steps">
             {['Клуб', 'Роль', 'Рейтинг', 'Редкость', 'Игрок'].map((l, i) => (
@@ -497,7 +644,7 @@ export function PackOpenReveal({ card, collectionComplete, variant = 'fut', pale
           <div className="pr__actions">
             <label className="pr__vol">Музыка <input type="range" min={0} max={100} value={Math.round(bgVol * 100)} onChange={(e) => setBgVol(Number(e.target.value) / 100)} /></label>
             <label className="pr__vol">Звуки <input type="range" min={0} max={100} value={Math.round(fxVol * 100)} onChange={(e) => setFxVol(Number(e.target.value) / 100)} /></label>
-            {!revealed && <button type="button" className="btn" onClick={skip}>Пропустить</button>}
+            {!revealed && !legendVideoVisible && <button type="button" className="btn" onClick={skip}>Пропустить</button>}
             {revealed && (
               <button type="button" className="btn btn--primary" onClick={onClose} disabled={continueVisible && !continueReady}>
                 {continueVisible && !continueReady ? 'Слушай финал...' : 'В коллекцию'}
@@ -580,6 +727,17 @@ export function PackOpenReveal({ card, collectionComplete, variant = 'fut', pale
         .pr__ichip span{font-size:10px; letter-spacing:.18em; text-transform:uppercase; color:rgba(180,225,255,.72)}
         .pr__ichip b{font-family:var(--font-display),sans-serif; font-size:28px; line-height:1; color:#eef8ff; min-width:40px; max-width:260px; text-align:center; white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
 
+        .pr__legendVideo{position:absolute; inset:0; z-index:25; display:flex; align-items:center; justify-content:center; background:radial-gradient(ellipse 70% 55% at 50% 45%, rgba(40,28,8,.28), rgba(2,4,8,.72) 60%, rgba(2,4,8,.88)); backdrop-filter:blur(2px); animation:legendVideoIn .55s cubic-bezier(.2,.9,.2,1)}
+        .pr__legendVideoGlow{position:absolute; inset:0; pointer-events:none; background:radial-gradient(ellipse 55% 40% at 50% 50%, rgba(255,215,120,.16), transparent 62%), radial-gradient(ellipse 35% 55% at 20% 50%, rgba(255,190,90,.08), transparent 65%), radial-gradient(ellipse 35% 55% at 80% 50%, rgba(255,190,90,.08), transparent 65%)}
+        .pr__legendVideoEl{position:relative; width:min(920px, calc(100% - 64px)); max-height:calc(100% - 140px); border-radius:20px; background:#000; box-shadow:0 30px 100px rgba(0,0,0,.65), 0 0 0 1px rgba(255,215,120,.22), 0 0 80px rgba(255,200,90,.12); object-fit:contain}
+        .pr__legendVideoTop{position:absolute; top:22px; left:22px; right:22px; display:flex; flex-direction:column; align-items:center; gap:4px; pointer-events:none; text-align:center}
+        .pr__legendVideoBadge{display:inline-flex; padding:6px 14px; border-radius:999px; font-size:11px; font-weight:800; letter-spacing:.16em; text-transform:uppercase; color:#2a1a00; background:linear-gradient(180deg,#ffe7a3,#e1b95a); border:1px solid rgba(255,231,163,.8); box-shadow:0 8px 24px rgba(255,200,90,.22)}
+        .pr__legendVideoName{font-family:var(--font-display),sans-serif; font-size:clamp(28px,4vw,46px); line-height:1; color:#fff7de; text-shadow:0 4px 30px rgba(0,0,0,.55), 0 0 40px rgba(255,210,120,.18)}
+        .pr__legendVideoPlay{position:absolute; z-index:2; display:flex; flex-direction:column; align-items:center; gap:10px; padding:22px 28px; border-radius:20px; border:1px solid rgba(255,215,120,.35); background:rgba(10,14,20,.72); color:#fff; font-size:15px; font-weight:700; cursor:pointer; backdrop-filter:blur(10px); box-shadow:0 20px 60px rgba(0,0,0,.45)}
+        .pr__legendVideoPlay:hover{background:rgba(20,24,32,.82); border-color:rgba(255,215,120,.55)}
+        .pr__legendVideoPlayIcon{width:64px; height:64px; border-radius:50%; display:grid; place-items:center; font-size:28px; line-height:1; color:#2a1a00; background:linear-gradient(180deg,#ffe7a3,#e1b95a); box-shadow:0 10px 30px rgba(255,200,90,.28)}
+        @keyframes legendVideoIn{from{opacity:0; transform:scale(.985)} to{opacity:1; transform:scale(1)}}
+
         .pr__hud{position:absolute; left:18px; right:18px; bottom:18px; z-index:30; display:flex; gap:14px; align-items:flex-end; justify-content:space-between; pointer-events:none}
         .pr__steps,.pr__actions{pointer-events:auto}
         .pr__steps{display:flex; gap:8px; flex-wrap:wrap; max-width:58%}
@@ -613,9 +771,14 @@ export function PackOpenReveal({ card, collectionComplete, variant = 'fut', pale
           .pr__ival{font-size:32px}
           .pr__imeta{flex-wrap:wrap; justify-content:center}
           .pr__vol input{width:90px}
+          .pr__legendVideoEl{width:calc(100% - 20px); max-height:calc(100% - 170px); border-radius:14px}
+          .pr__legendVideoTop{top:14px; left:14px; right:14px}
+          .pr__legendVideoName{font-size:30px}
+          .pr__legendVideoPlay{padding:18px 20px; font-size:14px}
+          .pr__legendVideoPlayIcon{width:56px; height:56px; font-size:24px}
         }
         @media (prefers-reduced-motion: reduce) {
-          .pr__world,.pr__intro,.pr__mysteryCard,.pr__finalCard,.pr__panel,.pr__fx-c{transition:none; animation:none}
+          .pr__world,.pr__intro,.pr__mysteryCard,.pr__finalCard,.pr__panel,.pr__fx-c,.pr__legendVideo{transition:none; animation:none}
         }
       `}</style>
     </div>

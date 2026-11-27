@@ -303,11 +303,13 @@ export function PackOpenReveal({ card, collectionComplete, variant = 'fut', pale
     const candidate = card ? legendRevealVideoUrl(card) : null;
     if (!candidate) { setLegendVideoUrl(null); legendVideoAvailableRef.current = null; return; }
     let cancelled = false;
+    let timeoutId: number | undefined;
     const probe = document.createElement('video');
     probe.preload = 'metadata';
     probe.muted = true;
     probe.playsInline = true;
     const cleanup = () => {
+      if (timeoutId !== undefined) { window.clearTimeout(timeoutId); timeoutId = undefined; }
       probe.removeEventListener('loadedmetadata', onReady);
       probe.removeEventListener('canplay', onReady);
       probe.removeEventListener('error', onErr);
@@ -320,8 +322,8 @@ export function PackOpenReveal({ card, collectionComplete, variant = 'fut', pale
     probe.addEventListener('error', onErr);
     probe.src = candidate;
     try { probe.load(); } catch { onErr(); }
-    const timeout = window.setTimeout(onErr, 5000);
-    return () => { cancelled = true; window.clearTimeout(timeout); cleanup(); };
+    timeoutId = window.setTimeout(onErr, 12000);
+    return () => { cancelled = true; cleanup(); };
   }, [card?.instanceId, card?.rarity, card?.setKind, card?.photoUrl]);
 
   const data = useMemo(() => {

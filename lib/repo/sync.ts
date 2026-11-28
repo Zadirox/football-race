@@ -511,21 +511,21 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
       await sql`
         update matches set
           status = ${nm.status},
-          minute = ${nm.minute ?? null},
+          minute = coalesce(${nm.minute ?? null}, minute),
           home_score = ${nm.homeScore ?? null},
           away_score = ${nm.awayScore ?? null},
           ht_home_score = ${nm.htHomeScore ?? null},
           ht_away_score = ${nm.htAwayScore ?? null},
-          corners_home = ${nm.stats.cornersHome ?? null},
-          corners_away = ${nm.stats.cornersAway ?? null},
-          yellow_cards_home = ${nm.stats.yellowCardsHome ?? null},
-          yellow_cards_away = ${nm.stats.yellowCardsAway ?? null},
-          red_cards_home = ${nm.stats.redCardsHome ?? null},
-          red_cards_away = ${nm.stats.redCardsAway ?? null},
-          possession_home = ${nm.stats.possessionHome ?? null},
-          possession_away = ${nm.stats.possessionAway ?? null},
-          shots_on_target_home = ${nm.stats.shotsOnTargetHome ?? null},
-          shots_on_target_away = ${nm.stats.shotsOnTargetAway ?? null},
+          corners_home = coalesce(${nm.stats.cornersHome ?? null}, corners_home),
+          corners_away = coalesce(${nm.stats.cornersAway ?? null}, corners_away),
+          yellow_cards_home = coalesce(${nm.stats.yellowCardsHome ?? null}, yellow_cards_home),
+          yellow_cards_away = coalesce(${nm.stats.yellowCardsAway ?? null}, yellow_cards_away),
+          red_cards_home = coalesce(${nm.stats.redCardsHome ?? null}, red_cards_home),
+          red_cards_away = coalesce(${nm.stats.redCardsAway ?? null}, red_cards_away),
+          possession_home = coalesce(${nm.stats.possessionHome ?? null}, possession_home),
+          possession_away = coalesce(${nm.stats.possessionAway ?? null}, possession_away),
+          shots_on_target_home = coalesce(${nm.stats.shotsOnTargetHome ?? null}, shots_on_target_home),
+          shots_on_target_away = coalesce(${nm.stats.shotsOnTargetAway ?? null}, shots_on_target_away),
           updated_at = now()
         where provider = ${nm.provider} and external_id = ${nm.externalId}
       `;
@@ -762,6 +762,7 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
   let clubFetched = 0;
   let clubKept = 0;
   let clubSkippedNoBudget = 0;
+  let clubRetryRecovered = 0;
   if (!isLiveMode && env.sstatsEnabled) {
     const clubPriority = [...CLUB_COMPETITIONS].sort((a, b) => {
       const pa = a.kind === 'europe_cup' ? 0 : 1;
@@ -771,17 +772,41 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
     const rotateBy = Math.floor(Date.now() / 60_000) % Math.max(1, clubPriority.length);
     const rotatedClubPriority = [...clubPriority.slice(rotateBy), ...clubPriority.slice(0, rotateBy)];
 
+    const prioritizedComps = [...rotatedClubPriority];
+    try {
+      const windowFrom = new Date(`${window.from}T00:00:00.000Z`);
+      const windowToExclusive = new Date(`${window.to}T00:00:00.000Z`);
+      windowToExclusive.setUTCDate(windowToExclusive.getUTCDate() + 1);
+      const leagueCodes = clubPriority.map((c) => c.leagueCode);
+      const present = await sql<{ league_code: string }[]>`
+        select distinct league_code
+        from matches
+        where provider = 'sstats'
+          and league_code = any(${leagueCodes}::text[])
+          and kickoff_utc >= ${windowFrom.toISOString()}::timestamptz
+          and kickoff_utc < ${windowToExclusive.toISOString()}::timestamptz
+      `;
+      const presentSet = new Set(present.map((r) => r.league_code));
+      const missing = prioritizedComps.filter((c) => !presentSet.has(c.leagueCode));
+      if (missing.length > 0) {
+        const missingSet = new Set(missing.map((c) => c.key));
+        prioritizedComps.sort((a, b) => (missingSet.has(a.key) ? 0 : 1) - (missingSet.has(b.key) ? 0 : 1));
+        errors.push(`club: приоритет добора comps без матчей в окне: ${missing.map((c) => c.key).join(',')}`);
+      }
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      errors.push(`club: не удалось определить comps для добора: ${message}`);
+    }
+
     let clubConsecutiveFailures = 0;
-    for (const comp of rotatedClubPriority) {
+    for (const comp of prioritizedComps) {
       const remainingMs = processingDeadlineMs - Date.now();
       if (remainingMs <= 8_000) {
         clubSkippedNoBudget += 1;
         continue;
       }
 
-      try {
-        const baseTimeout = clubConsecutiveFailures >= 2 ? 3_000 : 5_000;
-        const listTimeoutMs = Math.min(baseTimeout, Math.max(2_000, remainingMs - 3_000));
+      const fetchComp = async (timeoutMs: number) => {
         const res = await fetchSstatsFixtures({
           leagueId: comp.sstatsLeagueId,
           year: comp.year,
@@ -790,7 +815,7 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
           from: window.from,
           to: window.to,
           apiKey: env.sstatsApiKey,
-          timeoutMs: listTimeoutMs,
+          timeoutMs,
         });
         fetchedTotal += res.fetched;
         requestsUsed += res.requestsUsed;
@@ -803,23 +828,50 @@ export async function syncFixtures(options: SyncFixturesOptions = {}): Promise<S
         }
         clubKept += scoped.length;
         if (scoped.length > 0) sstatsGroups.push(scoped);
-        clubConsecutiveFailures = 0;
-      } catch (error) {
+      };
+
+      let compOk = false;
+      let lastCompError: unknown = null;
+      for (let attempt = 0; attempt < 2; attempt += 1) {
+        const remainingAttemptMs = processingDeadlineMs - Date.now();
+        if (remainingAttemptMs <= 6_000) break;
+        if (attempt > 0 && isQuotaError(lastCompError)) break;
+        const baseTimeout = clubConsecutiveFailures >= 2 ? 3_000 : 5_000;
+        const listTimeoutMs = Math.min(baseTimeout, Math.max(2_000, remainingAttemptMs - 3_000));
+        try {
+          await fetchComp(listTimeoutMs);
+          if (attempt > 0) {
+            clubRetryRecovered += 1;
+            errors.push(`club/${comp.key}: добор после повтора успешен`);
+          }
+          compOk = true;
+          clubConsecutiveFailures = 0;
+          break;
+        } catch (error) {
+          lastCompError = error;
+          if (isQuotaError(error)) break;
+          if (attempt === 0 && processingDeadlineMs - Date.now() > 6_000) {
+            errors.push(`club/${comp.key}: повтор после таймаута/ошибки`);
+          }
+        }
+      }
+
+      if (!compOk) {
         clubConsecutiveFailures += 1;
-        if (isQuotaError(error)) {
+        if (isQuotaError(lastCompError)) {
           errors.push(`club/${comp.key}: quota exceeded`);
           break;
         }
-        const message = error instanceof Error ? error.message : String(error);
+        const message = lastCompError instanceof Error ? lastCompError.message : String(lastCompError ?? 'unknown error');
         errors.push(`club/${comp.key}: ${message}`);
         if (clubConsecutiveFailures >= 3 && remainingMs < 20_000) {
-          errors.push('club: sstats нестабилен, пропускаю оставшиеся comps в этом прогоне');
+          errors.push('club: sstats нестабилен, пропускаем оставшиеся comps в этом прогоне');
           break;
         }
       }
     }
 
-    if (clubSkippedNoBudget > 0) {
+        if (clubSkippedNoBudget > 0) {
       errors.push(`club: пропущено comps из-за бюджета: ${clubSkippedNoBudget}`);
     }
   }
